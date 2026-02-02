@@ -12,6 +12,9 @@ SELECT plan(12);
 
 -- Disable checkpoint detection during tests
 UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
+
+-- Disable adaptive sampling during tests (would skip collection when <5 active connections)
+UPDATE flight_recorder.config SET value = 'false' WHERE key = 'adaptive_sampling';
 UPDATE flight_recorder.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
 
 -- =============================================================================
