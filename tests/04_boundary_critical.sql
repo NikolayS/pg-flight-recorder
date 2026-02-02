@@ -12,6 +12,9 @@ SELECT plan(101);
 -- Disable checkpoint detection during tests to prevent snapshot skipping
 UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
+-- Disable adaptive sampling during tests (would skip collection when <5 active connections)
+UPDATE flight_recorder.config SET value = 'false' WHERE key = 'adaptive_sampling';
+
 -- Disable collection jitter to speed up tests (default is 0-10 second random delay)
 UPDATE flight_recorder.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
 
@@ -463,6 +466,9 @@ SELECT ok(true, 'Mode Switching: System should handle rapid mode oscillation (10
 
 -- Verify mode switch with active checkpoint detection disabled
 UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
+
+-- Disable adaptive sampling during tests (would skip collection when <5 active connections)
+UPDATE flight_recorder.config SET value = 'false' WHERE key = 'adaptive_sampling';
 SELECT lives_ok(
     $$SELECT flight_recorder._check_and_adjust_mode()$$,
     'Mode Switching: Should work with checkpoint detection disabled'
@@ -470,6 +476,9 @@ SELECT lives_ok(
 
 -- Keep checkpoint detection disabled for subsequent tests
 UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
+
+-- Disable adaptive sampling during tests (would skip collection when <5 active connections)
+UPDATE flight_recorder.config SET value = 'false' WHERE key = 'adaptive_sampling';
 
 -- -----------------------------------------------------------------------------
 -- 12.2 Health Check Functions (20 tests)
@@ -669,6 +678,9 @@ UPDATE flight_recorder.config SET value = '50' WHERE key = 'lock_timeout_ms';
 -- Test _should_skip_collection() on non-replica (disable checkpoint check to isolate replica check)
 UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
+-- Disable adaptive sampling during tests (would skip collection when <5 active connections)
+UPDATE flight_recorder.config SET value = 'false' WHERE key = 'adaptive_sampling';
+
 SELECT ok(
     flight_recorder._should_skip_collection() IS NULL,
     'Pre-Collection: _should_skip_collection() should return NULL on primary (not a replica)'
@@ -680,6 +692,9 @@ UPDATE flight_recorder.config SET value = 'true' WHERE key = 'check_checkpoint_b
 -- Test _should_skip_collection() with check_replica_lag disabled (also disable checkpoint check)
 UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_replica_lag';
 UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
+
+-- Disable adaptive sampling during tests (would skip collection when <5 active connections)
+UPDATE flight_recorder.config SET value = 'false' WHERE key = 'adaptive_sampling';
 
 SELECT ok(
     flight_recorder._should_skip_collection() IS NULL,
@@ -693,6 +708,9 @@ UPDATE flight_recorder.config SET value = 'true' WHERE key = 'check_checkpoint_b
 -- Test _should_skip_collection() with check_checkpoint_backup disabled
 UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
+-- Disable adaptive sampling during tests (would skip collection when <5 active connections)
+UPDATE flight_recorder.config SET value = 'false' WHERE key = 'adaptive_sampling';
+
 SELECT ok(
     flight_recorder._should_skip_collection() IS NULL,
     'Pre-Collection: _should_skip_collection() should return NULL when check_checkpoint_backup disabled'
@@ -703,6 +721,9 @@ UPDATE flight_recorder.config SET value = 'true' WHERE key = 'check_checkpoint_b
 
 -- Disable again for remaining tests to prevent snapshot skipping
 UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
+
+-- Disable adaptive sampling during tests (would skip collection when <5 active connections)
+UPDATE flight_recorder.config SET value = 'false' WHERE key = 'adaptive_sampling';
 
 -- Test _should_skip_collection() general execution
 SELECT lives_ok(
@@ -745,6 +766,9 @@ DO $$
 BEGIN
     UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_replica_lag';
     UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
+
+-- Disable adaptive sampling during tests (would skip collection when <5 active connections)
+UPDATE flight_recorder.config SET value = 'false' WHERE key = 'adaptive_sampling';
 END $$;
 
 SELECT ok(
@@ -758,6 +782,9 @@ UPDATE flight_recorder.config SET value = 'true' WHERE key = 'check_checkpoint_b
 
 -- Disable checkpoint detection again for remaining tests
 UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
+
+-- Disable adaptive sampling during tests (would skip collection when <5 active connections)
+UPDATE flight_recorder.config SET value = 'false' WHERE key = 'adaptive_sampling';
 
 -- Test exception handling in _should_skip_collection()
 SELECT lives_ok(
