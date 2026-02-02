@@ -11,7 +11,7 @@
 DO $$
 DECLARE
     v_current_version TEXT;
-    v_target_version TEXT := '2.7';  -- Update this when adding migrations
+    v_target_version TEXT := '2.23';  -- Update this when adding migrations
 BEGIN
     -- Check if flight_recorder schema exists
     IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'flight_recorder') THEN
@@ -86,6 +86,54 @@ END $$;
 
 -- Migration from 2.6 to 2.7: Autovacuum observer enhancements
 \i migrations/2.6_to_2.7.sql
+
+-- Migration from 2.7 to 2.8
+\i migrations/2.7_to_2.8.sql
+
+-- Migration from 2.8 to 2.9
+\i migrations/2.8_to_2.9.sql
+
+-- Migration from 2.9 to 2.10
+\i migrations/2.9_to_2.10.sql
+
+-- Migration from 2.10 to 2.11
+\i migrations/2.10_to_2.11.sql
+
+-- Migration from 2.11 to 2.12
+\i migrations/2.11_to_2.12.sql
+
+-- Migration from 2.12 to 2.13
+\i migrations/2.12_to_2.13.sql
+
+-- Migration from 2.13 to 2.14
+\i migrations/2.13_to_2.14.sql
+
+-- Migration from 2.14 to 2.15
+\i migrations/2.14_to_2.15.sql
+
+-- Migration from 2.15 to 2.16
+\i migrations/2.15_to_2.16.sql
+
+-- Migration from 2.16 to 2.17: Buffer-based performance metrics
+\i migrations/2.16_to_2.17.sql
+
+-- Migration from 2.17 to 2.18: Enhanced SQLite export (kept for version continuity)
+\i migrations/2.17_to_2.18.sql
+
+-- Migration from 2.18 to 2.19: Remove SQLite export function
+\i migrations/2.18_to_2.19.sql
+
+-- Migration from 2.19 to 2.20: Remove canary queries feature
+\i migrations/2.19_to_2.20.sql
+
+-- Migration from 2.20 to 2.21: Remove auto-detect wrappers
+\i migrations/2.20_to_2.21.sql
+
+-- Migration from 2.21 to 2.22: Remove visual timeline, forecasting, and high_ddl profile
+\i migrations/2.21_to_2.22.sql
+
+-- Migration from 2.22 to 2.23: Add table size tracking for bloat detection
+\i migrations/2.22_to_2.23.sql
 
 -- =============================================================================
 -- Post-upgrade verification
