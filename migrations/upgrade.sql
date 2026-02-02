@@ -11,7 +11,7 @@
 DO $$
 DECLARE
     v_current_version TEXT;
-    v_target_version TEXT := '2.22';  -- Update this when adding migrations
+    v_target_version TEXT := '2.23';  -- Update this when adding migrations
 BEGIN
     -- Check if flight_recorder schema exists
     IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'flight_recorder') THEN
@@ -131,6 +131,9 @@ END $$;
 
 -- Migration from 2.21 to 2.22: Remove visual timeline, forecasting, and high_ddl profile
 \i migrations/2.21_to_2.22.sql
+
+-- Migration from 2.22 to 2.23: Add table size tracking for bloat detection
+\i migrations/2.22_to_2.23.sql
 
 -- =============================================================================
 -- Post-upgrade verification
