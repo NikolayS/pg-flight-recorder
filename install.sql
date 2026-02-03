@@ -1,4 +1,3 @@
-\set ON_ERROR_STOP on
 BEGIN;
 DO $$
 BEGIN
