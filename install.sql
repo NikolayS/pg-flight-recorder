@@ -404,8 +404,8 @@ COMMENT ON TABLE flight_recorder.wait_samples_archive IS 'Raw archives: Wait eve
 -- Enables diagnosis of table-level performance issues and bloat detection
 CREATE TABLE IF NOT EXISTS flight_recorder.table_snapshots (
     snapshot_id         INTEGER REFERENCES flight_recorder.snapshots(id) ON DELETE CASCADE,
-    schemaname          TEXT NOT NULL,
-    relname             TEXT NOT NULL,
+    schemaname          TEXT,             -- DEPRECATED: derive via relid::regclass or relation_names
+    relname             TEXT,             -- DEPRECATED: derive via relid::regclass or relation_names
     relid               OID NOT NULL,
     seq_scan            BIGINT,
     seq_tup_read        BIGINT,
@@ -443,9 +443,9 @@ COMMENT ON TABLE flight_recorder.table_snapshots IS 'Table-level statistics snap
 -- Enables identification of unused indexes and index efficiency analysis
 CREATE TABLE IF NOT EXISTS flight_recorder.index_snapshots (
     snapshot_id         INTEGER REFERENCES flight_recorder.snapshots(id) ON DELETE CASCADE,
-    schemaname          TEXT NOT NULL,
-    relname             TEXT NOT NULL,
-    indexrelname        TEXT NOT NULL,
+    schemaname          TEXT,             -- DEPRECATED: derive via relid::regclass or relation_names
+    relname             TEXT,             -- DEPRECATED: derive via relid::regclass or relation_names
+    indexrelname        TEXT,             -- DEPRECATED: derive via indexrelid::regclass or relation_names
     relid               OID NOT NULL,
     indexrelid          OID NOT NULL,
     idx_scan            BIGINT,
@@ -476,6 +476,19 @@ CREATE TABLE IF NOT EXISTS flight_recorder.config_snapshots (
 CREATE INDEX IF NOT EXISTS config_snapshots_name_idx
     ON flight_recorder.config_snapshots(name);
 COMMENT ON TABLE flight_recorder.config_snapshots IS 'PostgreSQL configuration snapshots for change tracking and incident context';
+
+
+-- Stores relation OID to name mappings for offline analysis (e.g., PGLite)
+-- Populated by _populate_relation_names() before data export
+-- Enables analysis functions to resolve OIDs without access to pg_class
+CREATE TABLE IF NOT EXISTS flight_recorder.relation_names (
+    oid             OID PRIMARY KEY,
+    nspname         TEXT NOT NULL,
+    relname         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS relation_names_name_idx
+    ON flight_recorder.relation_names(nspname, relname);
+COMMENT ON TABLE flight_recorder.relation_names IS 'OID to relation name mappings for offline analysis. Populated at export time, not during collection.';
 
 
 -- Captures database-level and role-level configuration overrides from pg_db_role_setting
@@ -561,6 +574,72 @@ END;
 $$;
 COMMENT ON FUNCTION flight_recorder._interpolate_metric IS
 'Linear interpolation helper for time-travel debugging. Calculates estimated metric value at a target timestamp between two known data points. Returns rounded value (4 decimal places). Handles edge cases: NULL inputs, same timestamps, and clamps ratio to [0,1] to prevent extrapolation.';
+
+
+-- Populates relation_names table from pg_class for offline analysis
+-- Run this before exporting data for use with PGLite or other offline analysis tools
+-- This is an EXPORT-TIME operation, not a collection-time operation
+CREATE OR REPLACE FUNCTION flight_recorder._populate_relation_names()
+RETURNS INTEGER
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_count INTEGER;
+BEGIN
+    -- Truncate and repopulate to ensure consistency
+    TRUNCATE flight_recorder.relation_names;
+
+    INSERT INTO flight_recorder.relation_names (oid, nspname, relname)
+    SELECT c.oid, n.nspname, c.relname
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+      AND c.relkind IN ('r', 'i', 'S', 'v', 'm', 'p');  -- tables, indexes, sequences, views, matviews, partitioned
+
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN v_count;
+END;
+$$;
+COMMENT ON FUNCTION flight_recorder._populate_relation_names IS
+'Populates relation_names lookup table for offline analysis. Run before pg_dump when exporting data for PGLite. Returns count of relations captured.';
+
+
+-- Resolves OID to schema-qualified relation name using relation_names lookup table
+-- Falls back to OID string if not found (for offline analysis compatibility)
+CREATE OR REPLACE FUNCTION flight_recorder._safe_relname(p_oid OID)
+RETURNS TEXT
+LANGUAGE sql STABLE AS $$
+    SELECT COALESCE(
+        (SELECT nspname || '.' || relname FROM flight_recorder.relation_names WHERE oid = p_oid),
+        'OID:' || p_oid::text
+    )
+$$;
+COMMENT ON FUNCTION flight_recorder._safe_relname IS
+'Resolves OID to relation name using relation_names table. Returns OID:nnn if not found. For offline analysis where pg_class is unavailable.';
+
+
+-- Retrieves a PostgreSQL setting from config_snapshots history
+-- For offline analysis where pg_settings is unavailable
+-- Returns most recent captured value, or default if not found
+CREATE OR REPLACE FUNCTION flight_recorder._get_setting_from_snapshots(
+    p_name TEXT,
+    p_default TEXT DEFAULT NULL
+)
+RETURNS TEXT
+LANGUAGE sql STABLE AS $$
+    SELECT COALESCE(
+        (
+            SELECT cs.setting
+            FROM flight_recorder.config_snapshots cs
+            JOIN flight_recorder.snapshots s ON s.id = cs.snapshot_id
+            WHERE cs.name = p_name
+            ORDER BY s.captured_at DESC
+            LIMIT 1
+        ),
+        p_default
+    )
+$$;
+COMMENT ON FUNCTION flight_recorder._get_setting_from_snapshots IS
+'Retrieves PostgreSQL setting from config_snapshots for offline analysis. Returns most recent captured value or default if not found.';
 
 
 -- Returns the PostgreSQL major version number
@@ -2440,6 +2519,7 @@ BEGIN
     -- Handle different collection modes
     IF v_mode = 'all' THEN
         -- Collect all user tables
+        -- Note: schemaname/relname are deprecated; derive via relation_names or ::regclass
         INSERT INTO flight_recorder.table_snapshots (
             snapshot_id, schemaname, relname, relid,
             seq_scan, seq_tup_read, idx_scan, idx_tup_fetch,
@@ -2452,8 +2532,8 @@ BEGIN
         )
         SELECT
             p_snapshot_id,
-            st.schemaname,
-            st.relname,
+            NULL,  -- schemaname deprecated: derive via relid
+            NULL,  -- relname deprecated: derive via relid
             st.relid,
             st.seq_scan,
             st.seq_tup_read,
@@ -2483,6 +2563,7 @@ BEGIN
 
     ELSIF v_mode = 'threshold' THEN
         -- Collect tables with activity score above threshold
+        -- Note: schemaname/relname are deprecated; derive via relation_names or ::regclass
         INSERT INTO flight_recorder.table_snapshots (
             snapshot_id, schemaname, relname, relid,
             seq_scan, seq_tup_read, idx_scan, idx_tup_fetch,
@@ -2495,8 +2576,8 @@ BEGIN
         )
         SELECT
             p_snapshot_id,
-            st.schemaname,
-            st.relname,
+            NULL,  -- schemaname deprecated: derive via relid
+            NULL,  -- relname deprecated: derive via relid
             st.relid,
             st.seq_scan,
             st.seq_tup_read,
@@ -2528,6 +2609,7 @@ BEGIN
 
     ELSE
         -- Default: top_n mode (also handles invalid mode values)
+        -- Note: schemaname/relname are deprecated; derive via relation_names or ::regclass
         INSERT INTO flight_recorder.table_snapshots (
             snapshot_id, schemaname, relname, relid,
             seq_scan, seq_tup_read, idx_scan, idx_tup_fetch,
@@ -2540,8 +2622,8 @@ BEGIN
         )
         SELECT
             p_snapshot_id,
-            st.schemaname,
-            st.relname,
+            NULL,  -- schemaname deprecated: derive via relid
+            NULL,  -- relname deprecated: derive via relid
             st.relid,
             st.seq_scan,
             st.seq_tup_read,
@@ -2593,15 +2675,16 @@ BEGIN
         RETURN;
     END IF;
 
+    -- Note: schemaname/relname/indexrelname are deprecated; derive via relation_names or ::regclass
     INSERT INTO flight_recorder.index_snapshots (
         snapshot_id, schemaname, relname, indexrelname, relid, indexrelid,
         idx_scan, idx_tup_read, idx_tup_fetch, index_size_bytes
     )
     SELECT
         p_snapshot_id,
-        i.schemaname,
-        i.relname,
-        i.indexrelname,
+        NULL,  -- schemaname deprecated: derive via relid
+        NULL,  -- relname deprecated: derive via relid
+        NULL,  -- indexrelname deprecated: derive via indexrelid
         i.relid,
         i.indexrelid,
         i.idx_scan,
@@ -2665,6 +2748,7 @@ DECLARE
         'autovacuum_analyze_scale_factor',
         'autovacuum_vacuum_cost_delay',
         'autovacuum_vacuum_cost_limit',
+        'autovacuum_freeze_max_age',
         -- Logging
         'log_min_duration_statement',
         'log_lock_waits',
@@ -4367,8 +4451,8 @@ BEGIN
     RETURN QUERY
     WITH latest AS (
         SELECT DISTINCT ON (ts.relid)
-            ts.schemaname,
-            ts.relname,
+            COALESCE(ts.schemaname, split_part(ts.relid::regclass::text, '.', 1)) AS schemaname,
+            COALESCE(ts.relname, split_part(ts.relid::regclass::text, '.', 2)) AS relname,
             ts.relid,
             ts.table_size_bytes,
             ts.total_size_bytes,
@@ -4890,8 +4974,8 @@ BEGIN
     -- Each table may have its own autovacuum_freeze_max_age setting
     FOR v_table_xid_rec IN
         SELECT
-            ts.schemaname,
-            ts.relname,
+            COALESCE(ts.schemaname, split_part(ts.relid::regclass::text, '.', 1)) AS schemaname,
+            COALESCE(ts.relname, split_part(ts.relid::regclass::text, '.', 2)) AS relname,
             ts.relfrozenxid_age,
             COALESCE(
                 (SELECT (regexp_match(opt, 'autovacuum_freeze_max_age=(\d+)'))[1]::bigint
@@ -5001,7 +5085,9 @@ BEGIN
 
     -- Dead tuple accumulation (bloat risk)
     FOR v_row IN
-        SELECT ts.schemaname, ts.relname, ts.n_dead_tup, ts.n_live_tup,
+        SELECT COALESCE(ts.schemaname, split_part(ts.relid::regclass::text, '.', 1)) AS schemaname,
+               COALESCE(ts.relname, split_part(ts.relid::regclass::text, '.', 2)) AS relname,
+               ts.n_dead_tup, ts.n_live_tup,
                round(100.0 * ts.n_dead_tup / NULLIF(ts.n_dead_tup + ts.n_live_tup, 0), 1) AS dead_pct
         FROM flight_recorder.table_snapshots ts
         JOIN flight_recorder.snapshots s ON s.id = ts.snapshot_id
@@ -5027,9 +5113,11 @@ BEGIN
     -- Vacuum starvation (dead tuples growing, vacuum not running)
     FOR v_row IN
         WITH recent AS (
-            SELECT ts.schemaname, ts.relname, ts.n_dead_tup, ts.last_autovacuum,
+            SELECT COALESCE(ts.schemaname, split_part(ts.relid::regclass::text, '.', 1)) AS schemaname,
+                   COALESCE(ts.relname, split_part(ts.relid::regclass::text, '.', 2)) AS relname,
+                   ts.relid, ts.n_dead_tup, ts.last_autovacuum,
                    s.captured_at,
-                   LAG(ts.n_dead_tup) OVER (PARTITION BY ts.schemaname, ts.relname ORDER BY s.captured_at) AS prev_dead
+                   LAG(ts.n_dead_tup) OVER (PARTITION BY ts.relid ORDER BY s.captured_at) AS prev_dead
             FROM flight_recorder.table_snapshots ts
             JOIN flight_recorder.snapshots s ON s.id = ts.snapshot_id
             WHERE s.captured_at BETWEEN p_start_time AND p_end_time
@@ -8364,8 +8452,8 @@ LANGUAGE sql STABLE AS $$
     ),
     matched AS (
         SELECT
-            e.schemaname,
-            e.relname,
+            COALESCE(e.schemaname, split_part(e.relid::regclass::text, '.', 1)) AS schemaname,
+            COALESCE(e.relname, split_part(e.relid::regclass::text, '.', 2)) AS relname,
             e.relid,
             COALESCE(e.seq_scan, 0) - COALESCE(s.seq_scan, 0) AS seq_scan_delta,
             COALESCE(e.seq_tup_read, 0) - COALESCE(s.seq_tup_read, 0) AS seq_tup_read_delta,
@@ -8540,9 +8628,9 @@ LANGUAGE sql STABLE AS $$
     ),
     index_usage AS (
         SELECT
-            e.schemaname,
-            e.relname,
-            e.indexrelname,
+            COALESCE(e.schemaname, split_part(e.relid::regclass::text, '.', 1)) AS schemaname,
+            COALESCE(e.relname, split_part(e.relid::regclass::text, '.', 2)) AS relname,
+            COALESCE(e.indexrelname, split_part(e.indexrelid::regclass::text, '.', 2)) AS indexrelname,
             e.indexrelid,
             e.index_size_bytes,
             COALESCE(e.idx_scan, 0) - COALESCE(s.idx_scan, 0) AS scan_delta
@@ -8608,9 +8696,9 @@ LANGUAGE sql STABLE AS $$
         ORDER BY i.indexrelid, s.captured_at ASC
     )
     SELECT
-        e.schemaname,
-        e.relname,
-        e.indexrelname,
+        COALESCE(e.schemaname, split_part(e.relid::regclass::text, '.', 1)) AS schemaname,
+        COALESCE(e.relname, split_part(e.relid::regclass::text, '.', 2)) AS relname,
+        COALESCE(e.indexrelname, split_part(e.indexrelid::regclass::text, '.', 2)) AS indexrelname,
         COALESCE(e.idx_scan, 0) - COALESCE(s.idx_scan, 0) AS idx_scan_delta,
         COALESCE(e.idx_tup_read, 0) - COALESCE(s.idx_tup_read, 0) AS idx_tup_read_delta,
         COALESCE(e.idx_tup_fetch, 0) - COALESCE(s.idx_tup_fetch, 0) AS idx_tup_fetch_delta,
