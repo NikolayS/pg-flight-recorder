@@ -8278,6 +8278,110 @@ $$;
 COMMENT ON FUNCTION flight_recorder.capacity_summary(INTERVAL) IS
 
 'Capacity planning summary across all resource dimensions. Analyzes connections, memory (shared_buffers, work_mem), I/O (cache hit ratio), storage growth, and transaction rates over the specified time window. Returns utilization, status (healthy/warning/critical), and actionable recommendations. Part of Phase 1 MVP capacity planning enhancements (FR-2.1).';
+
+-- Generates a human-readable markdown capacity report grouped by severity
+-- Calls capacity_summary() and formats results as prose text
+CREATE OR REPLACE FUNCTION flight_recorder.capacity_report(
+    p_time_window INTERVAL DEFAULT interval '24 hours'
+)
+RETURNS TEXT
+LANGUAGE plpgsql STABLE AS $$
+DECLARE
+    v_result TEXT := '';
+    v_row RECORD;
+    v_has_critical BOOLEAN := FALSE;
+    v_has_warning BOOLEAN := FALSE;
+    v_has_healthy BOOLEAN := FALSE;
+    v_critical_section TEXT := '';
+    v_warning_section TEXT := '';
+    v_healthy_section TEXT := '';
+    v_metric_name TEXT;
+    v_recommendation TEXT;
+BEGIN
+    -- Header
+    v_result := '# Capacity Report' || E'\n';
+    v_result := v_result || 'Generated: ' || to_char(now(), 'YYYY-MM-DD HH24:MI:SS') ||
+                ' | Window: ' || p_time_window::text || E'\n';
+
+    -- Process each metric from capacity_summary
+    FOR v_row IN
+        SELECT *
+        FROM flight_recorder.capacity_summary(p_time_window)
+        WHERE metric != 'insufficient_data'
+        ORDER BY
+            CASE status
+                WHEN 'critical' THEN 1
+                WHEN 'warning' THEN 2
+                ELSE 3
+            END,
+            metric
+    LOOP
+        -- Map metric names to readable names
+        v_metric_name := CASE v_row.metric
+            WHEN 'connections' THEN 'Connections'
+            WHEN 'memory_shared_buffers' THEN 'Shared Buffers'
+            WHEN 'memory_work_mem' THEN 'Work Mem'
+            WHEN 'io_buffer_cache' THEN 'Cache Hit Ratio'
+            WHEN 'storage_growth' THEN 'Storage Growth'
+            WHEN 'transaction_rate' THEN 'Transaction Rate'
+            ELSE initcap(replace(v_row.metric, '_', ' '))
+        END;
+
+        -- Strip severity prefix from recommendation
+        v_recommendation := regexp_replace(v_row.recommendation, '^(CRITICAL|WARNING|HEALTHY): ', '');
+
+        -- Build section content based on status
+        IF v_row.status = 'critical' THEN
+            v_has_critical := TRUE;
+            v_critical_section := v_critical_section ||
+                E'\n**' || v_metric_name || '** - ' || v_row.current_usage || E'\n' ||
+                '  → ' || v_recommendation || E'\n';
+        ELSIF v_row.status = 'warning' THEN
+            v_has_warning := TRUE;
+            v_warning_section := v_warning_section ||
+                E'\n**' || v_metric_name || '** - ' || v_row.current_usage || E'\n' ||
+                '  → ' || v_recommendation || E'\n';
+        ELSE
+            v_has_healthy := TRUE;
+            v_healthy_section := v_healthy_section ||
+                E'\n**' || v_metric_name || '** - ' || v_row.current_usage || E'\n';
+        END IF;
+    END LOOP;
+
+    -- Handle insufficient data case
+    FOR v_row IN
+        SELECT *
+        FROM flight_recorder.capacity_summary(p_time_window)
+        WHERE metric = 'insufficient_data'
+    LOOP
+        v_result := v_result || E'\n' || v_row.recommendation || E'\n';
+        RETURN v_result;
+    END LOOP;
+
+    -- Assemble sections
+    IF v_has_critical THEN
+        v_result := v_result || E'\n## Critical Issues' || v_critical_section;
+    END IF;
+
+    IF v_has_warning THEN
+        v_result := v_result || E'\n## Warnings' || v_warning_section;
+    END IF;
+
+    IF v_has_healthy THEN
+        v_result := v_result || E'\n## Healthy' || v_healthy_section;
+    END IF;
+
+    -- If nothing was found
+    IF NOT v_has_critical AND NOT v_has_warning AND NOT v_has_healthy THEN
+        v_result := v_result || E'\nNo capacity data available for the specified time window.\n';
+    END IF;
+
+    RETURN v_result;
+END;
+$$;
+COMMENT ON FUNCTION flight_recorder.capacity_report(INTERVAL) IS
+'Human-readable capacity report in markdown format. Groups metrics by severity (critical, warning, healthy) with actionable recommendations. Calls capacity_summary() internally for data. Use this for incident reports and documentation.';
+
 CREATE OR REPLACE VIEW flight_recorder.capacity_dashboard AS
 WITH
 latest_snapshot AS (
