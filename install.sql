@@ -6948,7 +6948,7 @@ BEGIN
         LOOP
             v_result := v_result || '| ' ||
                 to_char(v_row.captured_at, 'YYYY-MM-DD HH24:MI:SS') || ' | ' ||
-                COALESCE(to_char(v_row.wal_bytes, 'FM999,999,999,999'), '-') || ' | ' ||
+                COALESCE(flight_recorder._pretty_bytes(v_row.wal_bytes), '-') || ' | ' ||
                 COALESCE(v_row.ckpt_timed::TEXT, '-') || ' | ' ||
                 COALESCE(v_row.ckpt_requested::TEXT, '-') || ' | ' ||
                 COALESCE(v_row.bgw_buffers_backend::TEXT, '-') || ' |' || E'\n';
