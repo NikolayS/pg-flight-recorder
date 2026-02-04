@@ -368,9 +368,20 @@ psql -d your_database -f pglite/export.sql
 
 # Export data
 pg_dump -d your_database -n flight_recorder --data-only -f flight_recorder_data.sql
+
+# With compression (recommended for large datasets)
+pg_dump -d your_database -n flight_recorder --data-only | gzip > flight_recorder_data.sql.gz
+
+# PostgreSQL 16+ native compression
+pg_dump -d your_database -n flight_recorder --data-only --compress=gzip:9 -f flight_recorder_data.sql.gz
 ```
 
 ### Import into PGLite (Node.js)
+
+```bash
+# Decompress if needed
+gunzip flight_recorder_data.sql.gz
+```
 
 ```javascript
 import { PGlite } from '@electric-sql/pglite';
