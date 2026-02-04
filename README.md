@@ -30,8 +30,17 @@ psql -f uninstall.sql
 
 ## Export
 
+With default retention: ~2.5GB uncompressed, ~150MB compressed.
+
 ```bash
+# Without compression
+pg_dump -d your_database -n flight_recorder --data-only -f flight_recorder_data.sql
+
+# With compression (PostgreSQL 16+)
 pg_dump -d your_database -n flight_recorder --data-only --compress=gzip:9 -f flight_recorder_data.sql.gz
+
+# With compression (PostgreSQL 15)
+pg_dump -d your_database -n flight_recorder --data-only | gzip > flight_recorder_data.sql.gz
 ```
 
 See [pglite/README.md](pglite/README.md) for offline analysis with PGLite.
