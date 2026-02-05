@@ -56,7 +56,7 @@ jobs:
           DBDEV_TOKEN: ${{ secrets.DBDEV_TOKEN }}
         run: |
           mkdir -p ~/.dbdev
-          printf '[localhost]\napi_token = "%s"\n' "$DBDEV_TOKEN" > ~/.dbdev/credentials.toml
+          printf '[registries.dbdev]\ntoken = "%s"\n' "$DBDEV_TOKEN" > ~/.dbdev/credentials.toml
 
       - name: Publish to dbdev
         run: |
