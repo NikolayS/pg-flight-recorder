@@ -65,4 +65,4 @@ pg_dump -d your_database -n flight_recorder --data-only | gzip > flight_recorder
 
 ## Reference
 
-See [REFERENCE.md](REFERENCE.md) for configuration, functions, and details.
+See [REFERENCE.md](https://github.com/dventimisupabase/pg-flight-recorder/blob/main/REFERENCE.md) for configuration, functions, and details.
