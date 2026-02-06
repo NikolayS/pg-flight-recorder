@@ -152,7 +152,7 @@ Functions are split across two files:
 | `get_optimization_profiles()` | Ring buffer optimization presets |
 | `apply_optimization_profile(name)` | Apply ring buffer optimization |
 
-### Export/Offline Analysis (install.sql)
+### Export (install.sql)
 
 | Function | Purpose |
 |----------|---------|
