@@ -121,11 +121,10 @@ run_in_docker() {
 
 show_usage_instructions() {
     echo ""
-    echo "You can now use ./tools/sql-find for code navigation:"
-    echo "  ./tools/sql-find def <symbol>      # find definitions"
-    echo "  ./tools/sql-find grep <pattern>    # search file contents"
-    echo "  ./tools/sql-find ctx <file>:<line> # show context"
-    echo "  ./tools/sql-find stats             # show index statistics"
+    echo "Query SQL_INDEX.json directly with jq, Python, or any JSON tool."
+    echo "Example:"
+    echo "  jq '.[] | .tables[]?' SQL_INDEX.json"
+    echo "  jq '.[] | .functions[]? | select(.name | test(\"pattern\"; \"i\"))' SQL_INDEX.json"
 }
 
 case "${1:-}" in
