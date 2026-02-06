@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Time-Travel Debugging
+-- pg_flight_recorder pgTAP Tests - Time-Travel Debugging
 -- =============================================================================
 -- Tests: _interpolate_metric, what_happened_at, incident_timeline
 -- Test count: 45

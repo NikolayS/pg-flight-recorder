@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - OID Exhaustion Metrics
+-- pg_flight_recorder pgTAP Tests - OID Exhaustion Metrics
 -- =============================================================================
 -- Tests: OID exhaustion columns exist and are populated with reasonable values
 -- Test count: 14

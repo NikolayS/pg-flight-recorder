@@ -145,11 +145,11 @@ jobs:
           [ -f CHANGELOG.md ] && cp CHANGELOG.md release-assets/
 
           # Create tarball
-          tar -czf release-assets/pg-flight-recorder-${{ steps.version.outputs.version }}.tar.gz \
+          tar -czf release-assets/pg_flight_recorder-${{ steps.version.outputs.version }}.tar.gz \
             install.sql reporting.sql uninstall.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
 
           # Create zip
-          zip -q release-assets/pg-flight-recorder-${{ steps.version.outputs.version }}.zip \
+          zip -q release-assets/pg_flight_recorder-${{ steps.version.outputs.version }}.zip \
             install.sql reporting.sql uninstall.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
 
       - name: Create GitHub Release
@@ -195,7 +195,7 @@ jobs:
 
       - name: Release announcement
         run: |
-          echo "🎉 pg-flight-recorder ${{ steps.version.outputs.version }} has been released!"
+          echo "🎉 pg_flight_recorder ${{ steps.version.outputs.version }} has been released!"
           echo "📦 Download: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.version }}"
           echo ""
           echo "Installation:"

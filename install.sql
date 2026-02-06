@@ -1130,7 +1130,7 @@ BEGIN
     END IF;
     IF v_suggested_mode != v_current_mode THEN
         PERFORM flight_recorder.set_mode(v_suggested_mode);
-        RAISE NOTICE 'pg-flight-recorder: Auto-mode switched from % to %: %',
+        RAISE NOTICE 'pg_flight_recorder: Auto-mode switched from % to %: %',
                      v_current_mode, v_suggested_mode, v_reason;
         RETURN QUERY SELECT v_current_mode, v_suggested_mode, v_reason, true;
     END IF;
@@ -1572,7 +1572,7 @@ BEGIN
                 v_action := format('Attempted cleanup but failed: %s', SQLERRM);
             END;
         END IF;
-        RAISE WARNING 'pg-flight-recorder: Schema size (% MB) in warning range (% - % MB). %',
+        RAISE WARNING 'pg_flight_recorder: Schema size (% MB) in warning range (% - % MB). %',
             v_size_mb, v_warning_mb, v_critical_mb, v_action;
         RETURN QUERY SELECT
             v_size_mb,
@@ -1740,7 +1740,7 @@ BEGIN
     v_should_skip := flight_recorder._check_circuit_breaker('sample');
     IF v_should_skip THEN
         PERFORM flight_recorder._record_collection_skip('sample', 'Circuit breaker tripped - last run exceeded threshold');
-        RAISE NOTICE 'pg-flight-recorder: Skipping sample collection due to circuit breaker';
+        RAISE NOTICE 'pg_flight_recorder: Skipping sample collection due to circuit breaker';
         RETURN v_captured_at;
     END IF;
     DECLARE
@@ -1749,7 +1749,7 @@ BEGIN
         v_skip_reason := flight_recorder._should_skip_collection();
         IF v_skip_reason IS NOT NULL THEN
             PERFORM flight_recorder._record_collection_skip('sample', v_skip_reason);
-            RAISE NOTICE 'pg-flight-recorder: Skipping sample - %', v_skip_reason;
+            RAISE NOTICE 'pg_flight_recorder: Skipping sample - %', v_skip_reason;
             RETURN v_captured_at;
         END IF;
     END;
@@ -1767,7 +1767,7 @@ BEGIN
             PERFORM flight_recorder._record_collection_skip('sample',
                 format('Job deduplication: %s sample job(s) already running (PID: %s)',
                        v_running_count, v_running_pid));
-            RAISE NOTICE 'pg-flight-recorder: Skipping sample - another job already running (PID: %)', v_running_pid;
+            RAISE NOTICE 'pg_flight_recorder: Skipping sample - another job already running (PID: %)', v_running_pid;
             RETURN v_captured_at;
         END IF;
     END;
@@ -1791,7 +1791,7 @@ BEGIN
             IF v_ddl_lock_exists THEN
                 PERFORM flight_recorder._record_collection_skip('sample',
                     'DDL lock detected on system catalogs (skip_if_locked strategy)');
-                RAISE NOTICE 'pg-flight-recorder: Skipping sample - DDL lock detected on catalogs';
+                RAISE NOTICE 'pg_flight_recorder: Skipping sample - DDL lock detected on catalogs';
                 RETURN v_captured_at;
             END IF;
         END IF;
@@ -2005,7 +2005,7 @@ BEGIN
         END IF;
         PERFORM flight_recorder._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'pg-flight-recorder: Wait events collection failed: %', SQLERRM;
+        RAISE WARNING 'pg_flight_recorder: Wait events collection failed: %', SQLERRM;
     END;
     BEGIN
         PERFORM flight_recorder._set_section_timeout();
@@ -2090,7 +2090,7 @@ BEGIN
         END IF;
         PERFORM flight_recorder._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'pg-flight-recorder: Activity samples collection failed: %', SQLERRM;
+        RAISE WARNING 'pg_flight_recorder: Activity samples collection failed: %', SQLERRM;
     END;
     IF v_enable_locks THEN
     BEGIN
@@ -2133,7 +2133,7 @@ BEGIN
             END IF;
             SELECT count(*) INTO v_blocked_count FROM _fr_blocked_sessions;
             IF v_blocked_count > v_skip_locks_threshold THEN
-                RAISE NOTICE 'pg-flight-recorder: Skipping lock collection - % blocked sessions exceeds threshold %',
+                RAISE NOTICE 'pg_flight_recorder: Skipping lock collection - % blocked sessions exceeds threshold %',
                     v_blocked_count, v_skip_locks_threshold;
             ELSE
                 INSERT INTO flight_recorder.lock_samples_ring (
@@ -2191,7 +2191,7 @@ BEGIN
         END;
         PERFORM flight_recorder._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'pg-flight-recorder: Lock sampling collection failed: %', SQLERRM;
+        RAISE WARNING 'pg_flight_recorder: Lock sampling collection failed: %', SQLERRM;
     END;
     END IF;
     PERFORM flight_recorder._record_collection_end(v_stat_id, true, NULL);
@@ -2201,7 +2201,7 @@ EXCEPTION
     WHEN OTHERS THEN
         PERFORM flight_recorder._record_collection_end(v_stat_id, false, SQLERRM);
         PERFORM set_config('statement_timeout', '0', true);
-        RAISE WARNING 'pg-flight-recorder: Sample collection failed: %', SQLERRM;
+        RAISE WARNING 'pg_flight_recorder: Sample collection failed: %', SQLERRM;
         RETURN v_captured_at;
 END;
 $$;
@@ -2285,7 +2285,7 @@ BEGIN
       AND a.pid IS NOT NULL
       AND a.query_start IS NOT NULL
     GROUP BY a.query_preview;
-    RAISE NOTICE 'pg-flight-recorder: Flushed ring buffer (% to %, % samples)',
+    RAISE NOTICE 'pg_flight_recorder: Flushed ring buffer (% to %, % samples)',
         v_start_time, v_end_time, v_total_samples;
 END;
 $$;
@@ -2423,7 +2423,7 @@ BEGIN
           AND w.backend_type IS NOT NULL;
         GET DIAGNOSTICS v_wait_rows = ROW_COUNT;
     END IF;
-    RAISE NOTICE 'pg-flight-recorder: Archived raw samples (% samples, % activity rows, % lock rows, % wait rows)',
+    RAISE NOTICE 'pg_flight_recorder: Archived raw samples (% samples, % activity rows, % lock rows, % wait rows)',
         v_samples_to_archive, v_activity_rows, v_lock_rows, v_wait_rows;
 END;
 $$;
@@ -2473,7 +2473,7 @@ BEGIN
     GET DIAGNOSTICS v_deleted_wait_archive = ROW_COUNT;
     IF v_deleted_waits > 0 OR v_deleted_locks > 0 OR v_deleted_queries > 0 OR
        v_deleted_activity_archive > 0 OR v_deleted_lock_archive > 0 OR v_deleted_wait_archive > 0 THEN
-        RAISE NOTICE 'pg-flight-recorder: Cleaned up % wait aggregates, % lock aggregates, % query aggregates, % activity archives, % lock archives, % wait archives',
+        RAISE NOTICE 'pg_flight_recorder: Cleaned up % wait aggregates, % lock aggregates, % query aggregates, % activity archives, % lock archives, % wait archives',
             v_deleted_waits, v_deleted_locks, v_deleted_queries, v_deleted_activity_archive, v_deleted_lock_archive, v_deleted_wait_archive;
     END IF;
 END;
@@ -2985,7 +2985,7 @@ BEGIN
     v_should_skip := flight_recorder._check_circuit_breaker('snapshot');
     IF v_should_skip THEN
         PERFORM flight_recorder._record_collection_skip('snapshot', 'Circuit breaker tripped - last run exceeded threshold');
-        RAISE NOTICE 'pg-flight-recorder: Skipping snapshot collection due to circuit breaker';
+        RAISE NOTICE 'pg_flight_recorder: Skipping snapshot collection due to circuit breaker';
         RETURN v_captured_at;
     END IF;
     DECLARE
@@ -2994,7 +2994,7 @@ BEGIN
         v_skip_reason := flight_recorder._should_skip_collection();
         IF v_skip_reason IS NOT NULL THEN
             PERFORM flight_recorder._record_collection_skip('snapshot', v_skip_reason);
-            RAISE NOTICE 'pg-flight-recorder: Skipping snapshot - %', v_skip_reason;
+            RAISE NOTICE 'pg_flight_recorder: Skipping snapshot - %', v_skip_reason;
             RETURN v_captured_at;
         END IF;
     END;
@@ -3012,7 +3012,7 @@ BEGIN
             PERFORM flight_recorder._record_collection_skip('snapshot',
                 format('Job deduplication: %s snapshot job(s) already running (PID: %s)',
                        v_running_count, v_running_pid));
-            RAISE NOTICE 'pg-flight-recorder: Skipping snapshot - another job already running (PID: %)', v_running_pid;
+            RAISE NOTICE 'pg_flight_recorder: Skipping snapshot - another job already running (PID: %)', v_running_pid;
             RETURN v_captured_at;
         END IF;
     END;
@@ -3037,7 +3037,7 @@ BEGIN
             IF v_ddl_lock_exists THEN
                 PERFORM flight_recorder._record_collection_skip('snapshot',
                     'DDL lock detected on system catalogs (skip_if_locked strategy)');
-                RAISE NOTICE 'pg-flight-recorder: Skipping snapshot - DDL lock detected on catalogs';
+                RAISE NOTICE 'pg_flight_recorder: Skipping snapshot - DDL lock detected on catalogs';
                 RETURN v_captured_at;
             END IF;
         END IF;
@@ -3069,7 +3069,7 @@ BEGIN
         v_checkpoint_info := pg_control_checkpoint();
         PERFORM flight_recorder._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'pg-flight-recorder: System stats collection failed: %', SQLERRM;
+        RAISE WARNING 'pg_flight_recorder: System stats collection failed: %', SQLERRM;
         v_autovacuum_workers := 0;
         v_slots_count := 0;
         v_slots_max_retained := 0;
@@ -3105,7 +3105,7 @@ BEGIN
             v_io_bgw_reads, v_io_bgw_read_time, v_io_bgw_writes, v_io_bgw_write_time
         FROM pg_stat_io;
     EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'pg-flight-recorder: pg_stat_io collection failed: %', SQLERRM;
+        RAISE WARNING 'pg_flight_recorder: pg_stat_io collection failed: %', SQLERRM;
         v_io_ckpt_reads := 0;
         v_io_ckpt_read_time := 0;
         v_io_ckpt_writes := 0;
@@ -3167,7 +3167,7 @@ BEGIN
         SELECT count(*)::bigint INTO v_large_object_count FROM pg_largeobject_metadata;
         PERFORM flight_recorder._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'pg-flight-recorder: Capacity planning metrics collection failed: %', SQLERRM;
+        RAISE WARNING 'pg_flight_recorder: Capacity planning metrics collection failed: %', SQLERRM;
         v_xact_commit := NULL;
         v_xact_rollback := NULL;
         v_blks_read := NULL;
@@ -3206,7 +3206,7 @@ BEGIN
         END IF;
         PERFORM flight_recorder._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'pg-flight-recorder: Archiver stats collection failed: %', SQLERRM;
+        RAISE WARNING 'pg_flight_recorder: Archiver stats collection failed: %', SQLERRM;
     END;
     -- Collect database conflict stats (only populated on standby servers)
     BEGIN
@@ -3249,7 +3249,7 @@ BEGIN
         END IF;
         PERFORM flight_recorder._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'pg-flight-recorder: Database conflict stats collection failed: %', SQLERRM;
+        RAISE WARNING 'pg_flight_recorder: Database conflict stats collection failed: %', SQLERRM;
     END;
     IF v_pg_version = 17 THEN
         INSERT INTO flight_recorder.snapshots (
@@ -3426,7 +3426,7 @@ BEGIN
         FROM pg_stat_replication;
         PERFORM flight_recorder._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'pg-flight-recorder: Replication stats collection failed: %', SQLERRM;
+        RAISE WARNING 'pg_flight_recorder: Replication stats collection failed: %', SQLERRM;
     END;
     IF flight_recorder._has_pg_stat_statements()
        AND flight_recorder._get_config('statements_enabled', 'auto') != 'false'
@@ -3471,7 +3471,7 @@ BEGIN
                               AND backend_type = 'client backend'
                         ) INTO v_pss_conflict;
                         IF v_pss_conflict THEN
-                            RAISE NOTICE 'pg-flight-recorder: Skipping pg_stat_statements - concurrent reader detected';
+                            RAISE NOTICE 'pg_flight_recorder: Skipping pg_stat_statements - concurrent reader detected';
                             v_should_collect := FALSE;
                         END IF;
                     END IF;
@@ -3480,7 +3480,7 @@ BEGIN
                     SELECT status INTO v_stmt_status
                     FROM flight_recorder._check_statements_health();
                     IF v_stmt_status = 'HIGH_CHURN' THEN
-                        RAISE WARNING 'pg-flight-recorder: Skipping pg_stat_statements collection - high churn detected (>95%% utilization)';
+                        RAISE WARNING 'pg_flight_recorder: Skipping pg_stat_statements collection - high churn detected (>95%% utilization)';
                     ELSE
                 INSERT INTO flight_recorder.statement_snapshots (
                 snapshot_id, queryid, userid, dbid, query_preview,
@@ -3530,7 +3530,7 @@ BEGIN
             WHEN undefined_table THEN NULL;
             WHEN undefined_column THEN NULL;
             WHEN OTHERS THEN
-                RAISE WARNING 'pg-flight-recorder: pg_stat_statements collection failed: %', SQLERRM;
+                RAISE WARNING 'pg_flight_recorder: pg_stat_statements collection failed: %', SQLERRM;
         END;
     END IF;
     -- Collect table stats
@@ -3539,7 +3539,7 @@ BEGIN
         PERFORM flight_recorder._collect_table_stats(v_snapshot_id);
         PERFORM flight_recorder._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'pg-flight-recorder: Table stats collection failed: %', SQLERRM;
+        RAISE WARNING 'pg_flight_recorder: Table stats collection failed: %', SQLERRM;
     END;
     -- Collect index stats
     BEGIN
@@ -3547,7 +3547,7 @@ BEGIN
         PERFORM flight_recorder._collect_index_stats(v_snapshot_id);
         PERFORM flight_recorder._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'pg-flight-recorder: Index stats collection failed: %', SQLERRM;
+        RAISE WARNING 'pg_flight_recorder: Index stats collection failed: %', SQLERRM;
     END;
     -- Collect config snapshot
     BEGIN
@@ -3555,7 +3555,7 @@ BEGIN
         PERFORM flight_recorder._collect_config_snapshot(v_snapshot_id);
         PERFORM flight_recorder._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'pg-flight-recorder: Config snapshot collection failed: %', SQLERRM;
+        RAISE WARNING 'pg_flight_recorder: Config snapshot collection failed: %', SQLERRM;
     END;
     -- Collect database/role config overrides
     BEGIN
@@ -3563,7 +3563,7 @@ BEGIN
         PERFORM flight_recorder._collect_db_role_config_snapshot(v_snapshot_id);
         PERFORM flight_recorder._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'pg-flight-recorder: Database/role config collection failed: %', SQLERRM;
+        RAISE WARNING 'pg_flight_recorder: Database/role config collection failed: %', SQLERRM;
     END;
     -- Collect vacuum progress
     -- Note: In PG17, max_dead_tuples was renamed to max_dead_tuple_bytes
@@ -3619,7 +3619,7 @@ BEGIN
         END IF;
         PERFORM flight_recorder._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING 'pg-flight-recorder: Vacuum progress collection failed: %', SQLERRM;
+        RAISE WARNING 'pg_flight_recorder: Vacuum progress collection failed: %', SQLERRM;
     END;
     PERFORM flight_recorder._record_collection_end(v_stat_id, true, NULL);
     PERFORM set_config('statement_timeout', '0', true);

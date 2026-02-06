@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Ring Buffer & Analysis
+-- pg_flight_recorder pgTAP Tests - Ring Buffer & Analysis
 -- =============================================================================
 -- Tests: Ring buffer architecture, analysis functions, config, views
 -- Sections: 3A, 4, 6, 7

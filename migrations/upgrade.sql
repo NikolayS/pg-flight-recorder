@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder upgrade framework
+-- pg_flight_recorder upgrade framework
 -- =============================================================================
 -- Detects current version and runs necessary migrations.
 -- Run with: psql -f migrations/upgrade.sql

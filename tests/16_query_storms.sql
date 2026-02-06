@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Query Storm Detection
+-- pg_flight_recorder pgTAP Tests - Query Storm Detection
 -- =============================================================================
 -- Tests: Query storm detection function and configuration
 -- Test count: 8

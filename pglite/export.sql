@@ -1,4 +1,4 @@
--- pg-flight-recorder PGLite Export Script
+-- pg_flight_recorder PGLite Export Script
 -- Run this on your production database BEFORE pg_dump to prepare data for offline analysis
 --
 -- Usage:
@@ -9,7 +9,7 @@
 --   1. Populates the relation_names table with current OID->name mappings
 --   2. Reports statistics about the data to be exported
 
-\echo '=== pg-flight-recorder PGLite Export Preparation ==='
+\echo '=== pg_flight_recorder PGLite Export Preparation ==='
 \echo ''
 
 -- Populate relation names for offline OID resolution

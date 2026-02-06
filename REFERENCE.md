@@ -1,4 +1,4 @@
-# pg-flight-recorder Reference
+# pg_flight_recorder Reference
 
 A PostgreSQL monitoring extension that continuously samples database state for incident analysis and capacity planning.
 

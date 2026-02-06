@@ -1,6 +1,6 @@
-# pg-flight-recorder PGLite Support
+# pg_flight_recorder PGLite Support
 
-Run pg-flight-recorder analysis functions locally using [PGLite](https://pglite.dev/) without needing a full PostgreSQL server.
+Run pg_flight_recorder analysis functions locally using [PGLite](https://pglite.dev/) without needing a full PostgreSQL server.
 
 ## Overview
 

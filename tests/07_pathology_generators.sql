@@ -1,7 +1,7 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Pathological Data Generators
+-- pg_flight_recorder pgTAP Tests - Pathological Data Generators
 -- =============================================================================
--- Tests: Generate real-world pathologies and verify pg-flight-recorder detects them
+-- Tests: Generate real-world pathologies and verify pg_flight_recorder detects them
 -- Purpose: Validate that diagnostic playbooks work end-to-end
 -- Based on: DIAGNOSTIC_PLAYBOOKS.md
 -- Sections: All 9 DIAGNOSTIC_PLAYBOOKS.md pathologies

@@ -1,8 +1,8 @@
-# pg-flight-recorder Benchmark Framework
+# pg_flight_recorder Benchmark Framework
 
 **Status:** Implemented (Simplified Approach)
 
-This framework measures the **absolute cost** of pg-flight-recorder collections. The key insight: observer effect is roughly constant, independent of workload.
+This framework measures the **absolute cost** of pg_flight_recorder collections. The key insight: observer effect is roughly constant, independent of workload.
 
 ## Philosophy: No Benchmarketing
 
@@ -20,7 +20,7 @@ See [BENCHMARKING.md](../BENCHMARKING.md) for full methodology.
 ### Prerequisites
 
 1. **PostgreSQL 15+** with pg_cron installed
-2. **pg-flight-recorder** installed: `psql -f ../install.sql`
+2. **pg_flight_recorder** installed: `psql -f ../install.sql`
 3. **Python 3**: For statistical analysis
 4. **Standard libpq auth**: Set `PGHOST`, `PGUSER`, `PGDATABASE`, `PGPASSWORD` or use `.pgpass`
 
@@ -275,7 +275,7 @@ This builds community evidence.
 
 After running `measure_absolute.sh`, consider sharing your `absolute_costs_*.json` file:
 
-1. Open an issue at: https://github.com/your-org/pg-flight-recorder
+1. Open an issue at: https://github.com/your-org/pg_flight_recorder
 2. Title: "Absolute cost measurement: [your environment]"
 3. Attach JSON file
 4. Include context: database size, table count, hardware

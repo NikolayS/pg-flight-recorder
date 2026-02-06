@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Error Handling & Version-Specific
+-- pg_flight_recorder pgTAP Tests - Error Handling & Version-Specific
 -- =============================================================================
 -- Tests: Error handling, exception paths, version-specific behavior
 -- Sections: 13 (Error Handling), 14 (Version-Specific)

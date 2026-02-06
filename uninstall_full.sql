@@ -1,5 +1,5 @@
 -- =============================================================================
--- FULL Uninstall pg-flight-recorder (DESTRUCTIVE)
+-- FULL Uninstall pg_flight_recorder (DESTRUCTIVE)
 -- =============================================================================
 -- WARNING: This removes ALL data including historical snapshots!
 -- Use this only when you want to completely remove flight_recorder.

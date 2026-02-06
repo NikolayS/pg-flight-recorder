@@ -1,6 +1,6 @@
-# pg-flight-recorder Migrations
+# pg_flight_recorder Migrations
 
-This directory contains the upgrade infrastructure for pg-flight-recorder.
+This directory contains the upgrade infrastructure for pg_flight_recorder.
 
 ## Upgrade Workflow
 

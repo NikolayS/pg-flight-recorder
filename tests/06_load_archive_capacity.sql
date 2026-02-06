@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Load, Archive, Capacity & Features
+-- pg_flight_recorder pgTAP Tests - Load, Archive, Capacity & Features
 -- =============================================================================
 -- Tests: Load shedding, archive, capacity planning, feature designs, db/role config
 -- Sections: 15 (Load/Circuit), 6 (Archive), Capacity Planning, Feature Designs, DB/Role Config

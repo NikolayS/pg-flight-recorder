@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Autovacuum Observer Enhancements (v2.7)
+-- pg_flight_recorder pgTAP Tests - Autovacuum Observer Enhancements (v2.7)
 -- =============================================================================
 -- Tests: n_mod_since_analyze column, rate calculation functions, sampling modes
 -- Test count: 35

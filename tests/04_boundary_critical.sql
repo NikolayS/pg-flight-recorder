@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Boundary & Critical Functions
+-- pg_flight_recorder pgTAP Tests - Boundary & Critical Functions
 -- =============================================================================
 -- Tests: Adversarial boundary tests, untested critical functions
 -- Sections: 11 (Adversarial Boundary), 12 (Untested Critical Functions)

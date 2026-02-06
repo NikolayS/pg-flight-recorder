@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Anomaly Detection Enhancements (v2.6)
+-- pg_flight_recorder pgTAP Tests - Anomaly Detection Enhancements (v2.6)
 -- =============================================================================
 -- Tests: New anomaly types, conflict columns, recent_idle_in_transaction view
 -- Test count: 25

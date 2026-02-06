@@ -1,11 +1,11 @@
-# Pathological Data Generators for pg-flight-recorder
+# Pathological Data Generators for pg_flight_recorder
 
 ## Purpose
 
-This test suite validates that pg-flight-recorder can detect real-world database pathologies by:
+This test suite validates that pg_flight_recorder can detect real-world database pathologies by:
 
 1. **Generating** authentic problematic conditions in the database
-2. **Capturing** the data using pg-flight-recorder's snapshot/sample functions
+2. **Capturing** the data using pg_flight_recorder's snapshot/sample functions
 3. **Verifying** that diagnostic functions correctly identify the issues
 
 These tests serve as both validation and living documentation, proving that the diagnostic playbooks work end-to-end.
@@ -236,7 +236,7 @@ Each pathology follows this pattern:
 -- Based on: DIAGNOSTIC_PLAYBOOKS.md - Section Y "[Title]"
 --
 -- Real-world scenario: [Description]
--- Expected detection: [What pg-flight-recorder should find]
+-- Expected detection: [What pg_flight_recorder should find]
 -- =============================================================================
 
 -- Setup: Create test objects
@@ -281,7 +281,7 @@ All 9 DIAGNOSTIC_PLAYBOOKS.md scenarios are now covered:
 
 ## Benefits of Pathology Testing
 
-1. **Validation**: Proves pg-flight-recorder works on real problems
+1. **Validation**: Proves pg_flight_recorder works on real problems
 2. **Confidence**: CSAs and users know the tool detects what it claims
 3. **Documentation**: Living examples of what pathologies look like
 4. **Regression Prevention**: Ensures future changes don't break detection

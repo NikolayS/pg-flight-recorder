@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run pg-flight-recorder benchmarks
+# Run pg_flight_recorder benchmarks
 
 set -euo pipefail
 
@@ -216,7 +216,7 @@ main() {
                 ;;
             --help)
                 cat <<EOF
-Run pg-flight-recorder benchmarks
+Run pg_flight_recorder benchmarks
 
 Usage: $0 [OPTIONS]
 
@@ -256,7 +256,7 @@ EOF
     # Create results directory
     mkdir -p "$RESULTS_DIR"
 
-    log "=== pg-flight-recorder Benchmark Runner ==="
+    log "=== pg_flight_recorder Benchmark Runner ==="
     log "Results directory: $RESULTS_DIR"
     log ""
 

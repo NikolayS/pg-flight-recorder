@@ -1,5 +1,5 @@
 -- =============================================================================
--- Uninstall pg-flight-recorder (DATA PRESERVING)
+-- Uninstall pg_flight_recorder (DATA PRESERVING)
 -- =============================================================================
 -- Stops cron jobs and removes functions/views, but KEEPS your data.
 -- This allows you to reinstall or upgrade without losing historical data.

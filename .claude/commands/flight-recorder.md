@@ -1,6 +1,6 @@
-# pg-flight-recorder Analysis
+# pg_flight_recorder Analysis
 
-You are helping the user analyze their PostgreSQL database using pg-flight-recorder.
+You are helping the user analyze their PostgreSQL database using pg_flight_recorder.
 
 ## Quick Start
 

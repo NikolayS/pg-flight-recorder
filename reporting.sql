@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder: Reporting & Analysis Functions
+-- pg_flight_recorder: Reporting & Analysis Functions
 -- =============================================================================
 -- Optional add-on for install.sql. Provides analysis, forensics, and reporting.
 -- Requires: install.sql must be run first (creates tables and core functions).

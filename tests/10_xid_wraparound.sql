@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - XID Wraparound Metrics
+-- pg_flight_recorder pgTAP Tests - XID Wraparound Metrics
 -- =============================================================================
 -- Tests: XID age columns exist and are populated with reasonable values
 -- Test count: 10

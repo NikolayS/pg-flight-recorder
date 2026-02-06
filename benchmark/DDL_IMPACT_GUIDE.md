@@ -13,7 +13,7 @@ This benchmark measures how often flight recorder blocks DDL operations (ALTER T
 ## Quick Start
 
 ```bash
-cd pg-flight-recorder/benchmark
+cd pg_flight_recorder/benchmark
 
 # Run 5-minute test (default: 180s sampling interval)
 ./measure_ddl_impact.sh

@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Foundation
+-- pg_flight_recorder pgTAP Tests - Foundation
 -- =============================================================================
 -- Tests: Installation verification, function existence, core functionality
 -- Sections: 1, 2, 3

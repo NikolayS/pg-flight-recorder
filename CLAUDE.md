@@ -125,7 +125,7 @@ Run tests with:
 
 ## Schema Evolution
 
-pg-flight-recorder uses **additive-only schema changes**:
+pg_flight_recorder uses **additive-only schema changes**:
 
 - Add new nullable columns (never remove or rename existing ones)
 - Create migration files (e.g., `migrations/2.2_to_2.3.sql`) for upgrades

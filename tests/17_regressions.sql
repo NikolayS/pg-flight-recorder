@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Performance Regression Detection
+-- pg_flight_recorder pgTAP Tests - Performance Regression Detection
 -- =============================================================================
 -- Tests: Performance regression detection function and configuration
 -- Test count: 11

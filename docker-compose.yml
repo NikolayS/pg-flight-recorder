@@ -5,8 +5,8 @@ services:
       context: .
       args:
         PG_VERSION: 15
-    image: pg-flight-recorder-test:15
-    container_name: pg-flight-recorder-test-15
+    image: pg_flight_recorder_test:15
+    container_name: pg_flight_recorder_test-15
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres
@@ -30,8 +30,8 @@ services:
       context: .
       args:
         PG_VERSION: 16
-    image: pg-flight-recorder-test:16
-    container_name: pg-flight-recorder-test-16
+    image: pg_flight_recorder_test:16
+    container_name: pg_flight_recorder_test-16
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres
@@ -55,8 +55,8 @@ services:
       context: .
       args:
         PG_VERSION: 17
-    image: pg-flight-recorder-test:17
-    container_name: pg-flight-recorder-test-17
+    image: pg_flight_recorder_test:17
+    container_name: pg_flight_recorder_test-17
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres

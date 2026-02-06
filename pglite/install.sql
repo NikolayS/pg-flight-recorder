@@ -1,4 +1,4 @@
--- pg-flight-recorder Analysis-Only Install Script for PGLite
+-- pg_flight_recorder Analysis-Only Install Script for PGLite
 --
 -- This script creates the schema for OFFLINE ANALYSIS of flight_recorder data.
 -- It does NOT include data collection functions (sample, snapshot, etc.)
@@ -1131,7 +1131,7 @@ COMMIT;
 -- Success message
 DO $$
 BEGIN
-    RAISE NOTICE 'pg-flight-recorder analysis-only schema installed successfully.';
+    RAISE NOTICE 'pg_flight_recorder analysis-only schema installed successfully.';
     RAISE NOTICE 'Import your data with: psql -f flight_recorder_data.sql';
     RAISE NOTICE 'Then use: SELECT * FROM flight_recorder.anomaly_report(start, end);';
 END;

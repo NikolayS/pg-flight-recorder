@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Measure absolute costs of pg-flight-recorder collections
+# Measure absolute costs of pg_flight_recorder collections
 # This is the PRIMARY benchmark - measures constant costs independent of load
 
 set -euo pipefail
@@ -30,7 +30,7 @@ fi
 
 mkdir -p "$SCRIPT_DIR/results"
 
-log "=== Measuring Absolute Costs of pg-flight-recorder ==="
+log "=== Measuring Absolute Costs of pg_flight_recorder ==="
 log "Iterations: $ITERATIONS"
 log "Output: $OUTPUT_FILE"
 log ""

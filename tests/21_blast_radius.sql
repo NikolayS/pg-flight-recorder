@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Blast Radius Analysis
+-- pg_flight_recorder pgTAP Tests - Blast Radius Analysis
 -- =============================================================================
 -- Tests: blast_radius, blast_radius_report
 -- Test count: 45

@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Pathology VALUE CHECKS
+-- pg_flight_recorder pgTAP Tests - Pathology VALUE CHECKS
 -- =============================================================================
 -- Tests: Verify that pathologies produce DETECTABLE metric changes
 -- Purpose: Stronger assertions than "does it run" - check actual values/deltas
