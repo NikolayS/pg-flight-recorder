@@ -477,7 +477,7 @@ CREATE INDEX IF NOT EXISTS config_snapshots_name_idx
 COMMENT ON TABLE flight_recorder.config_snapshots IS 'PostgreSQL configuration snapshots for change tracking and incident context';
 
 
--- Stores relation OID to name mappings for offline analysis (e.g., PGLite)
+-- Stores relation OID to name mappings for offline analysis
 -- Populated by _populate_relation_names() before data export
 -- Enables analysis functions to resolve OIDs without access to pg_class
 CREATE TABLE IF NOT EXISTS flight_recorder.relation_names (
@@ -576,7 +576,7 @@ COMMENT ON FUNCTION flight_recorder._interpolate_metric IS
 
 
 -- Populates relation_names table from pg_class for offline analysis
--- Run this before exporting data for use with PGLite or other offline analysis tools
+-- Run this before exporting data for offline analysis tools
 -- This is an EXPORT-TIME operation, not a collection-time operation
 CREATE OR REPLACE FUNCTION flight_recorder._populate_relation_names()
 RETURNS INTEGER
@@ -599,7 +599,7 @@ BEGIN
 END;
 $$;
 COMMENT ON FUNCTION flight_recorder._populate_relation_names IS
-'Populates relation_names lookup table for offline analysis. Run before pg_dump when exporting data for PGLite. Returns count of relations captured.';
+'Populates relation_names lookup table for offline analysis. Run before pg_dump when exporting data. Returns count of relations captured.';
 
 
 -- Resolves OID to schema-qualified relation name using relation_names lookup table

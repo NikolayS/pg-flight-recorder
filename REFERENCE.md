@@ -366,68 +366,6 @@ psql -f uninstall.sql
 psql -f uninstall_reporting.sql
 ```
 
-## Offline Analysis (PGLite)
-
-Flight Recorder data can be exported and analyzed locally using [PGLite](https://pglite.dev/) without requiring a PostgreSQL server.
-
-### Export from Production
-
-```bash
-# Prepare data (populates relation_names lookup table)
-psql -d your_database -f pglite/export.sql
-
-# Export data
-pg_dump -d your_database -n flight_recorder --data-only -f flight_recorder_data.sql
-
-# With compression (recommended for large datasets)
-pg_dump -d your_database -n flight_recorder --data-only | gzip > flight_recorder_data.sql.gz
-
-# PostgreSQL 16+ native compression
-pg_dump -d your_database -n flight_recorder --data-only --compress=gzip:9 -f flight_recorder_data.sql.gz
-```
-
-### Import into PGLite (Node.js)
-
-```bash
-# Decompress if needed
-gunzip flight_recorder_data.sql.gz
-```
-
-```javascript
-import { PGlite } from '@electric-sql/pglite';
-import fs from 'fs';
-
-const db = new PGlite();
-
-// Install analysis-only schema
-await db.exec(fs.readFileSync('pglite/install.sql', 'utf8'));
-
-// Import data
-await db.exec(fs.readFileSync('flight_recorder_data.sql', 'utf8'));
-
-// Run analysis
-const result = await db.query(`
-  SELECT * FROM flight_recorder_reporting.anomaly_report(
-    '2024-01-15 00:00'::timestamptz,
-    '2024-01-15 23:59'::timestamptz
-  )
-`);
-```
-
-### Available in PGLite
-
-The analysis-only schema includes:
-
-- All data tables (for import)
-- Core analysis functions: `compare()`, `anomaly_report()`, `wait_summary()`, `statement_compare()`
-- Capacity functions: `table_hotspots()`, `unused_indexes()`
-- Configuration functions: `config_at()`, `config_changes()`
-- Views: `deltas`, `recent_waits`, `recent_activity`, `recent_locks`
-
-**Not included**: Collection functions (`sample()`, `snapshot()`, `enable()`, `disable()`), pg_cron integration.
-
-See `pglite/README.md` for complete documentation.
-
 ## Testing
 
 ```bash

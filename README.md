@@ -63,8 +63,6 @@ pg_dump -d your_database -n flight_recorder --data-only --compress=gzip:9 -f fli
 pg_dump -d your_database -n flight_recorder --data-only | gzip > flight_recorder_data.sql.gz
 ```
 
-See [pglite/README.md](pglite/README.md) for offline analysis with PGLite.
-
 ## Reference
 
 See [REFERENCE.md](REFERENCE.md) for configuration, functions, and details.
