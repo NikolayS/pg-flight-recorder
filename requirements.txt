@@ -1,3 +1,0 @@
-# SQL indexing for code navigation
-# Used by tools/sql-index
-pglast>=7.0
