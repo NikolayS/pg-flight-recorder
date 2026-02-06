@@ -143,7 +143,7 @@ SELECT lives_ok(
 
 -- Test anomaly_report() function
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.anomaly_report(
+    $$SELECT * FROM flight_recorder_reporting.anomaly_report(
         (SELECT start_time FROM test_times),
         (SELECT end_time FROM test_times)
     )$$,
@@ -152,7 +152,7 @@ SELECT lives_ok(
 
 -- Test summary_report() function
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.summary_report(
+    $$SELECT * FROM flight_recorder_reporting.summary_report(
         (SELECT start_time FROM test_times),
         (SELECT end_time FROM test_times)
     )$$,

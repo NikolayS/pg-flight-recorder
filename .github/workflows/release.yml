@@ -140,17 +140,18 @@ jobs:
           cp install.sql release-assets/
           cp reporting.sql release-assets/
           cp uninstall.sql release-assets/
+          cp uninstall_reporting.sql release-assets/
           cp README.md release-assets/
           cp REFERENCE.md release-assets/
           [ -f CHANGELOG.md ] && cp CHANGELOG.md release-assets/
 
           # Create tarball
           tar -czf release-assets/pg_flight_recorder-${{ steps.version.outputs.version }}.tar.gz \
-            install.sql reporting.sql uninstall.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
+            install.sql reporting.sql uninstall.sql uninstall_reporting.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
 
           # Create zip
           zip -q release-assets/pg_flight_recorder-${{ steps.version.outputs.version }}.zip \
-            install.sql reporting.sql uninstall.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
+            install.sql reporting.sql uninstall.sql uninstall_reporting.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -166,6 +167,7 @@ jobs:
             install.sql
             reporting.sql
             uninstall.sql
+            uninstall_reporting.sql
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -15,13 +15,15 @@ BEGIN
     END IF;
 END $$;
 
+CREATE SCHEMA IF NOT EXISTS flight_recorder_reporting;
+
 -- =============================================================================
 -- Autovacuum Observer Rate Calculation Functions (v2.7)
 -- =============================================================================
 
 -- Calculates the rate of dead tuple accumulation over a time window
 -- Returns tuples per second, or NULL if insufficient data
-CREATE OR REPLACE FUNCTION flight_recorder.dead_tuple_growth_rate(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.dead_tuple_growth_rate(
     p_relid OID,
     p_window INTERVAL
 )
@@ -69,11 +71,11 @@ BEGIN
     RETURN ROUND(v_delta_tuples::numeric / v_delta_seconds, 4);
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.dead_tuple_growth_rate(OID, INTERVAL) IS 'Returns dead tuple growth rate (tuples/second) for a table over a time window';
+COMMENT ON FUNCTION flight_recorder_reporting.dead_tuple_growth_rate(OID, INTERVAL) IS 'Returns dead tuple growth rate (tuples/second) for a table over a time window';
 
 -- Calculates the rate of table size growth in bytes per second over a time window
 -- Useful for detecting bloat accumulation between vacuums
-CREATE OR REPLACE FUNCTION flight_recorder.table_size_growth_rate(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.table_size_growth_rate(
     p_relid OID,
     p_window INTERVAL
 )
@@ -121,12 +123,12 @@ BEGIN
     RETURN ROUND(v_delta_bytes::numeric / v_delta_seconds, 4);
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.table_size_growth_rate(OID, INTERVAL) IS 'Returns table size growth rate (bytes/second) for a table over a time window. Useful for detecting bloat accumulation.';
+COMMENT ON FUNCTION flight_recorder_reporting.table_size_growth_rate(OID, INTERVAL) IS 'Returns table size growth rate (bytes/second) for a table over a time window. Useful for detecting bloat accumulation.';
 
 -- Estimates table bloat without requiring pgstattuple extension
 -- Uses heuristics based on dead tuple ratio and size metrics
 -- Returns estimated bloat percentage and wasted bytes
-CREATE OR REPLACE FUNCTION flight_recorder.estimate_table_bloat(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.estimate_table_bloat(
     p_relid OID DEFAULT NULL
 )
 RETURNS TABLE(
@@ -223,11 +225,11 @@ BEGIN
     ORDER BY e.dead_pct DESC, e.table_size_bytes DESC;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.estimate_table_bloat(OID) IS 'Estimates table bloat without pgstattuple. Uses dead tuple ratio and size metrics. Pass NULL or omit argument for all tables.';
+COMMENT ON FUNCTION flight_recorder_reporting.estimate_table_bloat(OID) IS 'Estimates table bloat without pgstattuple. Uses dead tuple ratio and size metrics. Pass NULL or omit argument for all tables.';
 
 -- Generates a bloat report with trends and recommendations
 -- Compares current state to historical data to detect bloat accumulation
-CREATE OR REPLACE FUNCTION flight_recorder.bloat_report(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.bloat_report(
     p_window INTERVAL DEFAULT '24 hours'::INTERVAL
 )
 RETURNS TABLE(
@@ -244,7 +246,7 @@ LANGUAGE plpgsql STABLE AS $$
 BEGIN
     RETURN QUERY
     WITH current_stats AS (
-        SELECT * FROM flight_recorder.estimate_table_bloat(NULL)
+        SELECT * FROM flight_recorder_reporting.estimate_table_bloat(NULL)
     ),
     historical AS (
         SELECT DISTINCT ON (ts.relid)
@@ -305,11 +307,11 @@ BEGIN
         c.table_size_bytes DESC;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.bloat_report(INTERVAL) IS 'Generates a bloat report with size trends and recommendations. Compares current state to historical data over the specified window.';
+COMMENT ON FUNCTION flight_recorder_reporting.bloat_report(INTERVAL) IS 'Generates a bloat report with size trends and recommendations. Compares current state to historical data over the specified window.';
 
 -- Calculates the rate of row modifications (INSERT/UPDATE/DELETE) over a time window
 -- Returns modifications per second, or NULL if insufficient data
-CREATE OR REPLACE FUNCTION flight_recorder.modification_rate(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.modification_rate(
     p_relid OID,
     p_window INTERVAL
 )
@@ -358,12 +360,12 @@ BEGIN
     RETURN ROUND(v_delta_mods::numeric / v_delta_seconds, 4);
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.modification_rate(OID, INTERVAL) IS 'Returns row modification rate (modifications/second) for a table over a time window';
+COMMENT ON FUNCTION flight_recorder_reporting.modification_rate(OID, INTERVAL) IS 'Returns row modification rate (modifications/second) for a table over a time window';
 
 -- Calculates the HOT (Heap-Only Tuple) update ratio for a table
 -- Higher ratio indicates more efficient updates that don't require index maintenance
 -- Returns percentage (0-100), or NULL if no updates
-CREATE OR REPLACE FUNCTION flight_recorder.hot_update_ratio(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.hot_update_ratio(
     p_relid OID
 )
 RETURNS NUMERIC
@@ -388,11 +390,11 @@ BEGIN
     RETURN ROUND((COALESCE(v_n_tup_hot_upd, 0)::numeric / v_n_tup_upd) * 100, 2);
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.hot_update_ratio(OID) IS 'Returns HOT update percentage (0-100) for a table based on latest snapshot';
+COMMENT ON FUNCTION flight_recorder_reporting.hot_update_ratio(OID) IS 'Returns HOT update percentage (0-100) for a table based on latest snapshot';
 
 -- Estimates time until dead tuple budget is exhausted based on current growth rate
 -- Returns interval until budget exceeded, NULL if insufficient data or no growth
-CREATE OR REPLACE FUNCTION flight_recorder.time_to_budget_exhaustion(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.time_to_budget_exhaustion(
     p_relid OID,
     p_budget BIGINT
 )
@@ -418,7 +420,7 @@ BEGIN
     END IF;
 
     -- Get growth rate over last hour
-    v_growth_rate := flight_recorder.dead_tuple_growth_rate(p_relid, '1 hour'::interval);
+    v_growth_rate := flight_recorder_reporting.dead_tuple_growth_rate(p_relid, '1 hour'::interval);
 
     -- If no growth rate data or rate is zero/negative, can't estimate
     IF v_growth_rate IS NULL OR v_growth_rate <= 0 THEN
@@ -437,11 +439,11 @@ BEGIN
     RETURN make_interval(secs => v_seconds_to_exhaustion);
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.time_to_budget_exhaustion(OID, BIGINT) IS 'Estimates time until dead tuple budget is exhausted based on growth rate';
+COMMENT ON FUNCTION flight_recorder_reporting.time_to_budget_exhaustion(OID, BIGINT) IS 'Estimates time until dead tuple budget is exhausted based on growth rate';
 
 -- Calculates the rate of OID consumption over a time window
 -- Returns OIDs per second based on max_catalog_oid changes in snapshots
-CREATE OR REPLACE FUNCTION flight_recorder.oid_consumption_rate(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.oid_consumption_rate(
     p_window INTERVAL
 )
 RETURNS NUMERIC
@@ -483,11 +485,11 @@ BEGIN
     RETURN ROUND(v_delta_oids::numeric / v_delta_seconds, 6);
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.oid_consumption_rate(INTERVAL) IS 'Returns OID consumption rate (OIDs/second) over a time window';
+COMMENT ON FUNCTION flight_recorder_reporting.oid_consumption_rate(INTERVAL) IS 'Returns OID consumption rate (OIDs/second) over a time window';
 
 -- Estimates time until OID exhaustion based on current consumption rate
 -- OIDs are 32-bit unsigned integers (max ~4.3 billion) that are not recycled
-CREATE OR REPLACE FUNCTION flight_recorder.time_to_oid_exhaustion()
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.time_to_oid_exhaustion()
 RETURNS INTERVAL
 LANGUAGE plpgsql STABLE AS $$
 DECLARE
@@ -509,7 +511,7 @@ BEGIN
     END IF;
 
     -- Use 1-hour window for rate calculation
-    v_consumption_rate := flight_recorder.oid_consumption_rate('1 hour'::interval);
+    v_consumption_rate := flight_recorder_reporting.oid_consumption_rate('1 hour'::interval);
 
     IF v_consumption_rate IS NULL OR v_consumption_rate <= 0 THEN
         RETURN NULL;  -- No consumption or negative rate
@@ -526,7 +528,7 @@ BEGIN
     RETURN make_interval(secs => v_seconds_to_exhaustion);
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.time_to_oid_exhaustion() IS 'Estimates time until OID exhaustion based on consumption rate over the last hour';
+COMMENT ON FUNCTION flight_recorder_reporting.time_to_oid_exhaustion() IS 'Estimates time until OID exhaustion based on consumption rate over the last hour';
 
 -- =============================================================================
 -- End Autovacuum Observer Functions
@@ -534,7 +536,7 @@ COMMENT ON FUNCTION flight_recorder.time_to_oid_exhaustion() IS 'Estimates time 
 
 -- Analyzes database metrics within a time window and reports detected anomalies (checkpoints, buffer pressure, lock contention, etc.)
 -- Returns anomalies with severity levels and actionable remediation recommendations
-CREATE OR REPLACE FUNCTION flight_recorder.anomaly_report(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.anomaly_report(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -905,7 +907,7 @@ $$;
 
 -- Generates a comprehensive performance report with metrics and interpretations for a specified time window
 -- Aggregates data from compare, anomaly detection, wait events, and lock contention to provide human-readable insights
-CREATE OR REPLACE FUNCTION flight_recorder.summary_report(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.summary_report(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -927,7 +929,7 @@ BEGIN
     SELECT count(*) INTO v_sample_count
     FROM flight_recorder.samples_ring WHERE captured_at BETWEEN p_start_time AND p_end_time;
     SELECT count(*) INTO v_anomaly_count
-    FROM flight_recorder.anomaly_report(p_start_time, p_end_time);
+    FROM flight_recorder_reporting.anomaly_report(p_start_time, p_end_time);
     section := 'OVERVIEW';
     metric := 'Time Window';
     value := format('%s to %s', p_start_time, p_end_time);
@@ -1023,7 +1025,7 @@ END;
 $$;
 -- Detects query storms by comparing recent query execution counts to baseline
 -- Returns queries with execution spikes classified by type and severity
-CREATE OR REPLACE FUNCTION flight_recorder.detect_query_storms(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.detect_query_storms(
     p_lookback INTERVAL DEFAULT NULL,
     p_threshold_multiplier NUMERIC DEFAULT NULL
 )
@@ -1140,7 +1142,7 @@ BEGIN
         st.recent_count DESC;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.detect_query_storms(INTERVAL, NUMERIC) IS 'Detect query storms by comparing recent execution counts to baseline. Classifies as RETRY_STORM, CACHE_MISS, SPIKE, or NORMAL with severity levels (LOW, MEDIUM, HIGH, CRITICAL).';
+COMMENT ON FUNCTION flight_recorder_reporting.detect_query_storms(INTERVAL, NUMERIC) IS 'Detect query storms by comparing recent execution counts to baseline. Classifies as RETRY_STORM, CACHE_MISS, SPIKE, or NORMAL with severity levels (LOW, MEDIUM, HIGH, CRITICAL).';
 
 -- =============================================================================
 -- PERFORMANCE REGRESSION DETECTION
@@ -1148,7 +1150,7 @@ COMMENT ON FUNCTION flight_recorder.detect_query_storms(INTERVAL, NUMERIC) IS 'D
 
 -- Diagnose probable causes for a query's performance regression
 -- Analyzes pg_stat_statements and snapshots for indicators
-CREATE OR REPLACE FUNCTION flight_recorder._diagnose_regression_causes(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting._diagnose_regression_causes(
     p_queryid BIGINT
 )
 RETURNS TEXT[]
@@ -1216,12 +1218,12 @@ BEGIN
     RETURN v_causes;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder._diagnose_regression_causes(BIGINT) IS 'Internal: Analyze a query to suggest probable causes for performance regression.';
+COMMENT ON FUNCTION flight_recorder_reporting._diagnose_regression_causes(BIGINT) IS 'Internal: Analyze a query to suggest probable causes for performance regression.';
 
 -- Detects performance regressions by comparing recent query metrics to baseline
 -- Uses buffer metrics by default (configurable via regression_detection_metric)
 -- Returns queries with significant regression classified by severity
-CREATE OR REPLACE FUNCTION flight_recorder.detect_regressions(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.detect_regressions(
     p_lookback INTERVAL DEFAULT NULL,
     p_threshold_pct NUMERIC DEFAULT NULL
 )
@@ -1367,7 +1369,7 @@ BEGIN
         ROUND(reg.current_avg_buffers, 0) AS current_avg_buffers,
         reg.buffer_change_pct,
         v_detection_metric AS detection_metric,
-        flight_recorder._diagnose_regression_causes(reg.queryid) AS probable_causes
+        flight_recorder_reporting._diagnose_regression_causes(reg.queryid) AS probable_causes
     FROM regressions reg
     WHERE reg.z_score > 2 OR reg.primary_change_pct > v_medium_max  -- Statistical filter or significant change
     ORDER BY
@@ -1380,10 +1382,10 @@ BEGIN
         reg.primary_change_pct DESC;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.detect_regressions(INTERVAL, NUMERIC) IS 'Detect performance regressions using buffer metrics (default) or timing. Classifies severity based on percentage change (LOW <200%, MEDIUM <500%, HIGH <1000%, CRITICAL >1000%). Configure via regression_detection_metric.';
+COMMENT ON FUNCTION flight_recorder_reporting.detect_regressions(INTERVAL, NUMERIC) IS 'Detect performance regressions using buffer metrics (default) or timing. Classifies severity based on percentage change (LOW <200%, MEDIUM <500%, HIGH <1000%, CRITICAL >1000%). Configure via regression_detection_metric.';
 -- Generates a health report of flight recorder operations, including collection performance metrics,
 -- success rates, and schema size with qualitative assessments
-CREATE OR REPLACE FUNCTION flight_recorder.performance_report(p_lookback_interval INTERVAL DEFAULT '24 hours')
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.performance_report(p_lookback_interval INTERVAL DEFAULT '24 hours')
 RETURNS TABLE(
     metric TEXT,
     value TEXT,
@@ -1535,7 +1537,7 @@ $$;
 
 -- Monitors flight recorder system health by checking for circuit breaker trips, schema size limits, collection failures, and stale data
 -- Returns alerts with severity levels (CRITICAL/WARNING) and recommendations when thresholds are exceeded
-CREATE OR REPLACE FUNCTION flight_recorder.check_alerts(p_lookback_interval INTERVAL DEFAULT '1 hour')
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.check_alerts(p_lookback_interval INTERVAL DEFAULT '1 hour')
 RETURNS TABLE(
     alert_type TEXT,
     severity TEXT,
@@ -1625,7 +1627,7 @@ $$;
 
 -- Exports flight recorder diagnostic data as human-readable Markdown
 -- Produces a report with tables that is legible to both humans and AI
-CREATE OR REPLACE FUNCTION flight_recorder.report(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.report(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -1654,13 +1656,13 @@ BEGIN
     -- ==========================================================================
     v_result := v_result || '## Anomalies' || E'\n\n';
 
-    SELECT count(*) INTO v_count FROM flight_recorder.anomaly_report(p_start_time, p_end_time);
+    SELECT count(*) INTO v_count FROM flight_recorder_reporting.anomaly_report(p_start_time, p_end_time);
     IF v_count = 0 THEN
         v_result := v_result || '**No anomalies detected.** System appears healthy.' || E'\n\n';
     ELSE
         v_result := v_result || '| Type | Severity | Description | Metric | Recommendation |' || E'\n';
         v_result := v_result || '|------|----------|-------------|--------|----------------|' || E'\n';
-        FOR v_row IN SELECT * FROM flight_recorder.anomaly_report(p_start_time, p_end_time) LOOP
+        FOR v_row IN SELECT * FROM flight_recorder_reporting.anomaly_report(p_start_time, p_end_time) LOOP
             v_result := v_result || '| ' ||
                 COALESCE(v_row.anomaly_type, '-') || ' | ' ||
                 COALESCE(v_row.severity, '-') || ' | ' ||
@@ -1730,13 +1732,13 @@ BEGIN
     -- ==========================================================================
     v_result := v_result || '## Table Hotspots' || E'\n\n';
 
-    SELECT count(*) INTO v_count FROM flight_recorder.table_hotspots(p_start_time, p_end_time);
+    SELECT count(*) INTO v_count FROM flight_recorder_reporting.table_hotspots(p_start_time, p_end_time);
     IF v_count = 0 THEN
         v_result := v_result || '(no issues detected)' || E'\n\n';
     ELSE
         v_result := v_result || '| Schema | Table | Issue | Severity | Description | Recommendation |' || E'\n';
         v_result := v_result || '|--------|-------|-------|----------|-------------|----------------|' || E'\n';
-        FOR v_row IN SELECT * FROM flight_recorder.table_hotspots(p_start_time, p_end_time) LOOP
+        FOR v_row IN SELECT * FROM flight_recorder_reporting.table_hotspots(p_start_time, p_end_time) LOOP
             v_result := v_result || '| ' ||
                 COALESCE(v_row.schemaname, '-') || ' | ' ||
                 COALESCE(v_row.relname, '-') || ' | ' ||
@@ -1753,13 +1755,13 @@ BEGIN
     -- ==========================================================================
     v_result := v_result || '## Index Efficiency' || E'\n\n';
 
-    SELECT count(*) INTO v_count FROM flight_recorder.index_efficiency(p_start_time, p_end_time);
+    SELECT count(*) INTO v_count FROM flight_recorder_reporting.index_efficiency(p_start_time, p_end_time);
     IF v_count = 0 THEN
         v_result := v_result || '(no index activity in range)' || E'\n\n';
     ELSE
         v_result := v_result || '| Schema | Table | Index | Scans | Selectivity | Size | Scans/GB |' || E'\n';
         v_result := v_result || '|--------|-------|-------|-------|-------------|------|----------|' || E'\n';
-        FOR v_row IN SELECT * FROM flight_recorder.index_efficiency(p_start_time, p_end_time) LOOP
+        FOR v_row IN SELECT * FROM flight_recorder_reporting.index_efficiency(p_start_time, p_end_time) LOOP
             v_result := v_result || '| ' ||
                 COALESCE(v_row.schemaname, '-') || ' | ' ||
                 COALESCE(v_row.relname, '-') || ' | ' ||
@@ -1976,13 +1978,13 @@ BEGIN
     -- ==========================================================================
     v_result := v_result || '## Configuration Changes' || E'\n\n';
 
-    SELECT count(*) INTO v_count FROM flight_recorder.config_changes(p_start_time, p_end_time);
+    SELECT count(*) INTO v_count FROM flight_recorder_reporting.config_changes(p_start_time, p_end_time);
     IF v_count = 0 THEN
         v_result := v_result || '(no changes detected)' || E'\n\n';
     ELSE
         v_result := v_result || '| Parameter | Old Value | New Value | Old Source | New Source | Changed At |' || E'\n';
         v_result := v_result || '|-----------|-----------|-----------|------------|------------|------------|' || E'\n';
-        FOR v_row IN SELECT * FROM flight_recorder.config_changes(p_start_time, p_end_time) LOOP
+        FOR v_row IN SELECT * FROM flight_recorder_reporting.config_changes(p_start_time, p_end_time) LOOP
             v_result := v_result || '| ' ||
                 COALESCE(v_row.parameter_name, '-') || ' | ' ||
                 COALESCE(v_row.old_value, '-') || ' | ' ||
@@ -1999,13 +2001,13 @@ BEGIN
     -- ==========================================================================
     v_result := v_result || '## Role Configuration Changes' || E'\n\n';
 
-    SELECT count(*) INTO v_count FROM flight_recorder.db_role_config_changes(p_start_time, p_end_time);
+    SELECT count(*) INTO v_count FROM flight_recorder_reporting.db_role_config_changes(p_start_time, p_end_time);
     IF v_count = 0 THEN
         v_result := v_result || '(no changes detected)' || E'\n\n';
     ELSE
         v_result := v_result || '| Database | Role | Parameter | Old Value | New Value | Type |' || E'\n';
         v_result := v_result || '|----------|------|-----------|-----------|-----------|------|' || E'\n';
-        FOR v_row IN SELECT * FROM flight_recorder.db_role_config_changes(p_start_time, p_end_time) LOOP
+        FOR v_row IN SELECT * FROM flight_recorder_reporting.db_role_config_changes(p_start_time, p_end_time) LOOP
             v_result := v_result || '| ' ||
                 COALESCE(v_row.database_name, '-') || ' | ' ||
                 COALESCE(v_row.role_name, '-') || ' | ' ||
@@ -2020,22 +2022,22 @@ BEGIN
     RETURN v_result;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.report(TIMESTAMPTZ, TIMESTAMPTZ) IS
+COMMENT ON FUNCTION flight_recorder_reporting.report(TIMESTAMPTZ, TIMESTAMPTZ) IS
 'Generate diagnostic report from flight recorder data. Readable by humans and AI systems.';
 
 -- Interval convenience overload: report('1 hour') instead of timestamps
-CREATE OR REPLACE FUNCTION flight_recorder.report(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.report(
     p_interval INTERVAL
 )
 RETURNS TEXT
 LANGUAGE sql STABLE AS $$
-    SELECT flight_recorder.report(now() - p_interval, now());
+    SELECT flight_recorder_reporting.report(now() - p_interval, now());
 $$;
-COMMENT ON FUNCTION flight_recorder.report(INTERVAL) IS
-'Generate diagnostic report for the specified interval ending now. Usage: SELECT flight_recorder.report(''1 hour'')';
+COMMENT ON FUNCTION flight_recorder_reporting.report(INTERVAL) IS
+'Generate diagnostic report for the specified interval ending now. Usage: SELECT flight_recorder_reporting.report(''1 hour'')';
 -- Validates system readiness for flight recorder installation by checking resources, connections, and dependencies
 -- Returns component status (GO/CAUTION/NO-GO) to determine installation viability
-CREATE OR REPLACE FUNCTION flight_recorder.preflight_check()
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.preflight_check()
 RETURNS TABLE(
     check_name TEXT,
     status TEXT,
@@ -2152,11 +2154,11 @@ BEGIN
         'Flight recorder will auto-reduce overhead under stress.'::text;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.preflight_check() IS
+COMMENT ON FUNCTION flight_recorder_reporting.preflight_check() IS
 
 'Pre-installation validation checks. Returns component status (GO/CAUTION/NO-GO). For summary, use preflight_check_with_summary().';
 -- Executes preflight validation checks and appends a summary row indicating overall system readiness (READY, CAUTION, or NO-GO)
-CREATE OR REPLACE FUNCTION flight_recorder.preflight_check_with_summary()
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.preflight_check_with_summary()
 RETURNS TABLE(
     check_name TEXT,
     status TEXT,
@@ -2168,12 +2170,12 @@ DECLARE
     v_nogo_count INTEGER;
     v_caution_count INTEGER;
 BEGIN
-    RETURN QUERY SELECT * FROM flight_recorder.preflight_check();
+    RETURN QUERY SELECT * FROM flight_recorder_reporting.preflight_check();
     SELECT
         count(*) FILTER (WHERE c.status = 'NO-GO'),
         count(*) FILTER (WHERE c.status = 'CAUTION')
     INTO v_nogo_count, v_caution_count
-    FROM flight_recorder.preflight_check() c;
+    FROM flight_recorder_reporting.preflight_check() c;
     IF v_nogo_count > 0 THEN
         RETURN QUERY SELECT
             '=== SUMMARY ==='::text,
@@ -2195,12 +2197,12 @@ BEGIN
     END IF;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.preflight_check_with_summary() IS
+COMMENT ON FUNCTION flight_recorder_reporting.preflight_check_with_summary() IS
 
 'Pre-installation validation with summary. Calls preflight_check() twice - once for results, once to count. More expensive but includes summary row.';
 -- Generates a comprehensive quarterly health review of the flight_recorder system
 -- Assesses collection performance, storage consumption, reliability, circuit breaker activity, and data freshness
-CREATE OR REPLACE FUNCTION flight_recorder.quarterly_review()
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.quarterly_review()
 RETURNS TABLE(
     component TEXT,
     status TEXT,
@@ -2398,12 +2400,12 @@ BEGIN
     END;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.quarterly_review() IS
+COMMENT ON FUNCTION flight_recorder_reporting.quarterly_review() IS
 
 'Quarterly health check for flight recorder. Returns component metrics (EXCELLENT/GOOD/REVIEW NEEDED/ERROR). For summary, use quarterly_review_with_summary().';
 -- Quarterly health check with summary. Appends overall health status (HEALTHY or ACTION REQUIRED) based on count of ERROR or REVIEW NEEDED items detected
 -- More expensive than quarterly_review() as it calls it twice - once for detailed results, once to count critical issues
-CREATE OR REPLACE FUNCTION flight_recorder.quarterly_review_with_summary()
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.quarterly_review_with_summary()
 RETURNS TABLE(
     component TEXT,
     status TEXT,
@@ -2414,9 +2416,9 @@ LANGUAGE plpgsql AS $$
 DECLARE
     v_issues_count INTEGER;
 BEGIN
-    RETURN QUERY SELECT * FROM flight_recorder.quarterly_review();
+    RETURN QUERY SELECT * FROM flight_recorder_reporting.quarterly_review();
     SELECT count(*) INTO v_issues_count
-    FROM flight_recorder.quarterly_review() qr
+    FROM flight_recorder_reporting.quarterly_review() qr
     WHERE qr.status IN ('ERROR', 'REVIEW NEEDED');
     IF v_issues_count = 0 THEN
         RETURN QUERY SELECT
@@ -2433,12 +2435,12 @@ BEGIN
     END IF;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.quarterly_review_with_summary() IS
+COMMENT ON FUNCTION flight_recorder_reporting.quarterly_review_with_summary() IS
 
 'Quarterly health check with summary. Calls quarterly_review() twice - once for results, once to count. More expensive but includes summary row.';
 -- Analyzes database resource capacity metrics (connections, memory, storage, transactions) over a time window
 -- Returns utilization status with actionable recommendations
-CREATE OR REPLACE FUNCTION flight_recorder.capacity_summary(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.capacity_summary(
     p_time_window INTERVAL DEFAULT interval '24 hours'
 )
 RETURNS TABLE(
@@ -2803,13 +2805,13 @@ BEGIN
     END IF;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.capacity_summary(INTERVAL) IS
+COMMENT ON FUNCTION flight_recorder_reporting.capacity_summary(INTERVAL) IS
 
 'Capacity planning summary across all resource dimensions. Analyzes connections, memory (shared_buffers, work_mem), I/O (cache hit ratio), storage growth, and transaction rates over the specified time window. Returns utilization, status (healthy/warning/critical), and actionable recommendations. Part of Phase 1 MVP capacity planning enhancements (FR-2.1).';
 
 -- Generates a human-readable markdown capacity report grouped by severity
 -- Calls capacity_summary() and formats results as prose text
-CREATE OR REPLACE FUNCTION flight_recorder.capacity_report(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.capacity_report(
     p_time_window INTERVAL DEFAULT interval '24 hours'
 )
 RETURNS TEXT
@@ -2834,7 +2836,7 @@ BEGIN
     -- Process each metric from capacity_summary
     FOR v_row IN
         SELECT *
-        FROM flight_recorder.capacity_summary(p_time_window)
+        FROM flight_recorder_reporting.capacity_summary(p_time_window)
         WHERE metric != 'insufficient_data'
         ORDER BY
             CASE status
@@ -2879,7 +2881,7 @@ BEGIN
     -- Handle insufficient data case
     FOR v_row IN
         SELECT *
-        FROM flight_recorder.capacity_summary(p_time_window)
+        FROM flight_recorder_reporting.capacity_summary(p_time_window)
         WHERE metric = 'insufficient_data'
     LOOP
         v_result := v_result || E'\n' || v_row.recommendation || E'\n';
@@ -2907,10 +2909,10 @@ BEGIN
     RETURN v_result;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.capacity_report(INTERVAL) IS
+COMMENT ON FUNCTION flight_recorder_reporting.capacity_report(INTERVAL) IS
 'Human-readable capacity report in markdown format. Groups metrics by severity (critical, warning, healthy) with actionable recommendations. Calls capacity_summary() internally for data. Use this for incident reports and documentation.';
 
-CREATE OR REPLACE VIEW flight_recorder.capacity_dashboard AS
+CREATE OR REPLACE VIEW flight_recorder_reporting.capacity_dashboard AS
 WITH
 latest_snapshot AS (
     SELECT max(captured_at) AS last_updated
@@ -2923,7 +2925,7 @@ capacity_metrics AS (
         headroom_pct,
         status,
         recommendation
-    FROM flight_recorder.capacity_summary(interval '24 hours')
+    FROM flight_recorder_reporting.capacity_summary(interval '24 hours')
     WHERE metric != 'insufficient_data'
 ),
 connections_metric AS (
@@ -3031,7 +3033,7 @@ LEFT JOIN memory_sb_metric ms ON true
 LEFT JOIN memory_wm_metric mw ON true
 LEFT JOIN io_metric io ON true
 LEFT JOIN storage_metric s ON true;
-COMMENT ON VIEW flight_recorder.capacity_dashboard IS
+COMMENT ON VIEW flight_recorder_reporting.capacity_dashboard IS
 'At-a-glance capacity planning dashboard. Shows current status (healthy/warning/critical) across all resource dimensions: connections, memory, I/O, storage. Includes utilization percentages, composite memory pressure score, and array of critical issues requiring attention. Based on last 24 hours of data. Part of Phase 1 MVP capacity planning enhancements (FR-3.1).';
 
 -- NOTE: Storm and Regression dashboard views removed in 2.21
@@ -3042,7 +3044,7 @@ COMMENT ON VIEW flight_recorder.capacity_dashboard IS
 
 -- Compares table activity between two time points
 -- Returns delta metrics for DML activity, scans, and maintenance events
-CREATE OR REPLACE FUNCTION flight_recorder.table_compare(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.table_compare(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ,
     p_limit INTEGER DEFAULT 25
@@ -3133,13 +3135,13 @@ LANGUAGE sql STABLE AS $$
     ORDER BY total_activity DESC
     LIMIT p_limit
 $$;
-COMMENT ON FUNCTION flight_recorder.table_compare(TIMESTAMPTZ, TIMESTAMPTZ, INTEGER) IS
+COMMENT ON FUNCTION flight_recorder_reporting.table_compare(TIMESTAMPTZ, TIMESTAMPTZ, INTEGER) IS
 'Compare table activity between two time points. Shows DML deltas, scan counts, dead tuple percentage, and maintenance events. Useful for identifying hot tables during incidents.';
 
 
 -- Identifies table hotspots and potential issues
 -- Returns actionable recommendations for tables with problems
-CREATE OR REPLACE FUNCTION flight_recorder.table_hotspots(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.table_hotspots(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -3157,7 +3159,7 @@ DECLARE
     v_hot_ratio NUMERIC;
 BEGIN
     FOR v_table IN
-        SELECT * FROM flight_recorder.table_compare(p_start_time, p_end_time, 100)
+        SELECT * FROM flight_recorder_reporting.table_compare(p_start_time, p_end_time, 100)
     LOOP
         -- High sequential scan activity
         IF v_table.seq_scan_delta > 100 AND v_table.seq_tup_read_delta > 100000 THEN
@@ -3226,7 +3228,7 @@ BEGIN
     END LOOP;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.table_hotspots(TIMESTAMPTZ, TIMESTAMPTZ) IS
+COMMENT ON FUNCTION flight_recorder_reporting.table_hotspots(TIMESTAMPTZ, TIMESTAMPTZ) IS
 'Identify table-level hotspots and issues. Returns actionable recommendations for sequential scan storms, table bloat, low HOT update ratios, and frequent autovacuum activity.';
 
 
@@ -3236,7 +3238,7 @@ COMMENT ON FUNCTION flight_recorder.table_hotspots(TIMESTAMPTZ, TIMESTAMPTZ) IS
 
 -- Identifies unused or rarely used indexes
 -- Returns indexes that may be candidates for removal
-CREATE OR REPLACE FUNCTION flight_recorder.unused_indexes(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.unused_indexes(
     p_lookback_interval INTERVAL DEFAULT '7 days'
 )
 RETURNS TABLE(
@@ -3289,13 +3291,13 @@ LANGUAGE sql STABLE AS $$
         AND iu.indexrelname NOT LIKE '%_pkey'  -- Don't suggest dropping primary keys
     ORDER BY iu.index_size_bytes DESC
 $$;
-COMMENT ON FUNCTION flight_recorder.unused_indexes(INTERVAL) IS
+COMMENT ON FUNCTION flight_recorder_reporting.unused_indexes(INTERVAL) IS
 'Identify unused or rarely used indexes. Returns indexes that may be candidates for removal to save space and improve write performance. Default lookback is 7 days.';
 
 
 -- Analyzes index efficiency and usage patterns
 -- Returns selectivity and scans-per-GB metrics
-CREATE OR REPLACE FUNCTION flight_recorder.index_efficiency(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.index_efficiency(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ,
     p_limit INTEGER DEFAULT 25
@@ -3353,7 +3355,7 @@ LANGUAGE sql STABLE AS $$
     ORDER BY idx_scan_delta DESC
     LIMIT p_limit
 $$;
-COMMENT ON FUNCTION flight_recorder.index_efficiency(TIMESTAMPTZ, TIMESTAMPTZ, INTEGER) IS
+COMMENT ON FUNCTION flight_recorder_reporting.index_efficiency(TIMESTAMPTZ, TIMESTAMPTZ, INTEGER) IS
 'Analyze index efficiency and usage patterns. Returns selectivity (fetch/read ratio) and scans-per-GB metrics. Low selectivity may indicate poor index choices.';
 
 
@@ -3363,7 +3365,7 @@ COMMENT ON FUNCTION flight_recorder.index_efficiency(TIMESTAMPTZ, TIMESTAMPTZ, I
 
 -- Detects configuration changes between two time points
 -- Returns parameters that changed with old and new values
-CREATE OR REPLACE FUNCTION flight_recorder.config_changes(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.config_changes(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -3404,13 +3406,13 @@ LANGUAGE sql STABLE AS $$
         OR e.source IS DISTINCT FROM s.source
     ORDER BY parameter_name
 $$;
-COMMENT ON FUNCTION flight_recorder.config_changes(TIMESTAMPTZ, TIMESTAMPTZ) IS
+COMMENT ON FUNCTION flight_recorder_reporting.config_changes(TIMESTAMPTZ, TIMESTAMPTZ) IS
 'Detect PostgreSQL configuration changes between two time points. Useful for correlating configuration changes with performance incidents.';
 
 
 -- Retrieves configuration at a specific point in time
 -- Optionally filters by parameter name prefix (category)
-CREATE OR REPLACE FUNCTION flight_recorder.config_at(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.config_at(
     p_timestamp TIMESTAMPTZ,
     p_category TEXT DEFAULT NULL
 )
@@ -3430,13 +3432,13 @@ LANGUAGE sql STABLE AS $$
         AND (p_category IS NULL OR cs.name LIKE p_category || '%')
     ORDER BY cs.name, s.captured_at DESC
 $$;
-COMMENT ON FUNCTION flight_recorder.config_at(TIMESTAMPTZ, TEXT) IS
+COMMENT ON FUNCTION flight_recorder_reporting.config_at(TIMESTAMPTZ, TEXT) IS
 'Retrieve PostgreSQL configuration at a specific point in time. Optionally filter by category prefix (e.g., ''autovacuum'', ''work_mem'').';
 
 
 -- Performs a health check on current PostgreSQL configuration
 -- Returns potential issues and recommendations
-CREATE OR REPLACE FUNCTION flight_recorder.config_health_check()
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.config_health_check()
 RETURNS TABLE(
     category        TEXT,
     parameter_name  TEXT,
@@ -3506,7 +3508,7 @@ BEGIN
     RETURN;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.config_health_check() IS
+COMMENT ON FUNCTION flight_recorder_reporting.config_health_check() IS
 'Perform a health check on current PostgreSQL configuration. Returns potential issues and recommendations for memory, connections, and safety settings.';
 
 
@@ -3516,7 +3518,7 @@ COMMENT ON FUNCTION flight_recorder.config_health_check() IS
 
 -- Retrieves database/role configuration overrides at a specific point in time
 -- Optionally filters by database, role, or parameter name prefix
-CREATE OR REPLACE FUNCTION flight_recorder.db_role_config_at(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.db_role_config_at(
     p_timestamp TIMESTAMPTZ,
     p_database TEXT DEFAULT NULL,
     p_role TEXT DEFAULT NULL,
@@ -3549,13 +3551,13 @@ LANGUAGE sql STABLE AS $$
         AND (p_prefix IS NULL OR drc.parameter_name LIKE p_prefix || '%')
     ORDER BY drc.database_name, drc.role_name, drc.parameter_name, s.captured_at DESC
 $$;
-COMMENT ON FUNCTION flight_recorder.db_role_config_at(TIMESTAMPTZ, TEXT, TEXT, TEXT) IS
+COMMENT ON FUNCTION flight_recorder_reporting.db_role_config_at(TIMESTAMPTZ, TEXT, TEXT, TEXT) IS
 'Retrieve database/role configuration overrides at a specific point in time. Filter by database, role, or parameter prefix.';
 
 
 -- Detects database/role configuration changes between two time points
 -- Returns parameters that were added, removed, or modified
-CREATE OR REPLACE FUNCTION flight_recorder.db_role_config_changes(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.db_role_config_changes(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -3604,13 +3606,13 @@ LANGUAGE sql STABLE AS $$
     WHERE e.parameter_value IS DISTINCT FROM s.parameter_value
     ORDER BY database_name NULLS FIRST, role_name NULLS FIRST, parameter_name
 $$;
-COMMENT ON FUNCTION flight_recorder.db_role_config_changes(TIMESTAMPTZ, TIMESTAMPTZ) IS
+COMMENT ON FUNCTION flight_recorder_reporting.db_role_config_changes(TIMESTAMPTZ, TIMESTAMPTZ) IS
 'Detect database/role configuration changes between two time points. Returns added, removed, and modified settings.';
 
 
 -- Provides a summary overview of all database/role configuration overrides
 -- Groups by scope (database-only, role-only, or database+role combination)
-CREATE OR REPLACE FUNCTION flight_recorder.db_role_config_summary()
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.db_role_config_summary()
 RETURNS TABLE(
     scope           TEXT,
     database_name   TEXT,
@@ -3646,7 +3648,7 @@ LANGUAGE sql STABLE AS $$
     GROUP BY scope, database_name, role_name
     ORDER BY scope, database_name NULLS FIRST, role_name NULLS FIRST
 $$;
-COMMENT ON FUNCTION flight_recorder.db_role_config_summary() IS
+COMMENT ON FUNCTION flight_recorder_reporting.db_role_config_summary() IS
 'Overview of database/role configuration overrides grouped by scope. Shows which databases and roles have custom settings.';
 
 
@@ -3662,7 +3664,7 @@ COMMENT ON FUNCTION flight_recorder.db_role_config_summary() IS
 -- Provides interpolated system state at any arbitrary timestamp
 -- Input: Target timestamp, context window (default 5 minutes)
 -- Output: Interpolated metrics, events, sessions, locks, wait events, confidence, recommendations
-CREATE OR REPLACE FUNCTION flight_recorder.what_happened_at(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.what_happened_at(
     p_timestamp TIMESTAMPTZ,
     p_context_window INTERVAL DEFAULT '5 minutes'
 )
@@ -4094,15 +4096,15 @@ BEGIN
         v_recs;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.what_happened_at IS
-'Time-travel debugging: Forensic analysis of system state at any timestamp. Interpolates between samples to estimate connections, transaction rates, and buffer hit ratio. Surfaces exact-timestamp events (checkpoints, query starts, transaction starts) and analyzes sessions, locks, and wait events. Returns confidence score (0-1) based on data proximity. Use for incident investigation: SELECT * FROM flight_recorder.what_happened_at(''2024-01-15 10:23:47'');';
+COMMENT ON FUNCTION flight_recorder_reporting.what_happened_at IS
+'Time-travel debugging: Forensic analysis of system state at any timestamp. Interpolates between samples to estimate connections, transaction rates, and buffer hit ratio. Surfaces exact-timestamp events (checkpoints, query starts, transaction starts) and analyzes sessions, locks, and wait events. Returns confidence score (0-1) based on data proximity. Use for incident investigation: SELECT * FROM flight_recorder_reporting.what_happened_at(''2024-01-15 10:23:47'');';
 
 
 -- Timeline reconstruction for incident analysis
 -- Merges events from multiple sources into a unified, chronological timeline
 -- Input: Start and end timestamps for the incident window
 -- Output: Ordered timeline of events with type, description, and details
-CREATE OR REPLACE FUNCTION flight_recorder.incident_timeline(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.incident_timeline(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -4297,8 +4299,8 @@ BEGIN
     ORDER BY ae.event_time;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.incident_timeline IS
-'Reconstructs a unified timeline for incident analysis by merging events from multiple sources: checkpoints, WAL archiving, query/transaction starts, connection opens, lock contention, wait spikes, and snapshots. Returns chronologically ordered events with type, description, and JSON details. Use for incident review: SELECT * FROM flight_recorder.incident_timeline(now() - interval ''2 hours'', now() - interval ''1 hour'');';
+COMMENT ON FUNCTION flight_recorder_reporting.incident_timeline IS
+'Reconstructs a unified timeline for incident analysis by merging events from multiple sources: checkpoints, WAL archiving, query/transaction starts, connection opens, lock contention, wait spikes, and snapshots. Returns chronologically ordered events with type, description, and JSON details. Use for incident review: SELECT * FROM flight_recorder_reporting.incident_timeline(now() - interval ''2 hours'', now() - interval ''1 hour'');';
 
 
 -- Blast Radius Analysis
@@ -4306,7 +4308,7 @@ COMMENT ON FUNCTION flight_recorder.incident_timeline IS
 -- Answers: "What was the collateral damage from this incident?"
 -- Input: Start and end timestamps for the incident window
 -- Output: Structured impact assessment including locks, queries, connections, applications
-CREATE OR REPLACE FUNCTION flight_recorder.blast_radius(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.blast_radius(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -4803,14 +4805,14 @@ BEGIN
         v_recommendations;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.blast_radius IS
-'Comprehensive blast radius analysis for incident impact assessment. Analyzes lock impact (blocked sessions, duration, types), query degradation (before vs during), connection spike, affected applications, wait events, and transaction throughput. Returns severity classification (low/medium/high/critical) with impact summary and recommendations. Use for incident postmortems: SELECT * FROM flight_recorder.blast_radius(''2024-01-15 10:23:00'', ''2024-01-15 10:35:00'');';
+COMMENT ON FUNCTION flight_recorder_reporting.blast_radius IS
+'Comprehensive blast radius analysis for incident impact assessment. Analyzes lock impact (blocked sessions, duration, types), query degradation (before vs during), connection spike, affected applications, wait events, and transaction throughput. Returns severity classification (low/medium/high/critical) with impact summary and recommendations. Use for incident postmortems: SELECT * FROM flight_recorder_reporting.blast_radius(''2024-01-15 10:23:00'', ''2024-01-15 10:35:00'');';
 
 
 -- Blast Radius Report
 -- Human-readable formatted report for incident postmortems
 -- Returns ASCII-art styled report suitable for sharing and documentation
-CREATE OR REPLACE FUNCTION flight_recorder.blast_radius_report(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.blast_radius_report(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -4828,7 +4830,7 @@ DECLARE
     v_severity_bar TEXT;
 BEGIN
     -- Get blast radius data
-    SELECT * INTO v_data FROM flight_recorder.blast_radius(p_start_time, p_end_time);
+    SELECT * INTO v_data FROM flight_recorder_reporting.blast_radius(p_start_time, p_end_time);
 
     -- Header
     v_result := v_result || E'══════════════════════════════════════════════════════════════════════\n';
@@ -5007,5 +5009,5 @@ BEGIN
     RETURN v_result;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder.blast_radius_report IS
-'Human-readable blast radius analysis report with ASCII-art formatting. Suitable for incident postmortems, Slack/email sharing, and documentation. Includes visual severity indicators, bar charts for lock types and affected apps, and actionable recommendations. Use: SELECT flight_recorder.blast_radius_report(''2024-01-15 10:23:00'', ''2024-01-15 10:35:00'');';
+COMMENT ON FUNCTION flight_recorder_reporting.blast_radius_report IS
+'Human-readable blast radius analysis report with ASCII-art formatting. Suitable for incident postmortems, Slack/email sharing, and documentation. Includes visual severity indicators, bar charts for lock types and affected apps, and actionable recommendations. Use: SELECT flight_recorder_reporting.blast_radius_report(''2024-01-15 10:23:00'', ''2024-01-15 10:35:00'');';

@@ -554,11 +554,11 @@ SELECT has_column('flight_recorder', 'snapshots', 'db_size_bytes', 'Snapshots ta
 -- -----------------------------------------------------------------------------
 
 -- Test 1: Function exists
-SELECT has_function('flight_recorder', 'capacity_summary', 'Function capacity_summary should exist');
+SELECT has_function('flight_recorder_reporting', 'capacity_summary', 'Function capacity_summary should exist');
 
 -- Test 2: Function executes without error (with insufficient data)
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.capacity_summary(interval '24 hours')$$,
+    $$SELECT * FROM flight_recorder_reporting.capacity_summary(interval '24 hours')$$,
     'capacity_summary: Should execute without error'
 );
 
@@ -592,55 +592,55 @@ INSERT INTO flight_recorder.snapshots (
 
 -- Test 3: Returns data with sufficient snapshots
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.capacity_summary(interval '2 hours')) >= 1,
+    (SELECT count(*) FROM flight_recorder_reporting.capacity_summary(interval '2 hours')) >= 1,
     'capacity_summary: Should return metrics with sufficient data'
 );
 
 -- Test 4: Check connections metric is returned
 SELECT ok(
-    EXISTS (SELECT 1 FROM flight_recorder.capacity_summary(interval '2 hours') WHERE metric = 'connections'),
+    EXISTS (SELECT 1 FROM flight_recorder_reporting.capacity_summary(interval '2 hours') WHERE metric = 'connections'),
     'capacity_summary: Should return connections metric'
 );
 
 -- Test 5: Utilization percentage is within bounds
 SELECT ok(
-    (SELECT max(utilization_pct) FROM flight_recorder.capacity_summary(interval '2 hours') WHERE utilization_pct IS NOT NULL) <= 100,
+    (SELECT max(utilization_pct) FROM flight_recorder_reporting.capacity_summary(interval '2 hours') WHERE utilization_pct IS NOT NULL) <= 100,
     'capacity_summary: Utilization percentage should be <= 100'
 );
 
 SELECT ok(
-    (SELECT min(utilization_pct) FROM flight_recorder.capacity_summary(interval '2 hours') WHERE utilization_pct IS NOT NULL) >= 0,
+    (SELECT min(utilization_pct) FROM flight_recorder_reporting.capacity_summary(interval '2 hours') WHERE utilization_pct IS NOT NULL) >= 0,
     'capacity_summary: Utilization percentage should be >= 0'
 );
 
 -- Test 6: Status values are valid
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.capacity_summary(interval '2 hours')
+    (SELECT count(*) FROM flight_recorder_reporting.capacity_summary(interval '2 hours')
      WHERE status NOT IN ('healthy', 'warning', 'critical', 'insufficient_data')) = 0,
     'capacity_summary: Status should be one of valid values'
 );
 
 -- Test 7: Current usage is populated
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.capacity_summary(interval '2 hours')
+    (SELECT count(*) FROM flight_recorder_reporting.capacity_summary(interval '2 hours')
      WHERE current_usage IS NOT NULL) >= 1,
     'capacity_summary: Current usage should be populated'
 );
 
 -- Test 8: Different time windows work
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.capacity_summary(interval '1 hour')$$,
+    $$SELECT * FROM flight_recorder_reporting.capacity_summary(interval '1 hour')$$,
     'capacity_summary: Should work with 1 hour window'
 );
 
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.capacity_summary(interval '7 days')$$,
+    $$SELECT * FROM flight_recorder_reporting.capacity_summary(interval '7 days')$$,
     'capacity_summary: Should work with 7 day window'
 );
 
 -- Test 9: NULL handling - function doesn't crash with NULL columns
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.capacity_summary(interval '2 hours')$$,
+    $$SELECT * FROM flight_recorder_reporting.capacity_summary(interval '2 hours')$$,
     'capacity_summary: Should handle NULL columns gracefully'
 );
 
@@ -649,62 +649,62 @@ SELECT lives_ok(
 -- -----------------------------------------------------------------------------
 
 -- Test 1: View exists
-SELECT has_view('flight_recorder', 'capacity_dashboard', 'View capacity_dashboard should exist');
+SELECT has_view('flight_recorder_reporting', 'capacity_dashboard', 'View capacity_dashboard should exist');
 
 -- Test 2: View executes without error
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.capacity_dashboard$$,
+    $$SELECT * FROM flight_recorder_reporting.capacity_dashboard$$,
     'capacity_dashboard: Should execute without error'
 );
 
 -- Test 3: Returns exactly one row
 SELECT is(
-    (SELECT count(*)::integer FROM flight_recorder.capacity_dashboard),
+    (SELECT count(*)::integer FROM flight_recorder_reporting.capacity_dashboard),
     1,
     'capacity_dashboard: Should return exactly one row'
 );
 
 -- Test 4: last_updated is populated
 SELECT ok(
-    (SELECT last_updated FROM flight_recorder.capacity_dashboard) IS NOT NULL,
+    (SELECT last_updated FROM flight_recorder_reporting.capacity_dashboard) IS NOT NULL,
     'capacity_dashboard: last_updated should be populated'
 );
 
 -- Test 5: connections_status is valid
 SELECT ok(
-    (SELECT connections_status FROM flight_recorder.capacity_dashboard) IN ('healthy', 'warning', 'critical', 'insufficient_data'),
+    (SELECT connections_status FROM flight_recorder_reporting.capacity_dashboard) IN ('healthy', 'warning', 'critical', 'insufficient_data'),
     'capacity_dashboard: connections_status should be valid'
 );
 
 -- Test 6: memory_status is valid
 SELECT ok(
-    (SELECT memory_status FROM flight_recorder.capacity_dashboard) IN ('healthy', 'warning', 'critical', 'insufficient_data'),
+    (SELECT memory_status FROM flight_recorder_reporting.capacity_dashboard) IN ('healthy', 'warning', 'critical', 'insufficient_data'),
     'capacity_dashboard: memory_status should be valid'
 );
 
 -- Test 7: overall_status is valid
 SELECT ok(
-    (SELECT overall_status FROM flight_recorder.capacity_dashboard) IN ('healthy', 'warning', 'critical', 'insufficient_data'),
+    (SELECT overall_status FROM flight_recorder_reporting.capacity_dashboard) IN ('healthy', 'warning', 'critical', 'insufficient_data'),
     'capacity_dashboard: overall_status should be valid'
 );
 
 -- Test 8: memory_pressure_score is within bounds
 SELECT ok(
-    (SELECT memory_pressure_score FROM flight_recorder.capacity_dashboard) >= 0 AND
-    (SELECT memory_pressure_score FROM flight_recorder.capacity_dashboard) <= 100,
+    (SELECT memory_pressure_score FROM flight_recorder_reporting.capacity_dashboard) >= 0 AND
+    (SELECT memory_pressure_score FROM flight_recorder_reporting.capacity_dashboard) <= 100,
     'capacity_dashboard: memory_pressure_score should be 0-100'
 );
 
 -- Test 9: critical_issues is an array
 SELECT ok(
-    pg_typeof((SELECT critical_issues FROM flight_recorder.capacity_dashboard))::text = 'text[]',
+    pg_typeof((SELECT critical_issues FROM flight_recorder_reporting.capacity_dashboard))::text = 'text[]',
     'capacity_dashboard: critical_issues should be text array'
 );
 
 -- Test 10: Dashboard reflects underlying summary data
 SELECT ok(
-    (SELECT connections_status FROM flight_recorder.capacity_dashboard) =
-    COALESCE((SELECT status FROM flight_recorder.capacity_summary(interval '24 hours') WHERE metric = 'connections'), 'insufficient_data'),
+    (SELECT connections_status FROM flight_recorder_reporting.capacity_dashboard) =
+    COALESCE((SELECT status FROM flight_recorder_reporting.capacity_summary(interval '24 hours') WHERE metric = 'connections'), 'insufficient_data'),
     'capacity_dashboard: Should reflect capacity_summary connections status'
 );
 
@@ -732,13 +732,13 @@ SELECT has_function('flight_recorder', '_collect_config_snapshot', 'Function fli
 -- Section 3: Analysis Function Existence (7 tests)
 -- -----------------------------------------------------------------------------
 
-SELECT has_function('flight_recorder', 'table_compare', 'Function flight_recorder.table_compare should exist');
-SELECT has_function('flight_recorder', 'table_hotspots', 'Function flight_recorder.table_hotspots should exist');
-SELECT has_function('flight_recorder', 'unused_indexes', 'Function flight_recorder.unused_indexes should exist');
-SELECT has_function('flight_recorder', 'index_efficiency', 'Function flight_recorder.index_efficiency should exist');
-SELECT has_function('flight_recorder', 'config_changes', 'Function flight_recorder.config_changes should exist');
-SELECT has_function('flight_recorder', 'config_at', 'Function flight_recorder.config_at should exist');
-SELECT has_function('flight_recorder', 'config_health_check', 'Function flight_recorder.config_health_check should exist');
+SELECT has_function('flight_recorder_reporting', 'table_compare', 'Function flight_recorder_reporting.table_compare should exist');
+SELECT has_function('flight_recorder_reporting', 'table_hotspots', 'Function flight_recorder_reporting.table_hotspots should exist');
+SELECT has_function('flight_recorder_reporting', 'unused_indexes', 'Function flight_recorder_reporting.unused_indexes should exist');
+SELECT has_function('flight_recorder_reporting', 'index_efficiency', 'Function flight_recorder_reporting.index_efficiency should exist');
+SELECT has_function('flight_recorder_reporting', 'config_changes', 'Function flight_recorder_reporting.config_changes should exist');
+SELECT has_function('flight_recorder_reporting', 'config_at', 'Function flight_recorder_reporting.config_at should exist');
+SELECT has_function('flight_recorder_reporting', 'config_health_check', 'Function flight_recorder_reporting.config_health_check should exist');
 
 -- -----------------------------------------------------------------------------
 -- Section 4: Collection Function Execution (3 tests)
@@ -795,7 +795,7 @@ END;
 $$;
 
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.table_compare(
+    $$SELECT * FROM flight_recorder_reporting.table_compare(
         (SELECT start_time FROM test_feature_times),
         (SELECT end_time FROM test_feature_times)
     )$$,
@@ -803,7 +803,7 @@ SELECT lives_ok(
 );
 
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.table_hotspots(
+    $$SELECT * FROM flight_recorder_reporting.table_hotspots(
         (SELECT start_time FROM test_feature_times),
         (SELECT end_time FROM test_feature_times)
     )$$,
@@ -811,12 +811,12 @@ SELECT lives_ok(
 );
 
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.unused_indexes()$$,
+    $$SELECT * FROM flight_recorder_reporting.unused_indexes()$$,
     'unused_indexes() should execute without error'
 );
 
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.index_efficiency(
+    $$SELECT * FROM flight_recorder_reporting.index_efficiency(
         (SELECT start_time FROM test_feature_times),
         (SELECT end_time FROM test_feature_times)
     )$$,
@@ -824,7 +824,7 @@ SELECT lives_ok(
 );
 
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.config_changes(
+    $$SELECT * FROM flight_recorder_reporting.config_changes(
         (SELECT start_time FROM test_feature_times),
         (SELECT end_time FROM test_feature_times)
     )$$,
@@ -832,12 +832,12 @@ SELECT lives_ok(
 );
 
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.config_at(now())$$,
+    $$SELECT * FROM flight_recorder_reporting.config_at(now())$$,
     'config_at() should execute without error'
 );
 
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.config_health_check()$$,
+    $$SELECT * FROM flight_recorder_reporting.config_health_check()$$,
     'config_health_check() should execute without error'
 );
 
@@ -861,9 +861,9 @@ SELECT has_column('flight_recorder', 'db_role_config_snapshots', 'parameter_name
 -- -----------------------------------------------------------------------------
 
 SELECT has_function('flight_recorder', '_collect_db_role_config_snapshot', 'Function flight_recorder._collect_db_role_config_snapshot should exist');
-SELECT has_function('flight_recorder', 'db_role_config_at', 'Function flight_recorder.db_role_config_at should exist');
-SELECT has_function('flight_recorder', 'db_role_config_changes', 'Function flight_recorder.db_role_config_changes should exist');
-SELECT has_function('flight_recorder', 'db_role_config_summary', 'Function flight_recorder.db_role_config_summary should exist');
+SELECT has_function('flight_recorder_reporting', 'db_role_config_at', 'Function flight_recorder_reporting.db_role_config_at should exist');
+SELECT has_function('flight_recorder_reporting', 'db_role_config_changes', 'Function flight_recorder_reporting.db_role_config_changes should exist');
+SELECT has_function('flight_recorder_reporting', 'db_role_config_summary', 'Function flight_recorder_reporting.db_role_config_summary should exist');
 
 -- -----------------------------------------------------------------------------
 -- Section 3: Collection Function Execution (4 tests)
@@ -891,17 +891,17 @@ SELECT lives_ok(
 );
 
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.db_role_config_at(now())$$,
+    $$SELECT * FROM flight_recorder_reporting.db_role_config_at(now())$$,
     'db_role_config_at() should execute without error'
 );
 
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.db_role_config_changes(now() - interval '1 hour', now())$$,
+    $$SELECT * FROM flight_recorder_reporting.db_role_config_changes(now() - interval '1 hour', now())$$,
     'db_role_config_changes() should execute without error'
 );
 
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.db_role_config_summary()$$,
+    $$SELECT * FROM flight_recorder_reporting.db_role_config_summary()$$,
     'db_role_config_summary() should execute without error'
 );
 

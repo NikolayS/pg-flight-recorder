@@ -7,14 +7,14 @@ You are helping the user analyze their PostgreSQL database using pg_flight_recor
 Run the comprehensive report:
 
 ```sql
-SELECT flight_recorder.report('1 hour');
+SELECT flight_recorder_reporting.report('1 hour');
 ```
 
 For longer time ranges:
 
 ```sql
-SELECT flight_recorder.report('24 hours');
-SELECT flight_recorder.report('7 days');
+SELECT flight_recorder_reporting.report('24 hours');
+SELECT flight_recorder_reporting.report('7 days');
 ```
 
 ## Drilling Deeper

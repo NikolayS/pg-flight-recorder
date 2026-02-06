@@ -18,6 +18,7 @@ BEGIN;
 
 -- Schema
 CREATE SCHEMA IF NOT EXISTS flight_recorder;
+CREATE SCHEMA IF NOT EXISTS flight_recorder_reporting;
 
 --------------------------------------------------------------------------------
 -- TABLES (for data import)
@@ -831,7 +832,7 @@ END;
 $$;
 
 -- Anomaly detection for a time range (uses config_snapshots for settings)
-CREATE OR REPLACE FUNCTION flight_recorder.anomaly_report(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.anomaly_report(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -979,7 +980,7 @@ END;
 $$;
 
 -- Config at a point in time
-CREATE OR REPLACE FUNCTION flight_recorder.config_at(p_timestamp TIMESTAMPTZ)
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.config_at(p_timestamp TIMESTAMPTZ)
 RETURNS TABLE(
     name        TEXT,
     setting     TEXT,
@@ -1007,7 +1008,7 @@ END;
 $$;
 
 -- Config changes over time
-CREATE OR REPLACE FUNCTION flight_recorder.config_changes(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.config_changes(
     p_start_time TIMESTAMPTZ DEFAULT now() - '7 days'::interval,
     p_end_time TIMESTAMPTZ DEFAULT now()
 )
@@ -1046,7 +1047,7 @@ END;
 $$;
 
 -- Table hotspots
-CREATE OR REPLACE FUNCTION flight_recorder.table_hotspots(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.table_hotspots(
     p_lookback INTERVAL DEFAULT '24 hours'::interval,
     p_limit INTEGER DEFAULT 20
 )
@@ -1096,7 +1097,7 @@ END;
 $$;
 
 -- Unused indexes
-CREATE OR REPLACE FUNCTION flight_recorder.unused_indexes(
+CREATE OR REPLACE FUNCTION flight_recorder_reporting.unused_indexes(
     p_lookback INTERVAL DEFAULT '7 days'::interval,
     p_min_size_bytes BIGINT DEFAULT 1048576
 )
@@ -1133,6 +1134,6 @@ DO $$
 BEGIN
     RAISE NOTICE 'pg_flight_recorder analysis-only schema installed successfully.';
     RAISE NOTICE 'Import your data with: psql -f flight_recorder_data.sql';
-    RAISE NOTICE 'Then use: SELECT * FROM flight_recorder.anomaly_report(start, end);';
+    RAISE NOTICE 'Then use: SELECT * FROM flight_recorder_reporting.anomaly_report(start, end);';
 END;
 $$;

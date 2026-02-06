@@ -96,7 +96,7 @@ SELECT ok(
 
 -- Verify anomaly_report() runs without error when checking XID ages
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.anomaly_report(now() - interval '1 hour', now())$$,
+    $$SELECT * FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now())$$,
     'anomaly_report() should run without error with XID age checks'
 );
 
@@ -104,7 +104,7 @@ SELECT lives_ok(
 -- This verifies the check runs but doesn't false-positive on healthy systems
 SELECT ok(
     NOT EXISTS (
-        SELECT 1 FROM flight_recorder.anomaly_report(now() - interval '1 hour', now())
+        SELECT 1 FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now())
         WHERE anomaly_type IN ('XID_WRAPAROUND_RISK', 'TABLE_XID_WRAPAROUND_RISK')
     ),
     'Fresh database should not trigger XID wraparound anomalies'

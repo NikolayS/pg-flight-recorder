@@ -58,7 +58,7 @@ await db.exec(dataSql);
 ```javascript
 // Anomaly report
 const anomalies = await db.query(`
-  SELECT * FROM flight_recorder.anomaly_report(
+  SELECT * FROM flight_recorder_reporting.anomaly_report(
     now() - interval '24 hours',
     now()
   )
@@ -66,12 +66,12 @@ const anomalies = await db.query(`
 
 // What happened at a specific time
 const activity = await db.query(`
-  SELECT * FROM flight_recorder.config_at('2024-01-15 14:30:00')
+  SELECT * FROM flight_recorder_reporting.config_at('2024-01-15 14:30:00')
 `);
 
 // Table hotspots
 const hotspots = await db.query(`
-  SELECT * FROM flight_recorder.table_hotspots('24 hours', 10)
+  SELECT * FROM flight_recorder_reporting.table_hotspots('24 hours', 10)
 `);
 ```
 

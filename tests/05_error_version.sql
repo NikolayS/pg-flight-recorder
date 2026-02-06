@@ -245,7 +245,7 @@ INSERT INTO flight_recorder.collection_stats (collection_type, started_at, durat
 VALUES ('sample', now(), 100, false);
 
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.quarterly_review()$$,
+    $$SELECT * FROM flight_recorder_reporting.quarterly_review()$$,
     'Error: quarterly_review() should handle minimal data without division errors'
 );
 
@@ -350,7 +350,7 @@ SELECT lives_ok(
 
 -- Test preflight_check() with missing pg_cron
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.preflight_check()$$,
+    $$SELECT * FROM flight_recorder_reporting.preflight_check()$$,
     'Error: preflight_check() should handle missing extensions gracefully'
 );
 
@@ -460,7 +460,7 @@ SELECT lives_ok(
 
 -- Test two quarterly_review_with_summary() calls
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.quarterly_review_with_summary()$$,
+    $$SELECT * FROM flight_recorder_reporting.quarterly_review_with_summary()$$,
     'Error: Concurrent quarterly reviews should be safe'
 );
 
@@ -706,7 +706,7 @@ BEGIN
         PERFORM pg_sleep(0.1);
         PERFORM flight_recorder.snapshot();
 
-        SELECT flight_recorder.summary_report(now() - interval '1 hour', now()) INTO v_report;
+        SELECT flight_recorder_reporting.summary_report(now() - interval '1 hour', now()) INTO v_report;
 
         -- Report should not mention io_* metrics on PG15
         -- This is a soft check - just verify report is generated
@@ -755,7 +755,7 @@ BEGIN
         PERFORM pg_sleep(0.1);
         PERFORM flight_recorder.snapshot();
 
-        PERFORM * FROM flight_recorder.anomaly_report(now() - interval '1 hour', now());
+        PERFORM * FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now());
     END IF;
 END $$;
 
@@ -772,7 +772,7 @@ BEGIN
     IF v_pg_version = 15 THEN
         PERFORM flight_recorder.snapshot();
 
-        SELECT flight_recorder.report(now() - interval '1 hour', now()) INTO v_markdown;
+        SELECT flight_recorder_reporting.report(now() - interval '1 hour', now()) INTO v_markdown;
 
         IF v_markdown IS NULL THEN
             RAISE EXCEPTION 'Phase 4: PG15 report() should return valid Markdown';
@@ -997,7 +997,7 @@ BEGIN
         PERFORM pg_sleep(0.1);
         PERFORM flight_recorder.snapshot();
 
-        SELECT flight_recorder.summary_report(now() - interval '1 hour', now()) INTO v_report;
+        SELECT flight_recorder_reporting.summary_report(now() - interval '1 hour', now()) INTO v_report;
 
         IF v_report IS NULL OR length(v_report) < 100 THEN
             RAISE EXCEPTION 'Phase 4: PG16 summary_report() should generate valid report';
@@ -1019,7 +1019,7 @@ BEGIN
         PERFORM pg_sleep(0.1);
         PERFORM flight_recorder.snapshot();
 
-        PERFORM * FROM flight_recorder.anomaly_report(now() - interval '1 hour', now());
+        PERFORM * FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now());
     END IF;
 END $$;
 
@@ -1180,7 +1180,7 @@ BEGIN
         PERFORM pg_sleep(0.1);
         PERFORM flight_recorder.snapshot();
 
-        SELECT flight_recorder.summary_report(now() - interval '1 hour', now()) INTO v_report;
+        SELECT flight_recorder_reporting.summary_report(now() - interval '1 hour', now()) INTO v_report;
 
         IF v_report IS NULL OR length(v_report) < 100 THEN
             RAISE EXCEPTION 'Phase 4: PG17 summary_report() should generate valid report';
@@ -1251,7 +1251,7 @@ BEGIN
         -- Test multiple analysis functions
         PERFORM * FROM flight_recorder.wait_summary(now() - interval '1 hour', now());
         PERFORM * FROM flight_recorder.activity_at(now());
-        PERFORM * FROM flight_recorder.anomaly_report(now() - interval '1 hour', now());
+        PERFORM * FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now());
     END IF;
 END $$;
 

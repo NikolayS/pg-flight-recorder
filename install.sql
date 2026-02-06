@@ -5514,8 +5514,8 @@ BEGIN
     RAISE NOTICE '     SELECT * FROM flight_recorder.wait_summary(''2024-12-16 14:00'', ''2024-12-16 15:00'');';
     RAISE NOTICE '';
     RAISE NOTICE '  3. Check capacity and right-sizing:';
-    RAISE NOTICE '     SELECT * FROM flight_recorder.capacity_dashboard;';
-    RAISE NOTICE '     SELECT * FROM flight_recorder.capacity_summary(interval ''7 days'');';
+    RAISE NOTICE '     SELECT * FROM flight_recorder_reporting.capacity_dashboard;';
+    RAISE NOTICE '     SELECT * FROM flight_recorder_reporting.capacity_summary(interval ''7 days'');';
     RAISE NOTICE '';
     RAISE NOTICE 'Views for recent activity:';
     RAISE NOTICE '  - flight_recorder.deltas            (snapshot deltas incl. temp files)';

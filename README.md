@@ -33,7 +33,7 @@ SELECT dbdev.install('dventimi-pg_flight_recorder_reporting');
 ## Use
 
 ```sql
-SELECT flight_recorder.report('1 hour');
+SELECT flight_recorder_reporting.report('1 hour');
 ```
 
 That's it. It runs automatically. The report tells you what happened.
@@ -41,7 +41,11 @@ That's it. It runs automatically. The report tells you what happened.
 ## Uninstall
 
 ```bash
+# Remove everything (destructive)
 psql -f uninstall.sql
+
+# Remove only reporting functions (keeps core + data)
+psql -f uninstall_reporting.sql
 ```
 
 ## Export

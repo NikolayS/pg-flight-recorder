@@ -493,7 +493,7 @@ END $$;
 
 SELECT ok(
     EXISTS(
-        SELECT 1 FROM flight_recorder.quarterly_review()
+        SELECT 1 FROM flight_recorder_reporting.quarterly_review()
         WHERE status IN ('ERROR', 'REVIEW NEEDED')
         AND component LIKE '%Collection%'
     ),
@@ -506,14 +506,14 @@ VALUES ('sample', now() - interval '1 hour', 50, false);
 
 -- Test quarterly_review() with mixed statuses
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.quarterly_review()) >= 3,
+    (SELECT count(*) FROM flight_recorder_reporting.quarterly_review()) >= 3,
     'Health: quarterly_review() should return multiple component checks'
 );
 
 -- Test quarterly_review_with_summary() wrapper
 SELECT ok(
     EXISTS(
-        SELECT 1 FROM flight_recorder.quarterly_review_with_summary()
+        SELECT 1 FROM flight_recorder_reporting.quarterly_review_with_summary()
         WHERE component LIKE '%SUMMARY%'
     ),
     'Health: quarterly_review_with_summary() should include summary section'
@@ -521,8 +521,8 @@ SELECT ok(
 
 -- Test quarterly_review_with_summary() summary assessment
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.quarterly_review_with_summary()) >
-    (SELECT count(*) FROM flight_recorder.quarterly_review()),
+    (SELECT count(*) FROM flight_recorder_reporting.quarterly_review_with_summary()) >
+    (SELECT count(*) FROM flight_recorder_reporting.quarterly_review()),
     'Health: quarterly_review_with_summary() should have more rows than base function (includes summary)'
 );
 
@@ -572,19 +572,19 @@ SELECT ok(
 
 -- Test performance_report() with 1 hour interval
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.performance_report('1 hour')) >= 0,
+    (SELECT count(*) FROM flight_recorder_reporting.performance_report('1 hour')) >= 0,
     'Health: performance_report(''1 hour'') should execute without error'
 );
 
 -- Test performance_report() with 24 hours interval
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.performance_report('24 hours')) >= 0,
+    (SELECT count(*) FROM flight_recorder_reporting.performance_report('24 hours')) >= 0,
     'Health: performance_report(''24 hours'') should execute without error'
 );
 
 -- Test performance_report() with 0 seconds interval
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.performance_report('0 seconds')$$,
+    $$SELECT * FROM flight_recorder_reporting.performance_report('0 seconds')$$,
     'Health: performance_report(''0 seconds'') should not crash'
 );
 
@@ -607,14 +607,14 @@ SELECT ok(
 
 -- Test preflight_check() executes all checks
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.preflight_check()) >= 6,
+    (SELECT count(*) FROM flight_recorder_reporting.preflight_check()) >= 6,
     'Health: preflight_check() should perform at least 6 checks'
 );
 
 -- Test preflight_check_with_summary()
 SELECT ok(
     EXISTS(
-        SELECT 1 FROM flight_recorder.preflight_check_with_summary()
+        SELECT 1 FROM flight_recorder_reporting.preflight_check_with_summary()
         WHERE check_name LIKE '%SUMMARY%'
     ),
     'Health: preflight_check_with_summary() should include summary section'
@@ -829,13 +829,13 @@ SELECT ok(
 
 -- Test check_alerts() with 1 hour interval
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.check_alerts('1 hour')) >= 0,
+    (SELECT count(*) FROM flight_recorder_reporting.check_alerts('1 hour')) >= 0,
     'Alerts: check_alerts(''1 hour'') should execute without error'
 );
 
 -- Test check_alerts() with 24 hours interval
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.check_alerts('24 hours')) >= 0,
+    (SELECT count(*) FROM flight_recorder_reporting.check_alerts('24 hours')) >= 0,
     'Alerts: check_alerts(''24 hours'') should execute without error'
 );
 
@@ -848,7 +848,7 @@ BEGIN
 END $$;
 
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.check_alerts('1 hour')) >= 0,
+    (SELECT count(*) FROM flight_recorder_reporting.check_alerts('1 hour')) >= 0,
     'Alerts: check_alerts() should check for stale collections'
 );
 

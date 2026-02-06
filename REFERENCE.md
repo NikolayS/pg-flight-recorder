@@ -22,7 +22,7 @@ SELECT flight_recorder.enable();
 SELECT * FROM flight_recorder.health_check();
 
 -- Generate diagnostic report
-SELECT flight_recorder.report('1 hour');
+SELECT flight_recorder_reporting.report('1 hour');
 ```
 
 ## Requirements
@@ -297,7 +297,7 @@ UPDATE flight_recorder.config SET value = '300' WHERE key = 'sample_interval_sec
 SELECT * FROM flight_recorder.health_check();
 
 -- Recent report
-SELECT flight_recorder.report('1 hour');
+SELECT flight_recorder_reporting.report('1 hour');
 ```
 
 ### Incident Response
@@ -307,13 +307,13 @@ SELECT flight_recorder.report('1 hour');
 SELECT * FROM flight_recorder.apply_profile('troubleshooting');
 
 -- Analyze specific time window
-SELECT flight_recorder.report(
+SELECT flight_recorder_reporting.report(
     '2024-01-15 14:00'::timestamptz,
     '2024-01-15 15:00'::timestamptz
 );
 
 -- Point-in-time analysis
-SELECT * FROM flight_recorder.what_happened_at('2024-01-15 14:32');
+SELECT * FROM flight_recorder_reporting.what_happened_at('2024-01-15 14:32');
 
 -- Return to normal after incident
 SELECT * FROM flight_recorder.apply_profile('default');
@@ -323,29 +323,29 @@ SELECT * FROM flight_recorder.apply_profile('default');
 
 ```sql
 -- Find slow queries
-SELECT * FROM flight_recorder.detect_regressions('1 day');
+SELECT * FROM flight_recorder_reporting.detect_regressions('1 day');
 
 -- Find query storms
-SELECT * FROM flight_recorder.detect_query_storms('1 hour');
+SELECT * FROM flight_recorder_reporting.detect_query_storms('1 hour');
 
 -- Table hotspots
-SELECT * FROM flight_recorder.table_hotspots(now() - '1 day', now());
+SELECT * FROM flight_recorder_reporting.table_hotspots(now() - '1 day', now());
 
 -- Index efficiency
-SELECT * FROM flight_recorder.index_efficiency(now() - '1 day', now());
+SELECT * FROM flight_recorder_reporting.index_efficiency(now() - '1 day', now());
 ```
 
 ### Capacity Planning
 
 ```sql
 -- Resource summary
-SELECT * FROM flight_recorder.capacity_summary('7 days');
+SELECT * FROM flight_recorder_reporting.capacity_summary('7 days');
 
 -- Full quarterly review
-SELECT * FROM flight_recorder.quarterly_review();
+SELECT * FROM flight_recorder_reporting.quarterly_review();
 
 -- View capacity dashboard
-SELECT * FROM flight_recorder.capacity_dashboard;
+SELECT * FROM flight_recorder_reporting.capacity_dashboard;
 ```
 
 ## Upgrading
@@ -360,12 +360,12 @@ SELECT value FROM flight_recorder.config WHERE key = 'schema_version';
 
 ## Uninstalling
 
-```sql
--- Disable jobs first
-SELECT flight_recorder.disable();
+```bash
+# Remove everything (stops jobs, drops all schemas and data)
+psql -f uninstall.sql
 
--- Drop schema
-DROP SCHEMA flight_recorder CASCADE;
+# Remove only reporting functions (keeps core + data)
+psql -f uninstall_reporting.sql
 ```
 
 ## Offline Analysis (PGLite)
@@ -409,7 +409,7 @@ await db.exec(fs.readFileSync('flight_recorder_data.sql', 'utf8'));
 
 // Run analysis
 const result = await db.query(`
-  SELECT * FROM flight_recorder.anomaly_report(
+  SELECT * FROM flight_recorder_reporting.anomaly_report(
     '2024-01-15 00:00'::timestamptz,
     '2024-01-15 23:59'::timestamptz
   )
