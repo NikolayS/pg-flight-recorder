@@ -840,7 +840,7 @@ $$;
 
 -- Non-profile settings (system defaults that profiles don't manage)
 INSERT INTO flight_recorder.config (key, value) VALUES
-    ('schema_version', '2.23'),
+    ('schema_version', '2.25'),
     ('mode', 'normal'),
     ('statements_enabled', 'auto'),
     ('statements_top_n', '20'),

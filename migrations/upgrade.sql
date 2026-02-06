@@ -11,7 +11,7 @@
 DO $$
 DECLARE
     v_current_version TEXT;
-    v_target_version TEXT := '2.23';  -- Update this when adding migrations
+    v_target_version TEXT := '2.25';  -- Update this when adding migrations
 BEGIN
     -- Check if flight_recorder schema exists
     IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'flight_recorder') THEN
@@ -134,6 +134,12 @@ END $$;
 
 -- Migration from 2.22 to 2.23: Add table size tracking for bloat detection
 \i migrations/2.22_to_2.23.sql
+
+-- Migration from 2.23 to 2.24: Add PGLite support and deprecate relation name columns
+\i migrations/2.23_to_2.24.sql
+
+-- Migration from 2.24 to 2.25: Move reporting functions to flight_recorder_reporting schema
+\i migrations/2.24_to_2.25.sql
 
 -- =============================================================================
 -- Post-upgrade verification
