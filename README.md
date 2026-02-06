@@ -9,10 +9,19 @@ Server-side flight recorder for PostgreSQL. Answers "what was happening in my da
 ## Install
 
 ```bash
+# Core (tables, collection, scheduling)
 psql -f install.sql
+
+# Reporting & analysis (optional)
+psql -f reporting.sql
 ```
 
 Requires PostgreSQL 15+ with pg_cron.
+
+Also available on [database.dev](https://database.dev):
+
+- [dventimi/pg_flight_recorder](https://database.dev/dventimi/pg_flight_recorder) (core)
+- [dventimi/pg_flight_recorder_reporting](https://database.dev/dventimi/pg_flight_recorder_reporting) (reporting)
 
 ## Use
 
