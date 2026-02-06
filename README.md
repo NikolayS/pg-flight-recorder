@@ -4,6 +4,12 @@ Server-side flight recorder for PostgreSQL. Answers "what was happening in my da
 
 ## Install
 
+Requires PostgreSQL 15+ with pg_cron.
+
+### Option A: From SQL files
+
+Download from [GitHub Releases](https://github.com/dventimisupabase/pg-flight-recorder/releases/latest) or clone the repo, then:
+
 ```bash
 # Core (tables, collection, scheduling)
 psql -f install.sql
@@ -12,12 +18,17 @@ psql -f install.sql
 psql -f reporting.sql
 ```
 
-Requires PostgreSQL 15+ with pg_cron.
+### Option B: From database.dev
 
-Also available on [database.dev](https://database.dev):
+Install via the [dbdev](https://database.dev) package manager:
 
-- [dventimi/pg_flight_recorder](https://database.dev/dventimi/pg_flight_recorder) (core)
-- [dventimi/pg_flight_recorder_reporting](https://database.dev/dventimi/pg_flight_recorder_reporting) (reporting)
+```sql
+-- Core
+SELECT dbdev.install('dventimi-pg_flight_recorder');
+
+-- Reporting & analysis (optional, requires core)
+SELECT dbdev.install('dventimi-pg_flight_recorder_reporting');
+```
 
 ## Use
 
