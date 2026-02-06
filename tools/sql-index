@@ -170,6 +170,85 @@ def preprocess_sql(source: str) -> tuple[str, list[tuple[int, int]]]:
     return '\n'.join(cleaned_lines), line_map
 
 
+def _split_statements(source: str) -> list[str]:
+    """Split SQL source into individual statements, respecting dollar-quoting.
+
+    Splits on semicolons that are outside of dollar-quoted strings ($$...$$)
+    and single-quoted strings. Each returned statement includes its trailing
+    semicolon and preserves leading whitespace/newlines for line-number accuracy.
+    """
+    statements = []
+    current = []
+    in_dollar_quote = False
+    dollar_tag = ""
+    in_single_quote = False
+    i = 0
+
+    while i < len(source):
+        ch = source[i]
+
+        if in_single_quote:
+            current.append(ch)
+            if ch == "'" and i + 1 < len(source) and source[i + 1] == "'":
+                current.append(source[i + 1])
+                i += 2
+                continue
+            elif ch == "'":
+                in_single_quote = False
+            i += 1
+            continue
+
+        if in_dollar_quote:
+            current.append(ch)
+            if ch == "$":
+                # Check if this starts the closing dollar-quote tag
+                end = source.find("$", i + 1)
+                if end >= 0:
+                    candidate = source[i:end + 1]
+                    if candidate == dollar_tag:
+                        current.extend(source[i + 1:end + 1])
+                        i = end + 1
+                        in_dollar_quote = False
+                        continue
+            i += 1
+            continue
+
+        if ch == "'":
+            in_single_quote = True
+            current.append(ch)
+            i += 1
+            continue
+
+        if ch == "$":
+            # Check for dollar-quote start: $$ or $tag$
+            end = source.find("$", i + 1)
+            if end >= 0 and end - i <= 40:
+                tag_body = source[i + 1:end]
+                if tag_body == "" or tag_body.isidentifier():
+                    dollar_tag = source[i:end + 1]
+                    in_dollar_quote = True
+                    current.extend(source[i:end + 1])
+                    i = end + 1
+                    continue
+
+        current.append(ch)
+
+        if ch == ";":
+            stmt = "".join(current).strip()
+            if stmt:
+                statements.append(stmt)
+            current = []
+
+        i += 1
+
+    # Remaining text (no trailing semicolon)
+    remainder = "".join(current).strip()
+    if remainder:
+        statements.append(remainder)
+
+    return statements
+
+
 def index_file(filepath: Path) -> dict | None:
     """Parse a SQL file and extract DDL objects."""
     try:
@@ -183,9 +262,21 @@ def index_file(filepath: Path) -> dict | None:
 
     try:
         tree = pglast.parse_sql(cleaned_source)
-    except pglast.parser.ParseError as e:
-        print(f"Parse error in {filepath}: {e}", file=sys.stderr)
-        return None
+    except pglast.parser.ParseError:
+        # Whole-file parse failed — fall back to per-statement parsing
+        # so one bad statement doesn't skip the entire file
+        tree = []
+        skipped = 0
+        for stmt_text in _split_statements(cleaned_source):
+            try:
+                tree.extend(pglast.parse_sql(stmt_text))
+            except pglast.parser.ParseError:
+                skipped += 1
+        if skipped:
+            print(f"Parse warning in {filepath}: skipped {skipped} unparseable statement(s)", file=sys.stderr)
+        tree = tuple(tree)
+        if not tree:
+            return None
 
     # Use cleaned_source for offset-to-line calculation (preserves line numbers)
     visitor = DDLVisitor(cleaned_source)
