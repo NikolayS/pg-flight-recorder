@@ -18,7 +18,6 @@ BEGIN
         RAISE NOTICE E'\n=== Existing installation detected (v%) ===', existing_version;
         RAISE NOTICE 'This install script will update functions and views.';
         RAISE NOTICE 'Your data will be preserved.';
-        RAISE NOTICE 'For schema changes, use: psql -f migrations/upgrade.sql';
         RAISE NOTICE E'===\n';
     END IF;
 EXCEPTION

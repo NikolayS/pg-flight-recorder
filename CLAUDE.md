@@ -106,8 +106,8 @@ Run tests with:
 pg_flight_recorder uses **additive-only schema changes**:
 
 - Add new nullable columns (never remove or rename existing ones)
-- Create migration files (e.g., `migrations/2.2_to_2.3.sql`) for upgrades
 - Historical data with NULL in new columns is correct ("not collected then")
+- Re-running `install.sql` is the upgrade path (uses `CREATE OR REPLACE` / `IF NOT EXISTS`)
 
 **Why not JSONB + versioning?**
 
@@ -115,4 +115,3 @@ pg_flight_recorder uses **additive-only schema changes**:
 - Strong typing catches errors early
 - Schema-as-documentation (`\d flight_recorder.snapshots` shows what's collected)
 - Underlying pg_stat_* views evolve slowly and additively
-- Migration burden is manageable with semantic versioning

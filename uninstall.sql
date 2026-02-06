@@ -4,7 +4,6 @@
 -- WARNING: This removes ALL data including historical snapshots!
 -- Use this only when you want to completely remove flight_recorder.
 --
--- For upgrades, use: psql -f migrations/upgrade.sql
 -- To remove only reporting functions: psql -f uninstall_reporting.sql
 --
 -- Run with: psql -f uninstall.sql

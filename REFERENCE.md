@@ -350,12 +350,10 @@ SELECT * FROM flight_recorder_reporting.capacity_dashboard;
 
 ## Upgrading
 
-```sql
--- From existing installation
-\i migrations/upgrade.sql
+Re-running `install.sql` is safe — it uses `CREATE OR REPLACE` and `IF NOT EXISTS`, so it updates functions and views while preserving all data.
 
--- Check version
-SELECT value FROM flight_recorder.config WHERE key = 'schema_version';
+```bash
+psql -f install.sql
 ```
 
 ## Uninstalling
