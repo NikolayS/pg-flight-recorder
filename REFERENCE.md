@@ -5,8 +5,11 @@ A PostgreSQL monitoring extension that continuously samples database state for i
 ## Quick Start
 
 ```sql
--- Install
+-- Install core (tables, collection, scheduling)
 \i install.sql
+
+-- Install reporting & analysis (optional)
+\i reporting.sql
 
 -- Enable collection
 SELECT flight_recorder.enable();
@@ -64,7 +67,12 @@ SELECT * FROM flight_recorder.get_current_profile();
 
 ## Functions
 
-### Analysis
+Functions are split across two files:
+
+- **`install.sql`** (core): Collection, control, ring buffer management, profiles, views
+- **`reporting.sql`** (optional): Analysis, anomaly detection, capacity planning, configuration analysis
+
+### Analysis (reporting.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -79,7 +87,7 @@ SELECT * FROM flight_recorder.get_current_profile();
 | `what_happened_at(timestamp)` | Point-in-time analysis |
 | `incident_timeline(start, end)` | Event timeline for incidents |
 
-### Anomaly Detection
+### Anomaly Detection (reporting.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -88,7 +96,7 @@ SELECT * FROM flight_recorder.get_current_profile();
 | `blast_radius(queryid)` | Analyze query impact |
 | `blast_radius_report(interval)` | Report on high-impact queries |
 
-### Capacity Planning
+### Capacity Planning (reporting.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -99,7 +107,7 @@ SELECT * FROM flight_recorder.get_current_profile();
 | `oid_consumption_rate(interval)` | OID usage rate |
 | `time_to_oid_exhaustion()` | Estimate OID exhaustion |
 
-### Configuration Analysis
+### Configuration Analysis (reporting.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -109,7 +117,7 @@ SELECT * FROM flight_recorder.get_current_profile();
 | `db_role_config_changes(start, end)` | Database/role config changes |
 | `db_role_config_summary()` | Current db/role overrides |
 
-### Control
+### Control (install.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -120,7 +128,7 @@ SELECT * FROM flight_recorder.get_current_profile();
 | `set_mode(mode)` | Set collection mode (normal/light/emergency/kill) |
 | `get_mode()` | Get current mode |
 
-### Ring Buffer Management
+### Ring Buffer Management (install.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -129,7 +137,7 @@ SELECT * FROM flight_recorder.get_current_profile();
 | `configure_ring_autovacuum(enabled)` | Toggle autovacuum on ring tables |
 | `validate_ring_configuration()` | Check ring buffer config |
 
-### Profile Management
+### Profile Management (install.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -140,7 +148,7 @@ SELECT * FROM flight_recorder.get_current_profile();
 | `get_optimization_profiles()` | Ring buffer optimization presets |
 | `apply_optimization_profile(name)` | Apply ring buffer optimization |
 
-### Export/Offline Analysis
+### Export/Offline Analysis (install.sql)
 
 | Function | Purpose |
 |----------|---------|
