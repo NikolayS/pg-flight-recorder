@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Ring Buffer Optimization
+-- pg_flight_recorder pgTAP Tests - Ring Buffer Optimization
 -- =============================================================================
 -- Tests: Configurable ring buffer slots, validation, profiles, rebuild
 -- Test count: 25

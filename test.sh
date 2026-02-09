@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Test runner for pg-flight-recorder
+# Test runner for pg_flight_recorder
 # Usage: ./test.sh [version]
 #   version: 15, 16, 17 (runs single version)
 #   no args: runs all versions in parallel (default)
@@ -53,8 +53,11 @@ run_single_version() {
     echo "Installing pg_cron extension..."
     $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS pg_cron;" > /dev/null
 
-    echo "Installing pg-flight-recorder..."
-    $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres -f /install.sql > /dev/null
+    echo "Installing pg_flight_recorder..."
+    $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres --single-transaction -f /install.sql > /dev/null
+
+    echo "Installing reporting functions..."
+    $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres --single-transaction -f /reporting.sql > /dev/null
 
     echo "Installing pgTAP extension..."
     $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS pgtap;" > /dev/null
@@ -104,7 +107,8 @@ run_all_parallel() {
     for service in postgres15 postgres16 postgres17; do
         (
             $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS pg_cron;" > /dev/null
-            $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres -f /install.sql > /dev/null
+            $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres --single-transaction -f /install.sql > /dev/null
+            $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres --single-transaction -f /reporting.sql > /dev/null
             $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS pgtap;" > /dev/null
             $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres -c "SELECT flight_recorder.disable();" > /dev/null
         ) &

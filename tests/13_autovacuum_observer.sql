@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Autovacuum Observer Enhancements (v2.7)
+-- pg_flight_recorder pgTAP Tests - Autovacuum Observer Enhancements (v2.7)
 -- =============================================================================
 -- Tests: n_mod_since_analyze column, rate calculation functions, sampling modes
 -- Test count: 35
@@ -67,25 +67,25 @@ SELECT is(
 -- =============================================================================
 
 SELECT has_function(
-    'flight_recorder', 'dead_tuple_growth_rate',
+    'flight_recorder_reporting', 'dead_tuple_growth_rate',
     ARRAY['oid', 'interval'],
     'dead_tuple_growth_rate(oid, interval) function should exist'
 );
 
 SELECT has_function(
-    'flight_recorder', 'modification_rate',
+    'flight_recorder_reporting', 'modification_rate',
     ARRAY['oid', 'interval'],
     'modification_rate(oid, interval) function should exist'
 );
 
 SELECT has_function(
-    'flight_recorder', 'hot_update_ratio',
+    'flight_recorder_reporting', 'hot_update_ratio',
     ARRAY['oid'],
     'hot_update_ratio(oid) function should exist'
 );
 
 SELECT has_function(
-    'flight_recorder', 'time_to_budget_exhaustion',
+    'flight_recorder_reporting', 'time_to_budget_exhaustion',
     ARRAY['oid', 'bigint'],
     'time_to_budget_exhaustion(oid, bigint) function should exist'
 );
@@ -133,7 +133,7 @@ SELECT lives_ok(
 
 -- Test dead_tuple_growth_rate executes without error
 SELECT lives_ok(
-    $$SELECT flight_recorder.dead_tuple_growth_rate(
+    $$SELECT flight_recorder_reporting.dead_tuple_growth_rate(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1),
         '1 hour'::interval
       )$$,
@@ -142,7 +142,7 @@ SELECT lives_ok(
 
 -- Test dead_tuple_growth_rate returns NUMERIC
 SELECT ok(
-    pg_typeof(flight_recorder.dead_tuple_growth_rate(
+    pg_typeof(flight_recorder_reporting.dead_tuple_growth_rate(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1),
         '1 hour'::interval
     ))::text = 'numeric',
@@ -151,7 +151,7 @@ SELECT ok(
 
 -- Test modification_rate executes without error
 SELECT lives_ok(
-    $$SELECT flight_recorder.modification_rate(
+    $$SELECT flight_recorder_reporting.modification_rate(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1),
         '1 hour'::interval
       )$$,
@@ -160,7 +160,7 @@ SELECT lives_ok(
 
 -- Test modification_rate returns NUMERIC
 SELECT ok(
-    pg_typeof(flight_recorder.modification_rate(
+    pg_typeof(flight_recorder_reporting.modification_rate(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1),
         '1 hour'::interval
     ))::text = 'numeric',
@@ -169,7 +169,7 @@ SELECT ok(
 
 -- Test hot_update_ratio executes without error
 SELECT lives_ok(
-    $$SELECT flight_recorder.hot_update_ratio(
+    $$SELECT flight_recorder_reporting.hot_update_ratio(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
       )$$,
     'hot_update_ratio should execute without error'
@@ -177,7 +177,7 @@ SELECT lives_ok(
 
 -- Test hot_update_ratio returns NUMERIC
 SELECT ok(
-    pg_typeof(flight_recorder.hot_update_ratio(
+    pg_typeof(flight_recorder_reporting.hot_update_ratio(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     ))::text = 'numeric',
     'hot_update_ratio should return NUMERIC type'
@@ -185,7 +185,7 @@ SELECT ok(
 
 -- Test time_to_budget_exhaustion executes without error
 SELECT lives_ok(
-    $$SELECT flight_recorder.time_to_budget_exhaustion(
+    $$SELECT flight_recorder_reporting.time_to_budget_exhaustion(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1),
         10000::bigint
       )$$,
@@ -194,7 +194,7 @@ SELECT lives_ok(
 
 -- Test time_to_budget_exhaustion returns INTERVAL
 SELECT ok(
-    pg_typeof(flight_recorder.time_to_budget_exhaustion(
+    pg_typeof(flight_recorder_reporting.time_to_budget_exhaustion(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1),
         10000::bigint
     ))::text = 'interval',
@@ -294,25 +294,25 @@ SELECT lives_ok(
 
 -- Test rate functions with non-existent OID
 SELECT is(
-    flight_recorder.dead_tuple_growth_rate(0::oid, '1 hour'::interval),
+    flight_recorder_reporting.dead_tuple_growth_rate(0::oid, '1 hour'::interval),
     NULL::numeric,
     'dead_tuple_growth_rate should return NULL for non-existent OID'
 );
 
 SELECT is(
-    flight_recorder.modification_rate(0::oid, '1 hour'::interval),
+    flight_recorder_reporting.modification_rate(0::oid, '1 hour'::interval),
     NULL::numeric,
     'modification_rate should return NULL for non-existent OID'
 );
 
 SELECT is(
-    flight_recorder.hot_update_ratio(0::oid),
+    flight_recorder_reporting.hot_update_ratio(0::oid),
     NULL::numeric,
     'hot_update_ratio should return NULL for non-existent OID'
 );
 
 SELECT is(
-    flight_recorder.time_to_budget_exhaustion(0::oid, 10000::bigint),
+    flight_recorder_reporting.time_to_budget_exhaustion(0::oid, 10000::bigint),
     NULL::interval,
     'time_to_budget_exhaustion should return NULL for non-existent OID'
 );

@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Foundation
+-- pg_flight_recorder pgTAP Tests - Foundation
 -- =============================================================================
 -- Tests: Installation verification, function existence, core functionality
 -- Sections: 1, 2, 3
@@ -100,8 +100,8 @@ SELECT has_function('flight_recorder', 'compare', 'Function flight_recorder.comp
 SELECT has_function('flight_recorder', 'wait_summary', 'Function flight_recorder.wait_summary should exist');
 SELECT has_function('flight_recorder', 'statement_compare', 'Function flight_recorder.statement_compare should exist');
 SELECT has_function('flight_recorder', 'activity_at', 'Function flight_recorder.activity_at should exist');
-SELECT has_function('flight_recorder', 'anomaly_report', 'Function flight_recorder.anomaly_report should exist');
-SELECT has_function('flight_recorder', 'summary_report', 'Function flight_recorder.summary_report should exist');
+SELECT has_function('flight_recorder_reporting', 'anomaly_report', 'Function flight_recorder_reporting.anomaly_report should exist');
+SELECT has_function('flight_recorder_reporting', 'summary_report', 'Function flight_recorder_reporting.summary_report should exist');
 SELECT has_function('flight_recorder', 'get_mode', 'Function flight_recorder.get_mode should exist');
 SELECT has_function('flight_recorder', 'set_mode', 'Function flight_recorder.set_mode should exist');
 SELECT has_function('flight_recorder', 'cleanup', 'Function flight_recorder.cleanup should exist');

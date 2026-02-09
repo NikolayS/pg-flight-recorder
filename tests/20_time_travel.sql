@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Time-Travel Debugging
+-- pg_flight_recorder pgTAP Tests - Time-Travel Debugging
 -- =============================================================================
 -- Tests: _interpolate_metric, what_happened_at, incident_timeline
 -- Test count: 45
@@ -28,13 +28,13 @@ SELECT has_function(
 );
 
 SELECT has_function(
-    'flight_recorder', 'what_happened_at',
+    'flight_recorder_reporting', 'what_happened_at',
     ARRAY['timestamptz', 'interval'],
     'what_happened_at function should exist'
 );
 
 SELECT has_function(
-    'flight_recorder', 'incident_timeline',
+    'flight_recorder_reporting', 'incident_timeline',
     ARRAY['timestamptz', 'timestamptz'],
     'incident_timeline function should exist'
 );
@@ -214,84 +214,84 @@ SELECT ok(
 -- Ensure function returns expected columns
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT requested_time FROM flight_recorder.what_happened_at(now())
+        SELECT requested_time FROM flight_recorder_reporting.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return requested_time column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT sample_before FROM flight_recorder.what_happened_at(now())
+        SELECT sample_before FROM flight_recorder_reporting.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return sample_before column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT sample_after FROM flight_recorder.what_happened_at(now())
+        SELECT sample_after FROM flight_recorder_reporting.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return sample_after column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT snapshot_before FROM flight_recorder.what_happened_at(now())
+        SELECT snapshot_before FROM flight_recorder_reporting.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return snapshot_before column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT snapshot_after FROM flight_recorder.what_happened_at(now())
+        SELECT snapshot_after FROM flight_recorder_reporting.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return snapshot_after column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT est_connections_active FROM flight_recorder.what_happened_at(now())
+        SELECT est_connections_active FROM flight_recorder_reporting.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return est_connections_active column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT events FROM flight_recorder.what_happened_at(now())
+        SELECT events FROM flight_recorder_reporting.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return events column as JSONB'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT confidence FROM flight_recorder.what_happened_at(now())
+        SELECT confidence FROM flight_recorder_reporting.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return confidence column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT confidence_score FROM flight_recorder.what_happened_at(now())
+        SELECT confidence_score FROM flight_recorder_reporting.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return confidence_score column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT data_quality_notes FROM flight_recorder.what_happened_at(now())
+        SELECT data_quality_notes FROM flight_recorder_reporting.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return data_quality_notes column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT recommendations FROM flight_recorder.what_happened_at(now())
+        SELECT recommendations FROM flight_recorder_reporting.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return recommendations column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT top_wait_events FROM flight_recorder.what_happened_at(now())
+        SELECT top_wait_events FROM flight_recorder_reporting.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return top_wait_events column'
 );
@@ -302,46 +302,46 @@ SELECT ok(
 
 -- Test that requested_time matches input
 SELECT is(
-    (SELECT requested_time FROM flight_recorder.what_happened_at('2024-01-01 10:00:00'::timestamptz)),
+    (SELECT requested_time FROM flight_recorder_reporting.what_happened_at('2024-01-01 10:00:00'::timestamptz)),
     '2024-01-01 10:00:00'::timestamptz,
     'what_happened_at should return the requested timestamp in requested_time'
 );
 
 -- Test that confidence_score is between 0 and 1
 SELECT ok(
-    (SELECT confidence_score FROM flight_recorder.what_happened_at(now()))
+    (SELECT confidence_score FROM flight_recorder_reporting.what_happened_at(now()))
         BETWEEN 0 AND 1,
     'what_happened_at confidence_score should be between 0 and 1'
 );
 
 -- Test that confidence level is one of expected values
 SELECT ok(
-    (SELECT confidence FROM flight_recorder.what_happened_at(now()))
+    (SELECT confidence FROM flight_recorder_reporting.what_happened_at(now()))
         IN ('high', 'medium', 'low', 'very_low'),
     'what_happened_at confidence should be high, medium, low, or very_low'
 );
 
 -- Test that events is valid JSONB array
 SELECT ok(
-    (SELECT jsonb_typeof(events) FROM flight_recorder.what_happened_at(now())) = 'array',
+    (SELECT jsonb_typeof(events) FROM flight_recorder_reporting.what_happened_at(now())) = 'array',
     'what_happened_at events should be a JSONB array'
 );
 
 -- Test that data_quality_notes is an array
 SELECT ok(
-    (SELECT data_quality_notes IS NOT NULL FROM flight_recorder.what_happened_at(now())),
+    (SELECT data_quality_notes IS NOT NULL FROM flight_recorder_reporting.what_happened_at(now())),
     'what_happened_at data_quality_notes should not be NULL'
 );
 
 -- Test that recommendations is an array
 SELECT ok(
-    (SELECT recommendations IS NOT NULL FROM flight_recorder.what_happened_at(now())),
+    (SELECT recommendations IS NOT NULL FROM flight_recorder_reporting.what_happened_at(now())),
     'what_happened_at recommendations should not be NULL'
 );
 
 -- Test custom context window
 SELECT ok(
-    (SELECT COUNT(*) FROM flight_recorder.what_happened_at(now(), '10 minutes'::interval)) = 1,
+    (SELECT COUNT(*) FROM flight_recorder_reporting.what_happened_at(now(), '10 minutes'::interval)) = 1,
     'what_happened_at should accept custom context_window parameter'
 );
 
@@ -352,7 +352,7 @@ SELECT ok(
 -- Ensure function returns expected columns
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT event_time FROM flight_recorder.incident_timeline(
+        SELECT event_time FROM flight_recorder_reporting.incident_timeline(
             now() - interval '1 hour', now()
         ) LIMIT 0
     ) sub) >= 0,
@@ -361,7 +361,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT event_type FROM flight_recorder.incident_timeline(
+        SELECT event_type FROM flight_recorder_reporting.incident_timeline(
             now() - interval '1 hour', now()
         ) LIMIT 0
     ) sub) >= 0,
@@ -370,7 +370,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT description FROM flight_recorder.incident_timeline(
+        SELECT description FROM flight_recorder_reporting.incident_timeline(
             now() - interval '1 hour', now()
         ) LIMIT 0
     ) sub) >= 0,
@@ -379,7 +379,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT details FROM flight_recorder.incident_timeline(
+        SELECT details FROM flight_recorder_reporting.incident_timeline(
             now() - interval '1 hour', now()
         ) LIMIT 0
     ) sub) >= 0,
@@ -395,7 +395,7 @@ SELECT ok(
 SELECT flight_recorder.snapshot();
 
 SELECT ok(
-    (SELECT COUNT(*) >= 0 FROM flight_recorder.incident_timeline(
+    (SELECT COUNT(*) >= 0 FROM flight_recorder_reporting.incident_timeline(
         now() - interval '1 hour', now()
     )),
     'incident_timeline should execute without error for recent time range'
@@ -404,7 +404,7 @@ SELECT ok(
 -- Test that all returned events are within the specified range
 SELECT ok(
     NOT EXISTS (
-        SELECT 1 FROM flight_recorder.incident_timeline(
+        SELECT 1 FROM flight_recorder_reporting.incident_timeline(
             now() - interval '1 hour', now()
         )
         WHERE event_time < now() - interval '1 hour'
@@ -416,7 +416,7 @@ SELECT ok(
 -- Test that event_type is one of expected values
 SELECT ok(
     NOT EXISTS (
-        SELECT 1 FROM flight_recorder.incident_timeline(
+        SELECT 1 FROM flight_recorder_reporting.incident_timeline(
             now() - interval '1 hour', now()
         )
         WHERE event_type NOT IN (
@@ -431,7 +431,7 @@ SELECT ok(
 -- Test that details is valid JSONB
 SELECT ok(
     NOT EXISTS (
-        SELECT 1 FROM flight_recorder.incident_timeline(
+        SELECT 1 FROM flight_recorder_reporting.incident_timeline(
             now() - interval '1 hour', now()
         )
         WHERE jsonb_typeof(details) != 'object'

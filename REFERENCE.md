@@ -1,12 +1,19 @@
-# pg-flight-recorder Reference
+# pg_flight_recorder Reference
+
+[![GitHub release](https://img.shields.io/github/v/release/dventimisupabase/pg-flight-recorder)](https://github.com/dventimisupabase/pg-flight-recorder/releases/latest)
+[![Test Suite](https://github.com/dventimisupabase/pg-flight-recorder/actions/workflows/test.yml/badge.svg)](https://github.com/dventimisupabase/pg-flight-recorder/actions/workflows/test.yml)
+[![Lint](https://github.com/dventimisupabase/pg-flight-recorder/actions/workflows/lint.yml/badge.svg)](https://github.com/dventimisupabase/pg-flight-recorder/actions/workflows/lint.yml)
 
 A PostgreSQL monitoring extension that continuously samples database state for incident analysis and capacity planning.
 
 ## Quick Start
 
 ```sql
--- Install
+-- Install core (tables, collection, scheduling)
 \i install.sql
+
+-- Install reporting & analysis (optional)
+\i reporting.sql
 
 -- Enable collection
 SELECT flight_recorder.enable();
@@ -15,7 +22,7 @@ SELECT flight_recorder.enable();
 SELECT * FROM flight_recorder.health_check();
 
 -- Generate diagnostic report
-SELECT flight_recorder.report('1 hour');
+SELECT flight_recorder_reporting.report('1 hour');
 ```
 
 ## Requirements
@@ -64,7 +71,12 @@ SELECT * FROM flight_recorder.get_current_profile();
 
 ## Functions
 
-### Analysis
+Functions are split across two files:
+
+- **`install.sql`** (core): Collection, control, ring buffer management, profiles, views
+- **`reporting.sql`** (optional): Analysis, anomaly detection, capacity planning, configuration analysis
+
+### Analysis (reporting.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -79,7 +91,7 @@ SELECT * FROM flight_recorder.get_current_profile();
 | `what_happened_at(timestamp)` | Point-in-time analysis |
 | `incident_timeline(start, end)` | Event timeline for incidents |
 
-### Anomaly Detection
+### Anomaly Detection (reporting.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -88,7 +100,7 @@ SELECT * FROM flight_recorder.get_current_profile();
 | `blast_radius(queryid)` | Analyze query impact |
 | `blast_radius_report(interval)` | Report on high-impact queries |
 
-### Capacity Planning
+### Capacity Planning (reporting.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -99,7 +111,7 @@ SELECT * FROM flight_recorder.get_current_profile();
 | `oid_consumption_rate(interval)` | OID usage rate |
 | `time_to_oid_exhaustion()` | Estimate OID exhaustion |
 
-### Configuration Analysis
+### Configuration Analysis (reporting.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -109,7 +121,7 @@ SELECT * FROM flight_recorder.get_current_profile();
 | `db_role_config_changes(start, end)` | Database/role config changes |
 | `db_role_config_summary()` | Current db/role overrides |
 
-### Control
+### Control (install.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -120,7 +132,7 @@ SELECT * FROM flight_recorder.get_current_profile();
 | `set_mode(mode)` | Set collection mode (normal/light/emergency/kill) |
 | `get_mode()` | Get current mode |
 
-### Ring Buffer Management
+### Ring Buffer Management (install.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -129,7 +141,7 @@ SELECT * FROM flight_recorder.get_current_profile();
 | `configure_ring_autovacuum(enabled)` | Toggle autovacuum on ring tables |
 | `validate_ring_configuration()` | Check ring buffer config |
 
-### Profile Management
+### Profile Management (install.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -139,6 +151,14 @@ SELECT * FROM flight_recorder.get_current_profile();
 | `get_current_profile()` | Current profile match |
 | `get_optimization_profiles()` | Ring buffer optimization presets |
 | `apply_optimization_profile(name)` | Apply ring buffer optimization |
+
+### Export (install.sql)
+
+| Function | Purpose |
+|----------|---------|
+| `_populate_relation_names()` | Populate OID-to-name lookup table for export |
+| `_safe_relname(oid)` | Resolve OID to name using `relation_names` table |
+| `_get_setting_from_snapshots(name, default)` | Get setting from captured `config_snapshots` |
 
 ## Views
 
@@ -186,8 +206,8 @@ SELECT * FROM flight_recorder.get_current_profile();
 
 - `snapshots` - System stats (WAL, checkpoints, I/O)
 - `statement_snapshots` - Query stats (from pg_stat_statements)
-- `table_snapshots` - Per-table stats
-- `index_snapshots` - Per-index stats
+- `table_snapshots` - Per-table stats (see note on deprecated columns)
+- `index_snapshots` - Per-index stats (see note on deprecated columns)
 - `config_snapshots` - PostgreSQL configuration
 - `db_role_config_snapshots` - Database/role config overrides
 - `replication_snapshots` - Replication state
@@ -197,6 +217,18 @@ SELECT * FROM flight_recorder.get_current_profile();
 
 - `config` - Flight Recorder configuration
 - `collection_stats` - Collection job metrics
+- `relation_names` - OID to relation name mappings (for offline analysis)
+
+### Deprecated Columns
+
+The following columns in `table_snapshots` and `index_snapshots` are **deprecated** and will be NULL in new data:
+
+| Table | Deprecated Columns | Use Instead |
+|-------|-------------------|-------------|
+| `table_snapshots` | `schemaname`, `relname` | `relid::regclass` or `relation_names` lookup |
+| `index_snapshots` | `schemaname`, `relname`, `indexrelname` | `relid::regclass`, `indexrelid::regclass` |
+
+This change eliminates joins to `pg_catalog` during collection, avoiding even `AccessShareLock`. Relation names are now derived on-the-fly when queried. Existing data with names is preserved.
 
 ## Safety Features
 
@@ -265,7 +297,7 @@ UPDATE flight_recorder.config SET value = '300' WHERE key = 'sample_interval_sec
 SELECT * FROM flight_recorder.health_check();
 
 -- Recent report
-SELECT flight_recorder.report('1 hour');
+SELECT flight_recorder_reporting.report('1 hour');
 ```
 
 ### Incident Response
@@ -275,13 +307,13 @@ SELECT flight_recorder.report('1 hour');
 SELECT * FROM flight_recorder.apply_profile('troubleshooting');
 
 -- Analyze specific time window
-SELECT flight_recorder.report(
+SELECT flight_recorder_reporting.report(
     '2024-01-15 14:00'::timestamptz,
     '2024-01-15 15:00'::timestamptz
 );
 
 -- Point-in-time analysis
-SELECT * FROM flight_recorder.what_happened_at('2024-01-15 14:32');
+SELECT * FROM flight_recorder_reporting.what_happened_at('2024-01-15 14:32');
 
 -- Return to normal after incident
 SELECT * FROM flight_recorder.apply_profile('default');
@@ -291,49 +323,47 @@ SELECT * FROM flight_recorder.apply_profile('default');
 
 ```sql
 -- Find slow queries
-SELECT * FROM flight_recorder.detect_regressions('1 day');
+SELECT * FROM flight_recorder_reporting.detect_regressions('1 day');
 
 -- Find query storms
-SELECT * FROM flight_recorder.detect_query_storms('1 hour');
+SELECT * FROM flight_recorder_reporting.detect_query_storms('1 hour');
 
 -- Table hotspots
-SELECT * FROM flight_recorder.table_hotspots(now() - '1 day', now());
+SELECT * FROM flight_recorder_reporting.table_hotspots(now() - '1 day', now());
 
 -- Index efficiency
-SELECT * FROM flight_recorder.index_efficiency(now() - '1 day', now());
+SELECT * FROM flight_recorder_reporting.index_efficiency(now() - '1 day', now());
 ```
 
 ### Capacity Planning
 
 ```sql
 -- Resource summary
-SELECT * FROM flight_recorder.capacity_summary('7 days');
+SELECT * FROM flight_recorder_reporting.capacity_summary('7 days');
 
 -- Full quarterly review
-SELECT * FROM flight_recorder.quarterly_review();
+SELECT * FROM flight_recorder_reporting.quarterly_review();
 
 -- View capacity dashboard
-SELECT * FROM flight_recorder.capacity_dashboard;
+SELECT * FROM flight_recorder_reporting.capacity_dashboard;
 ```
 
 ## Upgrading
 
-```sql
--- From existing installation
-\i migrations/upgrade.sql
+Re-running `install.sql` is safe — it uses `CREATE OR REPLACE` and `IF NOT EXISTS`, so it updates functions and views while preserving all data.
 
--- Check version
-SELECT value FROM flight_recorder.config WHERE key = 'schema_version';
+```bash
+psql --single-transaction -f install.sql
 ```
 
 ## Uninstalling
 
-```sql
--- Disable jobs first
-SELECT flight_recorder.disable();
+```bash
+# Remove everything (stops jobs, drops all schemas and data)
+psql --single-transaction -f uninstall.sql
 
--- Drop schema
-DROP SCHEMA flight_recorder CASCADE;
+# Remove only reporting functions (keeps core + data)
+psql --single-transaction -f uninstall_reporting.sql
 ```
 
 ## Testing

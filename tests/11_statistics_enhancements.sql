@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Targeted Statistics Enhancements
+-- pg_flight_recorder pgTAP Tests - Targeted Statistics Enhancements
 -- =============================================================================
 -- Tests: Activity session/transaction age, vacuum progress, WAL archiver status
 -- Test count: 23

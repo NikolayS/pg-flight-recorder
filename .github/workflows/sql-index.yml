@@ -6,6 +6,7 @@ on:
     paths:
       - '**.sql'
       - 'tools/sql-index'
+      - 'tools/setup-sql-index'
       - 'tools/Dockerfile.pglast'
       - '.github/workflows/sql-index.yml'
   workflow_dispatch:

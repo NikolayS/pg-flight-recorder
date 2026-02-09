@@ -1,7 +1,7 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Pathological Data Generators
+-- pg_flight_recorder pgTAP Tests - Pathological Data Generators
 -- =============================================================================
--- Tests: Generate real-world pathologies and verify pg-flight-recorder detects them
+-- Tests: Generate real-world pathologies and verify pg_flight_recorder detects them
 -- Purpose: Validate that diagnostic playbooks work end-to-end
 -- Based on: DIAGNOSTIC_PLAYBOOKS.md
 -- Sections: All 9 DIAGNOSTIC_PLAYBOOKS.md pathologies
@@ -206,7 +206,7 @@ BEGIN
 
     -- Check if anomaly_report can run on this time range
     SELECT count(*) INTO v_anomaly_count
-    FROM flight_recorder.anomaly_report(v_start_time, v_end_time);
+    FROM flight_recorder_reporting.anomaly_report(v_start_time, v_end_time);
 
     -- Store result for test
     CREATE TEMP TABLE IF NOT EXISTS pathology_test_results (test_name text, result boolean);
@@ -667,7 +667,7 @@ $$;
 
 -- Test that summary_report() function works for time range analysis
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.summary_report(
+    $$SELECT * FROM flight_recorder_reporting.summary_report(
         current_setting('pathology.historical_start')::timestamptz,
         current_setting('pathology.historical_end')::timestamptz
     )$$,
@@ -852,7 +852,7 @@ SELECT lives_ok(
 -- Test that anomaly_report can run and check for checkpoint issues
 SELECT lives_ok(
     $$SELECT anomaly_type, severity, description
-      FROM flight_recorder.anomaly_report(
+      FROM flight_recorder_reporting.anomaly_report(
           now() - interval '1 minute',
           now()
       )

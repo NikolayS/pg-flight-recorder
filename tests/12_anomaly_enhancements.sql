@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Anomaly Detection Enhancements (v2.6)
+-- pg_flight_recorder pgTAP Tests - Anomaly Detection Enhancements (v2.6)
 -- =============================================================================
 -- Tests: New anomaly types, conflict columns, recent_idle_in_transaction view
 -- Test count: 25
@@ -108,42 +108,42 @@ SELECT lives_ok(
 -- Test that anomaly_report function exists and returns expected columns
 SELECT lives_ok(
     $$SELECT anomaly_type, severity, description, metric_value, threshold, recommendation
-      FROM flight_recorder.anomaly_report(now() - interval '1 hour', now())
+      FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now())
       LIMIT 1$$,
     'anomaly_report should be queryable with expected columns'
 );
 
 -- Test IDLE_IN_TRANSACTION anomaly type is recognized
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.anomaly_report(now() - interval '1 hour', now())
+    $$SELECT * FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now())
       WHERE anomaly_type = 'IDLE_IN_TRANSACTION'$$,
     'anomaly_report should support IDLE_IN_TRANSACTION type'
 );
 
 -- Test DEAD_TUPLE_ACCUMULATION anomaly type is recognized
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.anomaly_report(now() - interval '1 hour', now())
+    $$SELECT * FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now())
       WHERE anomaly_type = 'DEAD_TUPLE_ACCUMULATION'$$,
     'anomaly_report should support DEAD_TUPLE_ACCUMULATION type'
 );
 
 -- Test VACUUM_STARVATION anomaly type is recognized
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.anomaly_report(now() - interval '1 hour', now())
+    $$SELECT * FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now())
       WHERE anomaly_type = 'VACUUM_STARVATION'$$,
     'anomaly_report should support VACUUM_STARVATION type'
 );
 
 -- Test CONNECTION_LEAK anomaly type is recognized
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.anomaly_report(now() - interval '1 hour', now())
+    $$SELECT * FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now())
       WHERE anomaly_type = 'CONNECTION_LEAK'$$,
     'anomaly_report should support CONNECTION_LEAK type'
 );
 
 -- Test REPLICATION_LAG_GROWING anomaly type is recognized
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.anomaly_report(now() - interval '1 hour', now())
+    $$SELECT * FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now())
       WHERE anomaly_type = 'REPLICATION_LAG_GROWING'$$,
     'anomaly_report should support REPLICATION_LAG_GROWING type'
 );
@@ -152,7 +152,7 @@ SELECT lives_ok(
 SELECT results_eq(
     $$SELECT count(*)::integer FROM (
         SELECT anomaly_type, severity, description, metric_value, threshold, recommendation
-        FROM flight_recorder.anomaly_report(now() - interval '1 hour', now())
+        FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now())
         LIMIT 0
       ) t$$,
     ARRAY[0],

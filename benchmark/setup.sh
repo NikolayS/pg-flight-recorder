@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Setup benchmark environment for pg-flight-recorder
+# Setup benchmark environment for pg_flight_recorder
 
 set -euo pipefail
 
@@ -214,7 +214,7 @@ main() {
                 ;;
             --help)
                 cat <<EOF
-Setup benchmark environment for pg-flight-recorder
+Setup benchmark environment for pg_flight_recorder
 
 Usage: $0 [OPTIONS]
 
@@ -243,7 +243,7 @@ EOF
         esac
     done
 
-    log "=== pg-flight-recorder Benchmark Setup ==="
+    log "=== pg_flight_recorder Benchmark Setup ==="
     log ""
 
     check_prerequisites

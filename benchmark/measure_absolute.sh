@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Measure absolute costs of pg-flight-recorder collections
+# Measure absolute costs of pg_flight_recorder collections
 # This is the PRIMARY benchmark - measures constant costs independent of load
 
 set -euo pipefail
@@ -24,13 +24,13 @@ info() {
 # Check prerequisites
 if ! psql -c "SELECT flight_recorder.get_mode()" &> /dev/null; then
     echo "Error: Flight recorder not installed" >&2
-    echo "Run: psql -f install.sql" >&2
+    echo "Run: psql --single-transaction -f install.sql" >&2
     exit 1
 fi
 
 mkdir -p "$SCRIPT_DIR/results"
 
-log "=== Measuring Absolute Costs of pg-flight-recorder ==="
+log "=== Measuring Absolute Costs of pg_flight_recorder ==="
 log "Iterations: $ITERATIONS"
 log "Output: $OUTPUT_FILE"
 log ""

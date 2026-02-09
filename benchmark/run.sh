@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run pg-flight-recorder benchmarks
+# Run pg_flight_recorder benchmarks
 
 set -euo pipefail
 
@@ -216,7 +216,7 @@ main() {
                 ;;
             --help)
                 cat <<EOF
-Run pg-flight-recorder benchmarks
+Run pg_flight_recorder benchmarks
 
 Usage: $0 [OPTIONS]
 
@@ -256,13 +256,13 @@ EOF
     # Create results directory
     mkdir -p "$RESULTS_DIR"
 
-    log "=== pg-flight-recorder Benchmark Runner ==="
+    log "=== pg_flight_recorder Benchmark Runner ==="
     log "Results directory: $RESULTS_DIR"
     log ""
 
     # Check prerequisites
     if ! check_flight_recorder; then
-        error "Install flight recorder first: psql -f install.sql"
+        error "Install flight recorder first: psql --single-transaction -f install.sql"
         exit 1
     fi
 

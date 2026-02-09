@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Performance Regression Detection
+-- pg_flight_recorder pgTAP Tests - Performance Regression Detection
 -- =============================================================================
 -- Tests: Performance regression detection function and configuration
 -- Test count: 11
@@ -58,12 +58,12 @@ SELECT ok(
 -- =============================================================================
 
 SELECT has_function(
-    'flight_recorder', 'detect_regressions', ARRAY['interval', 'numeric'],
+    'flight_recorder_reporting', 'detect_regressions', ARRAY['interval', 'numeric'],
     'detect_regressions(interval, numeric) function should exist'
 );
 
 SELECT has_function(
-    'flight_recorder', '_diagnose_regression_causes', ARRAY['bigint'],
+    'flight_recorder_reporting', '_diagnose_regression_causes', ARRAY['bigint'],
     '_diagnose_regression_causes(bigint) function should exist'
 );
 
@@ -73,13 +73,13 @@ SELECT has_function(
 
 -- Test detect_regressions executes without error
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.detect_regressions()$$,
+    $$SELECT * FROM flight_recorder_reporting.detect_regressions()$$,
     'detect_regressions() should execute without error'
 );
 
 -- Test _diagnose_regression_causes executes without error
 SELECT lives_ok(
-    $$SELECT flight_recorder._diagnose_regression_causes(12345)$$,
+    $$SELECT flight_recorder_reporting._diagnose_regression_causes(12345)$$,
     '_diagnose_regression_causes() should execute without error'
 );
 

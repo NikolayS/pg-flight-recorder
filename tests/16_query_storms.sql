@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Query Storm Detection
+-- pg_flight_recorder pgTAP Tests - Query Storm Detection
 -- =============================================================================
 -- Tests: Query storm detection function and configuration
 -- Test count: 8
@@ -53,7 +53,7 @@ SELECT ok(
 -- =============================================================================
 
 SELECT has_function(
-    'flight_recorder', 'detect_query_storms', ARRAY['interval', 'numeric'],
+    'flight_recorder_reporting', 'detect_query_storms', ARRAY['interval', 'numeric'],
     'detect_query_storms(interval, numeric) function should exist'
 );
 
@@ -63,7 +63,7 @@ SELECT has_function(
 
 -- Test detect_query_storms executes without error
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.detect_query_storms()$$,
+    $$SELECT * FROM flight_recorder_reporting.detect_query_storms()$$,
     'detect_query_storms() should execute without error'
 );
 

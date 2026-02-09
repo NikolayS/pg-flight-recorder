@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - Blast Radius Analysis
+-- pg_flight_recorder pgTAP Tests - Blast Radius Analysis
 -- =============================================================================
 -- Tests: blast_radius, blast_radius_report
 -- Test count: 45
@@ -22,13 +22,13 @@ UPDATE flight_recorder.config SET value = 'false' WHERE key = 'collection_jitter
 -- =============================================================================
 
 SELECT has_function(
-    'flight_recorder', 'blast_radius',
+    'flight_recorder_reporting', 'blast_radius',
     ARRAY['timestamptz', 'timestamptz'],
     'blast_radius function should exist'
 );
 
 SELECT has_function(
-    'flight_recorder', 'blast_radius_report',
+    'flight_recorder_reporting', 'blast_radius_report',
     ARRAY['timestamptz', 'timestamptz'],
     'blast_radius_report function should exist'
 );
@@ -40,7 +40,7 @@ SELECT has_function(
 -- Test time window columns
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT incident_start FROM flight_recorder.blast_radius(
+        SELECT incident_start FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -49,7 +49,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT incident_end FROM flight_recorder.blast_radius(
+        SELECT incident_end FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -58,7 +58,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT duration_seconds FROM flight_recorder.blast_radius(
+        SELECT duration_seconds FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -68,7 +68,7 @@ SELECT ok(
 -- Test lock impact columns
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT blocked_sessions_total FROM flight_recorder.blast_radius(
+        SELECT blocked_sessions_total FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -77,7 +77,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT blocked_sessions_max_concurrent FROM flight_recorder.blast_radius(
+        SELECT blocked_sessions_max_concurrent FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -86,7 +86,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT max_block_duration FROM flight_recorder.blast_radius(
+        SELECT max_block_duration FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -95,7 +95,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT avg_block_duration FROM flight_recorder.blast_radius(
+        SELECT avg_block_duration FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -104,7 +104,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT lock_types FROM flight_recorder.blast_radius(
+        SELECT lock_types FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -114,7 +114,7 @@ SELECT ok(
 -- Test query degradation columns
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT degraded_queries_count FROM flight_recorder.blast_radius(
+        SELECT degraded_queries_count FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -123,7 +123,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT degraded_queries FROM flight_recorder.blast_radius(
+        SELECT degraded_queries FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -133,7 +133,7 @@ SELECT ok(
 -- Test connection impact columns
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT connections_before FROM flight_recorder.blast_radius(
+        SELECT connections_before FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -142,7 +142,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT connections_during_avg FROM flight_recorder.blast_radius(
+        SELECT connections_during_avg FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -151,7 +151,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT connections_during_max FROM flight_recorder.blast_radius(
+        SELECT connections_during_max FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -160,7 +160,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT connection_increase_pct FROM flight_recorder.blast_radius(
+        SELECT connection_increase_pct FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -170,7 +170,7 @@ SELECT ok(
 -- Test application impact column
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT affected_applications FROM flight_recorder.blast_radius(
+        SELECT affected_applications FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -180,7 +180,7 @@ SELECT ok(
 -- Test wait event column
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT top_wait_events FROM flight_recorder.blast_radius(
+        SELECT top_wait_events FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -190,7 +190,7 @@ SELECT ok(
 -- Test throughput columns
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT tps_before FROM flight_recorder.blast_radius(
+        SELECT tps_before FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -199,7 +199,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT tps_during FROM flight_recorder.blast_radius(
+        SELECT tps_during FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -208,7 +208,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT tps_change_pct FROM flight_recorder.blast_radius(
+        SELECT tps_change_pct FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -218,7 +218,7 @@ SELECT ok(
 -- Test summary columns
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT severity FROM flight_recorder.blast_radius(
+        SELECT severity FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -227,7 +227,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT impact_summary FROM flight_recorder.blast_radius(
+        SELECT impact_summary FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -236,7 +236,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT recommendations FROM flight_recorder.blast_radius(
+        SELECT recommendations FROM flight_recorder_reporting.blast_radius(
             now() - interval '1 hour', now()
         )
     ) sub) >= 0,
@@ -253,7 +253,7 @@ SELECT flight_recorder.sample();
 
 -- Test that incident_start matches input
 SELECT is(
-    (SELECT incident_start FROM flight_recorder.blast_radius(
+    (SELECT incident_start FROM flight_recorder_reporting.blast_radius(
         '2024-01-01 10:00:00'::timestamptz,
         '2024-01-01 11:00:00'::timestamptz
     )),
@@ -263,7 +263,7 @@ SELECT is(
 
 -- Test that incident_end matches input
 SELECT is(
-    (SELECT incident_end FROM flight_recorder.blast_radius(
+    (SELECT incident_end FROM flight_recorder_reporting.blast_radius(
         '2024-01-01 10:00:00'::timestamptz,
         '2024-01-01 11:00:00'::timestamptz
     )),
@@ -273,7 +273,7 @@ SELECT is(
 
 -- Test duration calculation (1 hour = 3600 seconds)
 SELECT is(
-    (SELECT duration_seconds FROM flight_recorder.blast_radius(
+    (SELECT duration_seconds FROM flight_recorder_reporting.blast_radius(
         '2024-01-01 10:00:00'::timestamptz,
         '2024-01-01 11:00:00'::timestamptz
     )),
@@ -283,7 +283,7 @@ SELECT is(
 
 -- Test severity is valid value
 SELECT ok(
-    (SELECT severity FROM flight_recorder.blast_radius(
+    (SELECT severity FROM flight_recorder_reporting.blast_radius(
         now() - interval '1 hour', now()
     )) IN ('low', 'medium', 'high', 'critical'),
     'blast_radius severity should be low, medium, high, or critical'
@@ -291,7 +291,7 @@ SELECT ok(
 
 -- Test lock_types is valid JSONB array
 SELECT ok(
-    (SELECT jsonb_typeof(lock_types) FROM flight_recorder.blast_radius(
+    (SELECT jsonb_typeof(lock_types) FROM flight_recorder_reporting.blast_radius(
         now() - interval '1 hour', now()
     )) = 'array',
     'blast_radius lock_types should be a JSONB array'
@@ -299,7 +299,7 @@ SELECT ok(
 
 -- Test degraded_queries is valid JSONB array
 SELECT ok(
-    (SELECT jsonb_typeof(degraded_queries) FROM flight_recorder.blast_radius(
+    (SELECT jsonb_typeof(degraded_queries) FROM flight_recorder_reporting.blast_radius(
         now() - interval '1 hour', now()
     )) = 'array',
     'blast_radius degraded_queries should be a JSONB array'
@@ -307,7 +307,7 @@ SELECT ok(
 
 -- Test affected_applications is valid JSONB array
 SELECT ok(
-    (SELECT jsonb_typeof(affected_applications) FROM flight_recorder.blast_radius(
+    (SELECT jsonb_typeof(affected_applications) FROM flight_recorder_reporting.blast_radius(
         now() - interval '1 hour', now()
     )) = 'array',
     'blast_radius affected_applications should be a JSONB array'
@@ -315,7 +315,7 @@ SELECT ok(
 
 -- Test top_wait_events is valid JSONB array
 SELECT ok(
-    (SELECT jsonb_typeof(top_wait_events) FROM flight_recorder.blast_radius(
+    (SELECT jsonb_typeof(top_wait_events) FROM flight_recorder_reporting.blast_radius(
         now() - interval '1 hour', now()
     )) = 'array',
     'blast_radius top_wait_events should be a JSONB array'
@@ -323,7 +323,7 @@ SELECT ok(
 
 -- Test impact_summary is an array
 SELECT ok(
-    (SELECT impact_summary IS NOT NULL FROM flight_recorder.blast_radius(
+    (SELECT impact_summary IS NOT NULL FROM flight_recorder_reporting.blast_radius(
         now() - interval '1 hour', now()
     )),
     'blast_radius impact_summary should not be NULL'
@@ -331,7 +331,7 @@ SELECT ok(
 
 -- Test recommendations is an array
 SELECT ok(
-    (SELECT recommendations IS NOT NULL FROM flight_recorder.blast_radius(
+    (SELECT recommendations IS NOT NULL FROM flight_recorder_reporting.blast_radius(
         now() - interval '1 hour', now()
     )),
     'blast_radius recommendations should not be NULL'
@@ -339,7 +339,7 @@ SELECT ok(
 
 -- Test blocked_sessions_total is non-negative
 SELECT ok(
-    (SELECT blocked_sessions_total >= 0 FROM flight_recorder.blast_radius(
+    (SELECT blocked_sessions_total >= 0 FROM flight_recorder_reporting.blast_radius(
         now() - interval '1 hour', now()
     )),
     'blast_radius blocked_sessions_total should be non-negative'
@@ -347,7 +347,7 @@ SELECT ok(
 
 -- Test degraded_queries_count is non-negative
 SELECT ok(
-    (SELECT degraded_queries_count >= 0 FROM flight_recorder.blast_radius(
+    (SELECT degraded_queries_count >= 0 FROM flight_recorder_reporting.blast_radius(
         now() - interval '1 hour', now()
     )),
     'blast_radius degraded_queries_count should be non-negative'
@@ -359,7 +359,7 @@ SELECT ok(
 
 -- Test that severity is low when no issues (using a time range with no data)
 SELECT ok(
-    (SELECT severity FROM flight_recorder.blast_radius(
+    (SELECT severity FROM flight_recorder_reporting.blast_radius(
         '1990-01-01 00:00:00'::timestamptz,
         '1990-01-01 01:00:00'::timestamptz
     )) = 'low',
@@ -368,7 +368,7 @@ SELECT ok(
 
 -- Test that impact_summary contains at least one entry
 SELECT ok(
-    (SELECT array_length(impact_summary, 1) >= 1 FROM flight_recorder.blast_radius(
+    (SELECT array_length(impact_summary, 1) >= 1 FROM flight_recorder_reporting.blast_radius(
         now() - interval '1 hour', now()
     )),
     'blast_radius impact_summary should contain at least one entry'
@@ -376,7 +376,7 @@ SELECT ok(
 
 -- Test that recommendations contains at least one entry
 SELECT ok(
-    (SELECT array_length(recommendations, 1) >= 1 FROM flight_recorder.blast_radius(
+    (SELECT array_length(recommendations, 1) >= 1 FROM flight_recorder_reporting.blast_radius(
         now() - interval '1 hour', now()
     )),
     'blast_radius recommendations should contain at least one entry'
@@ -384,7 +384,7 @@ SELECT ok(
 
 -- Test that connection metrics are reasonable
 SELECT ok(
-    (SELECT connections_during_avg >= 0 FROM flight_recorder.blast_radius(
+    (SELECT connections_during_avg >= 0 FROM flight_recorder_reporting.blast_radius(
         now() - interval '1 hour', now()
     )),
     'blast_radius connections_during_avg should be non-negative'
@@ -392,7 +392,7 @@ SELECT ok(
 
 -- Test that TPS metrics handle no data gracefully
 SELECT ok(
-    (SELECT tps_before IS NOT NULL FROM flight_recorder.blast_radius(
+    (SELECT tps_before IS NOT NULL FROM flight_recorder_reporting.blast_radius(
         now() - interval '1 hour', now()
     )),
     'blast_radius tps_before should not be NULL (may be 0)'
@@ -404,7 +404,7 @@ SELECT ok(
 
 -- Test that report returns TEXT
 SELECT ok(
-    (SELECT pg_typeof(flight_recorder.blast_radius_report(
+    (SELECT pg_typeof(flight_recorder_reporting.blast_radius_report(
         now() - interval '1 hour', now()
     ))::text = 'text'),
     'blast_radius_report should return TEXT type'
@@ -412,7 +412,7 @@ SELECT ok(
 
 -- Test that report contains header
 SELECT ok(
-    (SELECT flight_recorder.blast_radius_report(
+    (SELECT flight_recorder_reporting.blast_radius_report(
         now() - interval '1 hour', now()
     ) LIKE '%BLAST RADIUS ANALYSIS REPORT%'),
     'blast_radius_report should contain report header'
@@ -420,7 +420,7 @@ SELECT ok(
 
 -- Test that report contains severity indicator
 SELECT ok(
-    (SELECT flight_recorder.blast_radius_report(
+    (SELECT flight_recorder_reporting.blast_radius_report(
         now() - interval '1 hour', now()
     ) LIKE '%Severity:%'),
     'blast_radius_report should contain severity indicator'
@@ -428,7 +428,7 @@ SELECT ok(
 
 -- Test that report contains recommendations section
 SELECT ok(
-    (SELECT flight_recorder.blast_radius_report(
+    (SELECT flight_recorder_reporting.blast_radius_report(
         now() - interval '1 hour', now()
     ) LIKE '%RECOMMENDATIONS%'),
     'blast_radius_report should contain recommendations section'

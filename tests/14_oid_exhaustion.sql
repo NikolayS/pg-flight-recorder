@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg-flight-recorder pgTAP Tests - OID Exhaustion Metrics
+-- pg_flight_recorder pgTAP Tests - OID Exhaustion Metrics
 -- =============================================================================
 -- Tests: OID exhaustion columns exist and are populated with reasonable values
 -- Test count: 14
@@ -84,14 +84,14 @@ SELECT ok(
 
 -- Verify anomaly_report() runs without error when checking OID exhaustion
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.anomaly_report(now() - interval '1 hour', now())$$,
+    $$SELECT * FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now())$$,
     'anomaly_report() should run without error with OID exhaustion checks'
 );
 
 -- In a fresh test database, OID usage should be low, so no OID exhaustion anomalies expected
 SELECT ok(
     NOT EXISTS (
-        SELECT 1 FROM flight_recorder.anomaly_report(now() - interval '1 hour', now())
+        SELECT 1 FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now())
         WHERE anomaly_type = 'OID_EXHAUSTION_RISK'
     ),
     'Fresh database should not trigger OID exhaustion anomalies'
@@ -103,20 +103,20 @@ SELECT ok(
 
 -- Verify oid_consumption_rate function exists and runs
 SELECT lives_ok(
-    $$SELECT flight_recorder.oid_consumption_rate('1 hour'::interval)$$,
+    $$SELECT flight_recorder_reporting.oid_consumption_rate('1 hour'::interval)$$,
     'oid_consumption_rate() should run without error'
 );
 
 -- Verify time_to_oid_exhaustion function exists and runs
 SELECT lives_ok(
-    $$SELECT flight_recorder.time_to_oid_exhaustion()$$,
+    $$SELECT flight_recorder_reporting.time_to_oid_exhaustion()$$,
     'time_to_oid_exhaustion() should run without error'
 );
 
 -- Rate returns NULL when insufficient data or non-negative when data exists
 SELECT ok(
-    (SELECT flight_recorder.oid_consumption_rate('1 hour'::interval)) IS NULL
-    OR (SELECT flight_recorder.oid_consumption_rate('1 hour'::interval)) >= 0,
+    (SELECT flight_recorder_reporting.oid_consumption_rate('1 hour'::interval)) IS NULL
+    OR (SELECT flight_recorder_reporting.oid_consumption_rate('1 hour'::interval)) >= 0,
     'oid_consumption_rate() should return NULL or non-negative value'
 );
 
@@ -125,8 +125,8 @@ SELECT flight_recorder.snapshot();
 
 -- After multiple snapshots, rate should still be NULL or non-negative
 SELECT ok(
-    (SELECT flight_recorder.oid_consumption_rate('1 hour'::interval)) IS NULL
-    OR (SELECT flight_recorder.oid_consumption_rate('1 hour'::interval)) >= 0,
+    (SELECT flight_recorder_reporting.oid_consumption_rate('1 hour'::interval)) IS NULL
+    OR (SELECT flight_recorder_reporting.oid_consumption_rate('1 hour'::interval)) >= 0,
     'oid_consumption_rate() should return NULL or non-negative value after multiple snapshots'
 );
 
