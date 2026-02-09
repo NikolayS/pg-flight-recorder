@@ -57,23 +57,11 @@ jobs:
       - name: Prepare reporting extension files
         run: |
           VER="${{ steps.version.outputs.version }}"
-          mkdir -p pkg_reporting
-          cp reporting.sql "pkg_reporting/pg_flight_recorder_reporting--${VER}.sql"
-          cp pg_flight_recorder_reporting.control pkg_reporting/
-          sed -i "s/^default_version = .*/default_version = '${VER}'/" pkg_reporting/pg_flight_recorder_reporting.control
-
-          # dbdev requires a README.md in the package directory
-          cat > pkg_reporting/README.md <<'READMEEOF'
-          # pg_flight_recorder_reporting
-
-          Reporting and analysis functions for [pg_flight_recorder](https://database.dev/dventimi/pg_flight_recorder).
-
-          Requires `pg_flight_recorder` core to be installed first.
-          READMEEOF
-          sed -i 's/^ *//' pkg_reporting/README.md
+          cp reporting.sql "reporting/pg_flight_recorder_reporting--${VER}.sql"
+          sed -i "s/^default_version = .*/default_version = '${VER}'/" reporting/pg_flight_recorder_reporting.control
 
           # Safety: verify dbdev size limit
-          SIZE=$(wc -c < "pkg_reporting/pg_flight_recorder_reporting--${VER}.sql")
+          SIZE=$(wc -c < "reporting/pg_flight_recorder_reporting--${VER}.sql")
           echo "Reporting package size: ${SIZE} chars"
           if [ "$SIZE" -gt 250000 ]; then
             echo "ERROR: reporting.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
@@ -95,11 +83,7 @@ jobs:
           printf '[registries.dbdev]\ntoken = "%s"\n' "$DBDEV_TOKEN" > ~/.dbdev/credentials.toml
 
       - name: Publish core package
-        run: |
-          # Hide reporting control file so dbdev sees only the core one
-          rm pg_flight_recorder_reporting.control
-          dbdev publish
+        run: dbdev publish
 
       - name: Publish reporting package
-        run: |
-          cd pkg_reporting && dbdev publish
+        run: cd reporting && dbdev publish
