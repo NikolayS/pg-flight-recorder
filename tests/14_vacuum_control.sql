@@ -500,20 +500,20 @@ SELECT ok(
 
 -- Test anomaly_report includes vacuum control anomalies (structure exists)
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.anomaly_report(now() - interval '1 hour', now())
+    $$SELECT * FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now())
       WHERE anomaly_type LIKE 'VACUUM_CONTROL%'$$,
     'anomaly_report should be queryable for VACUUM_CONTROL anomalies'
 );
 
 -- Test report function still works
 SELECT lives_ok(
-    $$SELECT flight_recorder.report('1 hour')$$,
+    $$SELECT flight_recorder_reporting.report('1 hour')$$,
     'report function should still work after vacuum control additions'
 );
 
 -- Test report includes vacuum control section (by checking length increased)
 SELECT ok(
-    (SELECT length(flight_recorder.report('1 hour')) > 0),
+    (SELECT length(flight_recorder_reporting.report('1 hour')) > 0),
     'report should return content'
 );
 
