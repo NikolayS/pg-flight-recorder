@@ -31,7 +31,9 @@ That's it. It runs automatically. The report tells you what happened.
 ```bash
 # Remove everything (destructive)
 psql -f uninstall.sql
+```
 
+```bash
 # Remove only reporting functions (keeps core + data)
 psql -f uninstall_reporting.sql
 ```
@@ -43,10 +45,14 @@ With default retention: ~2.5GB uncompressed, ~150MB compressed.
 ```bash
 # Without compression
 pg_dump -d your_database -n flight_recorder --data-only -f flight_recorder_data.sql
+```
 
+```bash
 # With compression (PostgreSQL 16+)
 pg_dump -d your_database -n flight_recorder --data-only --compress=gzip:9 -f flight_recorder_data.sql.gz
+```
 
+```bash
 # With compression (PostgreSQL 15)
 pg_dump -d your_database -n flight_recorder --data-only | gzip > flight_recorder_data.sql.gz
 ```
