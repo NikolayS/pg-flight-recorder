@@ -1,4 +1,3 @@
-BEGIN;
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
@@ -5528,4 +5527,3 @@ BEGIN
     RAISE NOTICE '';
 END;
 $$;
-COMMIT;

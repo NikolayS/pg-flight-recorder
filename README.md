@@ -12,7 +12,7 @@ Download from [GitHub Releases](https://github.com/dventimisupabase/pg-flight-re
 
 ```bash
 # Core (tables, collection, scheduling)
-psql -f install.sql
+psql --single-transaction -f install.sql
 
 # Reporting & analysis (optional)
 psql -f reporting.sql

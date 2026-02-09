@@ -353,7 +353,7 @@ SELECT * FROM flight_recorder_reporting.capacity_dashboard;
 Re-running `install.sql` is safe — it uses `CREATE OR REPLACE` and `IF NOT EXISTS`, so it updates functions and views while preserving all data.
 
 ```bash
-psql -f install.sql
+psql --single-transaction -f install.sql
 ```
 
 ## Uninstalling
