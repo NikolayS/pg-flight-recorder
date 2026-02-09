@@ -54,10 +54,10 @@ run_single_version() {
     $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS pg_cron;" > /dev/null
 
     echo "Installing pg_flight_recorder..."
-    $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres -f /install.sql > /dev/null
+    $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres --single-transaction -f /install.sql > /dev/null
 
     echo "Installing reporting functions..."
-    $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres -f /reporting.sql > /dev/null
+    $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres --single-transaction -f /reporting.sql > /dev/null
 
     echo "Installing pgTAP extension..."
     $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS pgtap;" > /dev/null
@@ -107,8 +107,8 @@ run_all_parallel() {
     for service in postgres15 postgres16 postgres17; do
         (
             $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS pg_cron;" > /dev/null
-            $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres -f /install.sql > /dev/null
-            $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres -f /reporting.sql > /dev/null
+            $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres --single-transaction -f /install.sql > /dev/null
+            $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres --single-transaction -f /reporting.sql > /dev/null
             $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS pgtap;" > /dev/null
             $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres -c "SELECT flight_recorder.disable();" > /dev/null
         ) &

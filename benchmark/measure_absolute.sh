@@ -24,7 +24,7 @@ info() {
 # Check prerequisites
 if ! psql -c "SELECT flight_recorder.get_mode()" &> /dev/null; then
     echo "Error: Flight recorder not installed" >&2
-    echo "Run: psql -f install.sql" >&2
+    echo "Run: psql --single-transaction -f install.sql" >&2
     exit 1
 fi
 

@@ -5523,7 +5523,7 @@ BEGIN
     RAISE NOTICE '  - flight_recorder.recent_replication (replication lag, last 2 hours)';
     RAISE NOTICE '';
     RAISE NOTICE 'For analysis & reporting functions (anomaly detection, capacity planning, etc.):';
-    RAISE NOTICE '  psql -f reporting.sql';
+    RAISE NOTICE '  psql --single-transaction -f reporting.sql';
     RAISE NOTICE '';
 END;
 $$;

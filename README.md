@@ -30,12 +30,12 @@ That's it. It runs automatically. The report tells you what happened.
 
 ```bash
 # Remove everything (destructive)
-psql -f uninstall.sql
+psql --single-transaction -f uninstall.sql
 ```
 
 ```bash
 # Remove only reporting functions (keeps core + data)
-psql -f uninstall_reporting.sql
+psql --single-transaction -f uninstall_reporting.sql
 ```
 
 ## Export

@@ -4,7 +4,7 @@
 -- Optional add-on for install.sql. Provides analysis, forensics, and reporting.
 -- Requires: install.sql must be run first (creates tables and core functions).
 --
--- Install: psql -f reporting.sql
+-- Install: psql --single-transaction -f reporting.sql
 -- =============================================================================
 
 -- Verify core is installed

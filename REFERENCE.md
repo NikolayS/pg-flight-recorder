@@ -360,10 +360,10 @@ psql --single-transaction -f install.sql
 
 ```bash
 # Remove everything (stops jobs, drops all schemas and data)
-psql -f uninstall.sql
+psql --single-transaction -f uninstall.sql
 
 # Remove only reporting functions (keeps core + data)
-psql -f uninstall_reporting.sql
+psql --single-transaction -f uninstall_reporting.sql
 ```
 
 ## Testing

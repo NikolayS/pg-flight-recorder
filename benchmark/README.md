@@ -20,7 +20,7 @@ See [BENCHMARKING.md](../BENCHMARKING.md) for full methodology.
 ### Prerequisites
 
 1. **PostgreSQL 15+** with pg_cron installed
-2. **pg_flight_recorder** installed: `psql -f ../install.sql`
+2. **pg_flight_recorder** installed: `psql --single-transaction -f ../install.sql`
 3. **Python 3**: For statistical analysis
 4. **Standard libpq auth**: Set `PGHOST`, `PGUSER`, `PGDATABASE`, `PGPASSWORD` or use `.pgpass`
 

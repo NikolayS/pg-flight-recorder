@@ -4,9 +4,9 @@
 -- WARNING: This removes ALL data including historical snapshots!
 -- Use this only when you want to completely remove flight_recorder.
 --
--- To remove only reporting functions: psql -f uninstall_reporting.sql
+-- To remove only reporting functions: psql --single-transaction -f uninstall_reporting.sql
 --
--- Run with: psql -f uninstall.sql
+-- Run with: psql --single-transaction -f uninstall.sql
 -- =============================================================================
 
 -- Remove all cron jobs and clean up job history

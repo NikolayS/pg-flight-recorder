@@ -4,10 +4,10 @@
 -- Removes the reporting schema and all reporting functions/views.
 -- Core tables and collection functions in flight_recorder schema are preserved.
 --
--- Run with: psql -f uninstall_reporting.sql
+-- Run with: psql --single-transaction -f uninstall_reporting.sql
 --
 -- To completely remove everything including data:
---   psql -f uninstall.sql
+--   psql --single-transaction -f uninstall.sql
 -- =============================================================================
 
 DROP SCHEMA IF EXISTS flight_recorder_reporting CASCADE;
@@ -26,6 +26,6 @@ BEGIN
     RAISE NOTICE '  - All scheduled cron jobs';
     RAISE NOTICE '  - Configuration settings';
     RAISE NOTICE '';
-    RAISE NOTICE 'To reinstall reporting: psql -f reporting.sql';
+    RAISE NOTICE 'To reinstall reporting: psql --single-transaction -f reporting.sql';
     RAISE NOTICE '';
 END $$;
