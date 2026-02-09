@@ -694,6 +694,7 @@ BEGIN
             LIMIT 1
         )
           AND ts.relfrozenxid_age IS NOT NULL
+          AND COALESCE(c.relkind, 'r') <> 'p' -- exclude partitioned tables (relfrozenxid is always 0)
         ORDER BY ts.relfrozenxid_age::numeric / COALESCE(
             (SELECT (regexp_match(opt, 'autovacuum_freeze_max_age=(\d+)'))[1]::bigint
              FROM unnest(c.reloptions) opt
