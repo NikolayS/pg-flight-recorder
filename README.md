@@ -13,9 +13,11 @@ Download from [GitHub Releases](https://github.com/dventimisupabase/pg-flight-re
 ```bash
 # Core (tables, collection, scheduling)
 psql --single-transaction -f install.sql
+```
 
+```bash
 # Reporting & analysis (optional)
-psql -f reporting.sql
+psql --single-transaction -f reporting.sql
 ```
 
 ### Option B: From database.dev
@@ -25,7 +27,9 @@ Install via the [dbdev](https://database.dev) package manager:
 ```sql
 -- Core
 SELECT dbdev.install('dventimi-pg_flight_recorder');
+```
 
+```sql
 -- Reporting & analysis (optional, requires core)
 SELECT dbdev.install('dventimi-pg_flight_recorder_reporting');
 ```
