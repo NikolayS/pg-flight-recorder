@@ -1,5 +1,17 @@
+x-postgres-base: &postgres-base
+  environment:
+    POSTGRES_DB: postgres
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U postgres"]
+    interval: 5s
+    timeout: 5s
+    retries: 5
+
 services:
   postgres15:
+    <<: *postgres-base
     profiles: ["pg15", "all"]
     build:
       context: .
@@ -7,27 +19,13 @@ services:
         PG_VERSION: 15
     image: pgfr_record_test:15
     container_name: pgfr_record_test-15
-    environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
     ports:
       - "5415:5432"
     volumes:
       - postgres15_data:/var/lib/postgresql/data
-      - ./_record/install.sql:/install.sql:ro
-      - ./_control/install.sql:/control.sql:ro
-      - ./_analyze/install.sql:/analyze.sql:ro
-      - ./_record/tests:/tests/record:ro
-      - ./_analyze/tests:/tests/analyze:ro
-      - ./_control/tests:/tests/control:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   postgres16:
+    <<: *postgres-base
     profiles: ["pg16", "all"]
     build:
       context: .
@@ -35,27 +33,13 @@ services:
         PG_VERSION: 16
     image: pgfr_record_test:16
     container_name: pgfr_record_test-16
-    environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
     ports:
       - "5416:5432"
     volumes:
       - postgres16_data:/var/lib/postgresql/data
-      - ./_record/install.sql:/install.sql:ro
-      - ./_control/install.sql:/control.sql:ro
-      - ./_analyze/install.sql:/analyze.sql:ro
-      - ./_record/tests:/tests/record:ro
-      - ./_analyze/tests:/tests/analyze:ro
-      - ./_control/tests:/tests/control:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   postgres17:
+    <<: *postgres-base
     profiles: ["pg17", "all"]
     build:
       context: .
@@ -63,25 +47,10 @@ services:
         PG_VERSION: 17
     image: pgfr_record_test:17
     container_name: pgfr_record_test-17
-    environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
     ports:
       - "5417:5432"
     volumes:
       - postgres17_data:/var/lib/postgresql/data
-      - ./_record/install.sql:/install.sql:ro
-      - ./_control/install.sql:/control.sql:ro
-      - ./_analyze/install.sql:/analyze.sql:ro
-      - ./_record/tests:/tests/record:ro
-      - ./_analyze/tests:/tests/analyze:ro
-      - ./_control/tests:/tests/control:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
 volumes:
   postgres15_data:

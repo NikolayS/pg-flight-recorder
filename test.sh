@@ -10,11 +10,14 @@ set -e
 #   ./test.sh           # Test on PostgreSQL 15, 16, 17 in parallel
 #   ./test.sh 16        # Test on PostgreSQL 16 only
 
+# Compose files: base + per-extension volumes
+COMPOSE_FILES="-f docker-compose.yml -f _record/docker-compose.yml -f _control/docker-compose.yml -f _analyze/docker-compose.yml"
+
 # Detect docker compose command (standalone vs plugin)
 if command -v docker-compose &> /dev/null; then
-    DOCKER_COMPOSE="docker-compose"
+    DOCKER_COMPOSE="docker-compose $COMPOSE_FILES"
 elif docker compose version &> /dev/null; then
-    DOCKER_COMPOSE="docker compose"
+    DOCKER_COMPOSE="docker compose $COMPOSE_FILES"
 else
     echo "Error: Neither 'docker-compose' nor 'docker compose' found"
     exit 1
