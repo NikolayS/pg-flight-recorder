@@ -18,15 +18,30 @@ BEGIN
     END IF;
 END $$;
 
-CREATE SCHEMA IF NOT EXISTS pgfr_analyze;
+CREATE SCHEMA IF NOT EXISTS pgfr_control;
 
 -- =============================================================================
--- Vacuum Control Helper Functions (pgfr schema)
+-- Vacuum Control State Table
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS pgfr_control.vacuum_control_state (
+    relid                           OID PRIMARY KEY,
+    operating_mode                  TEXT NOT NULL DEFAULT 'normal',
+    mode_entered_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_recommendation_at          TIMESTAMPTZ,
+    last_recommended_scale_factor   NUMERIC,
+    consecutive_budget_exceeded     INTEGER NOT NULL DEFAULT 0,
+    updated_at                      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE pgfr_control.vacuum_control_state IS 'Tracks vacuum operating mode (normal/catch_up/safety) and recommendation state per table for closed-loop vacuum control';
+
+-- =============================================================================
+-- Vacuum Control Helper Functions (pgfr_control schema)
 -- =============================================================================
 
 -- Calculates the rate of dead tuple accumulation over a time window
 -- Returns tuples per second, or NULL if insufficient data
-CREATE OR REPLACE FUNCTION pgfr.dead_tuple_growth_rate(
+CREATE OR REPLACE FUNCTION pgfr_control.dead_tuple_growth_rate(
     p_relid OID,
     p_window INTERVAL
 )
@@ -74,10 +89,10 @@ BEGIN
     RETURN ROUND(v_delta_tuples::numeric / v_delta_seconds, 4);
 END;
 $$;
-COMMENT ON FUNCTION pgfr.dead_tuple_growth_rate(OID, INTERVAL) IS 'Returns dead tuple growth rate (tuples/second) for a table over a time window';
+COMMENT ON FUNCTION pgfr_control.dead_tuple_growth_rate(OID, INTERVAL) IS 'Returns dead tuple growth rate (tuples/second) for a table over a time window';
 
 -- Estimates time until a dead tuple budget is exhausted based on current growth rate
-CREATE OR REPLACE FUNCTION pgfr.time_to_budget_exhaustion(
+CREATE OR REPLACE FUNCTION pgfr_control.time_to_budget_exhaustion(
     p_relid OID,
     p_budget BIGINT
 )
@@ -103,7 +118,7 @@ BEGIN
     END IF;
 
     -- Get growth rate over last hour
-    v_growth_rate := pgfr.dead_tuple_growth_rate(p_relid, '1 hour'::interval);
+    v_growth_rate := pgfr_control.dead_tuple_growth_rate(p_relid, '1 hour'::interval);
 
     -- If no growth rate data or rate is zero/negative, can't estimate
     IF v_growth_rate IS NULL OR v_growth_rate <= 0 THEN
@@ -122,14 +137,14 @@ BEGIN
     RETURN make_interval(secs => v_seconds_to_exhaustion);
 END;
 $$;
-COMMENT ON FUNCTION pgfr.time_to_budget_exhaustion(OID, BIGINT) IS 'Estimates time until dead tuple budget is exhausted based on growth rate';
+COMMENT ON FUNCTION pgfr_control.time_to_budget_exhaustion(OID, BIGINT) IS 'Estimates time until dead tuple budget is exhausted based on growth rate';
 
 -- =============================================================================
 -- Vacuum Control Enhancements (v2.8)
 -- =============================================================================
 
 -- Returns table-specific autovacuum settings, falling back to global defaults
-CREATE OR REPLACE FUNCTION pgfr._get_table_autovacuum_settings(
+CREATE OR REPLACE FUNCTION pgfr_control._get_table_autovacuum_settings(
     p_relid OID
 )
 RETURNS TABLE(
@@ -181,10 +196,10 @@ BEGIN
     RETURN QUERY SELECT v_scale_factor, v_threshold, v_enabled, v_source;
 END;
 $$;
-COMMENT ON FUNCTION pgfr._get_table_autovacuum_settings(OID) IS 'Returns autovacuum settings for a table, with fallback to global defaults';
+COMMENT ON FUNCTION pgfr_control._get_table_autovacuum_settings(OID) IS 'Returns autovacuum settings for a table, with fallback to global defaults';
 
 -- Calculates dead tuple trend (slope) using linear regression over a time window
-CREATE OR REPLACE FUNCTION pgfr.dead_tuple_trend(
+CREATE OR REPLACE FUNCTION pgfr_control.dead_tuple_trend(
     p_relid OID,
     p_window INTERVAL
 )
@@ -214,10 +229,10 @@ BEGIN
     RETURN ROUND(v_slope, 4);
 END;
 $$;
-COMMENT ON FUNCTION pgfr.dead_tuple_trend(OID, INTERVAL) IS 'Returns dead tuple accumulation trend (tuples/second) using linear regression';
+COMMENT ON FUNCTION pgfr_control.dead_tuple_trend(OID, INTERVAL) IS 'Returns dead tuple accumulation trend (tuples/second) using linear regression';
 
 -- Determines operating mode for a table (normal, catch_up, safety)
-CREATE OR REPLACE FUNCTION pgfr.vacuum_control_mode(
+CREATE OR REPLACE FUNCTION pgfr_control.vacuum_control_mode(
     p_relid OID
 )
 RETURNS TABLE(
@@ -249,7 +264,7 @@ BEGIN
     -- Get current state if exists
     SELECT vcs.operating_mode, vcs.mode_entered_at
     INTO v_current_mode, v_mode_entered
-    FROM pgfr.vacuum_control_state vcs
+    FROM pgfr_control.vacuum_control_state vcs
     WHERE vcs.relid = p_relid;
 
     v_current_mode := COALESCE(v_current_mode, 'normal');
@@ -294,7 +309,7 @@ BEGIN
     END IF;
 
     -- Check dead tuple trend for catch-up mode
-    v_dead_trend := pgfr.dead_tuple_trend(p_relid, '1 hour'::interval);
+    v_dead_trend := pgfr_control.dead_tuple_trend(p_relid, '1 hour'::interval);
 
     -- Get budget hours config
     v_budget_hours := COALESCE(
@@ -303,7 +318,7 @@ BEGIN
     );
 
     -- Get time to budget exhaustion
-    v_time_to_exhaust := pgfr.time_to_budget_exhaustion(
+    v_time_to_exhaust := pgfr_control.time_to_budget_exhaustion(
         p_relid,
         (SELECT COALESCE(ts.reltuples, ts.n_live_tup, 0) *
                 pgfr._get_config('vacuum_control_dead_tuple_budget_pct', '5')::numeric / 100
@@ -333,10 +348,10 @@ BEGIN
         NULL::TEXT;
 END;
 $$;
-COMMENT ON FUNCTION pgfr.vacuum_control_mode(OID) IS 'Determines vacuum operating mode (normal/catch_up/safety) for a table based on XID age and dead tuple trends';
+COMMENT ON FUNCTION pgfr_control.vacuum_control_mode(OID) IS 'Determines vacuum operating mode (normal/catch_up/safety) for a table based on XID age and dead tuple trends';
 
 -- Computes recommended autovacuum_vacuum_scale_factor based on control law
-CREATE OR REPLACE FUNCTION pgfr.compute_recommended_scale_factor(
+CREATE OR REPLACE FUNCTION pgfr_control.compute_recommended_scale_factor(
     p_relid OID
 )
 RETURNS TABLE(
@@ -369,7 +384,7 @@ BEGIN
 
     -- Get current settings
     SELECT scale_factor, threshold INTO v_current_sf, v_threshold
-    FROM pgfr._get_table_autovacuum_settings(p_relid);
+    FROM pgfr_control._get_table_autovacuum_settings(p_relid);
 
     -- Get config values
     v_budget_pct := COALESCE(
@@ -437,10 +452,10 @@ BEGIN
     RETURN QUERY SELECT v_current_sf, v_recommended_sf, v_change_pct, v_rationale;
 END;
 $$;
-COMMENT ON FUNCTION pgfr.compute_recommended_scale_factor(OID) IS 'Computes recommended autovacuum_vacuum_scale_factor to maintain dead tuple budget';
+COMMENT ON FUNCTION pgfr_control.compute_recommended_scale_factor(OID) IS 'Computes recommended autovacuum_vacuum_scale_factor to maintain dead tuple budget';
 
 -- Classifies vacuum failure mode for diagnostic purposes
-CREATE OR REPLACE FUNCTION pgfr.vacuum_diagnostic(
+CREATE OR REPLACE FUNCTION pgfr_control.vacuum_diagnostic(
     p_relid OID
 )
 RETURNS TABLE(
@@ -494,7 +509,7 @@ BEGIN
     LIMIT 1;
 
     -- Get dead tuple trend
-    v_dead_trend := pgfr.dead_tuple_trend(p_relid, '1 hour'::interval);
+    v_dead_trend := pgfr_control.dead_tuple_trend(p_relid, '1 hour'::interval);
 
     -- Check for blocking transactions
     SELECT EXISTS(
@@ -567,10 +582,10 @@ BEGIN
     RETURN QUERY SELECT v_classification, v_evidence, v_confidence, v_likely_cause, v_mitigation, v_mitigation_sql;
 END;
 $$;
-COMMENT ON FUNCTION pgfr.vacuum_diagnostic(OID) IS 'Classifies vacuum failure mode (NOT_SCHEDULED/RUNNING_BUT_LOSING/BLOCKED/HEALTHY) with actionable guidance';
+COMMENT ON FUNCTION pgfr_control.vacuum_diagnostic(OID) IS 'Classifies vacuum failure mode (NOT_SCHEDULED/RUNNING_BUT_LOSING/BLOCKED/HEALTHY) with actionable guidance';
 
 -- Main vacuum control report function
-CREATE OR REPLACE FUNCTION pgfr.vacuum_control_report(
+CREATE OR REPLACE FUNCTION pgfr_control.vacuum_control_report(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -632,19 +647,19 @@ BEGIN
     mode_info AS (
         SELECT
             ls.relid,
-            (pgfr.vacuum_control_mode(ls.relid)).*
+            (pgfr_control.vacuum_control_mode(ls.relid)).*
         FROM latest_snapshots ls
     ),
     diag_info AS (
         SELECT
             ls.relid,
-            (pgfr.vacuum_diagnostic(ls.relid)).*
+            (pgfr_control.vacuum_diagnostic(ls.relid)).*
         FROM latest_snapshots ls
     ),
     scale_info AS (
         SELECT
             ls.relid,
-            (pgfr.compute_recommended_scale_factor(ls.relid)).*
+            (pgfr_control.compute_recommended_scale_factor(ls.relid)).*
         FROM latest_snapshots ls
     ),
     state_info AS (
@@ -652,7 +667,7 @@ BEGIN
             vcs.relid,
             vcs.last_recommendation_at,
             vcs.last_recommended_scale_factor
-        FROM pgfr.vacuum_control_state vcs
+        FROM pgfr_control.vacuum_control_state vcs
     )
     SELECT
         ls.schemaname,
@@ -702,15 +717,15 @@ BEGIN
         COALESCE(ls.n_dead_tup, 0) DESC;
 END;
 $$;
-COMMENT ON FUNCTION pgfr.vacuum_control_report(TIMESTAMPTZ, TIMESTAMPTZ) IS 'Returns vacuum control recommendations for all monitored tables with hysteresis and rate limiting';
+COMMENT ON FUNCTION pgfr_control.vacuum_control_report(TIMESTAMPTZ, TIMESTAMPTZ) IS 'Returns vacuum control recommendations for all monitored tables with hysteresis and rate limiting';
 
 -- =============================================================================
--- Autovacuum Observer Analysis Functions (pgfr_analyze schema)
+-- Autovacuum Observer Analysis Functions (pgfr_control schema)
 -- =============================================================================
 
 -- Calculates the rate of dead tuple accumulation over a time window
 -- Returns tuples per second, or NULL if insufficient data
-CREATE OR REPLACE FUNCTION pgfr_analyze.dead_tuple_growth_rate(
+CREATE OR REPLACE FUNCTION pgfr_control.dead_tuple_growth_rate(
     p_relid OID,
     p_window INTERVAL
 )
@@ -758,11 +773,11 @@ BEGIN
     RETURN ROUND(v_delta_tuples::numeric / v_delta_seconds, 4);
 END;
 $$;
-COMMENT ON FUNCTION pgfr_analyze.dead_tuple_growth_rate(OID, INTERVAL) IS 'Returns dead tuple growth rate (tuples/second) for a table over a time window';
+COMMENT ON FUNCTION pgfr_control.dead_tuple_growth_rate(OID, INTERVAL) IS 'Returns dead tuple growth rate (tuples/second) for a table over a time window';
 
 -- Calculates the rate of table size growth in bytes per second over a time window
 -- Useful for detecting bloat accumulation between vacuums
-CREATE OR REPLACE FUNCTION pgfr_analyze.table_size_growth_rate(
+CREATE OR REPLACE FUNCTION pgfr_control.table_size_growth_rate(
     p_relid OID,
     p_window INTERVAL
 )
@@ -810,12 +825,12 @@ BEGIN
     RETURN ROUND(v_delta_bytes::numeric / v_delta_seconds, 4);
 END;
 $$;
-COMMENT ON FUNCTION pgfr_analyze.table_size_growth_rate(OID, INTERVAL) IS 'Returns table size growth rate (bytes/second) for a table over a time window. Useful for detecting bloat accumulation.';
+COMMENT ON FUNCTION pgfr_control.table_size_growth_rate(OID, INTERVAL) IS 'Returns table size growth rate (bytes/second) for a table over a time window. Useful for detecting bloat accumulation.';
 
 -- Estimates table bloat without requiring pgstattuple extension
 -- Uses heuristics based on dead tuple ratio and size metrics
 -- Returns estimated bloat percentage and wasted bytes
-CREATE OR REPLACE FUNCTION pgfr_analyze.estimate_table_bloat(
+CREATE OR REPLACE FUNCTION pgfr_control.estimate_table_bloat(
     p_relid OID DEFAULT NULL
 )
 RETURNS TABLE(
@@ -912,11 +927,11 @@ BEGIN
     ORDER BY e.dead_pct DESC, e.table_size_bytes DESC;
 END;
 $$;
-COMMENT ON FUNCTION pgfr_analyze.estimate_table_bloat(OID) IS 'Estimates table bloat without pgstattuple. Uses dead tuple ratio and size metrics. Pass NULL or omit argument for all tables.';
+COMMENT ON FUNCTION pgfr_control.estimate_table_bloat(OID) IS 'Estimates table bloat without pgstattuple. Uses dead tuple ratio and size metrics. Pass NULL or omit argument for all tables.';
 
 -- Generates a bloat report with trends and recommendations
 -- Compares current state to historical data to detect bloat accumulation
-CREATE OR REPLACE FUNCTION pgfr_analyze.bloat_report(
+CREATE OR REPLACE FUNCTION pgfr_control.bloat_report(
     p_window INTERVAL DEFAULT '24 hours'::INTERVAL
 )
 RETURNS TABLE(
@@ -933,7 +948,7 @@ LANGUAGE plpgsql STABLE AS $$
 BEGIN
     RETURN QUERY
     WITH current_stats AS (
-        SELECT * FROM pgfr_analyze.estimate_table_bloat(NULL)
+        SELECT * FROM pgfr_control.estimate_table_bloat(NULL)
     ),
     historical AS (
         SELECT DISTINCT ON (ts.relid)
@@ -994,11 +1009,11 @@ BEGIN
         c.table_size_bytes DESC;
 END;
 $$;
-COMMENT ON FUNCTION pgfr_analyze.bloat_report(INTERVAL) IS 'Generates a bloat report with size trends and recommendations. Compares current state to historical data over the specified window.';
+COMMENT ON FUNCTION pgfr_control.bloat_report(INTERVAL) IS 'Generates a bloat report with size trends and recommendations. Compares current state to historical data over the specified window.';
 
 -- Estimates time until dead tuple budget is exhausted based on current growth rate
 -- Returns interval until budget exceeded, NULL if insufficient data or no growth
-CREATE OR REPLACE FUNCTION pgfr_analyze.time_to_budget_exhaustion(
+CREATE OR REPLACE FUNCTION pgfr_control.time_to_budget_exhaustion(
     p_relid OID,
     p_budget BIGINT
 )
@@ -1024,7 +1039,7 @@ BEGIN
     END IF;
 
     -- Get growth rate over last hour
-    v_growth_rate := pgfr_analyze.dead_tuple_growth_rate(p_relid, '1 hour'::interval);
+    v_growth_rate := pgfr_control.dead_tuple_growth_rate(p_relid, '1 hour'::interval);
 
     -- If no growth rate data or rate is zero/negative, can't estimate
     IF v_growth_rate IS NULL OR v_growth_rate <= 0 THEN
@@ -1043,11 +1058,11 @@ BEGIN
     RETURN make_interval(secs => v_seconds_to_exhaustion);
 END;
 $$;
-COMMENT ON FUNCTION pgfr_analyze.time_to_budget_exhaustion(OID, BIGINT) IS 'Estimates time until dead tuple budget is exhausted based on growth rate';
+COMMENT ON FUNCTION pgfr_control.time_to_budget_exhaustion(OID, BIGINT) IS 'Estimates time until dead tuple budget is exhausted based on growth rate';
 
 -- Calculates the rate of OID consumption over a time window
 -- Returns OIDs per second based on max_catalog_oid changes in snapshots
-CREATE OR REPLACE FUNCTION pgfr_analyze.oid_consumption_rate(
+CREATE OR REPLACE FUNCTION pgfr_control.oid_consumption_rate(
     p_window INTERVAL
 )
 RETURNS NUMERIC
@@ -1089,11 +1104,11 @@ BEGIN
     RETURN ROUND(v_delta_oids::numeric / v_delta_seconds, 6);
 END;
 $$;
-COMMENT ON FUNCTION pgfr_analyze.oid_consumption_rate(INTERVAL) IS 'Returns OID consumption rate (OIDs/second) over a time window';
+COMMENT ON FUNCTION pgfr_control.oid_consumption_rate(INTERVAL) IS 'Returns OID consumption rate (OIDs/second) over a time window';
 
 -- Estimates time until OID exhaustion based on current consumption rate
 -- OIDs are 32-bit unsigned integers (max ~4.3 billion) that are not recycled
-CREATE OR REPLACE FUNCTION pgfr_analyze.time_to_oid_exhaustion()
+CREATE OR REPLACE FUNCTION pgfr_control.time_to_oid_exhaustion()
 RETURNS INTERVAL
 LANGUAGE plpgsql STABLE AS $$
 DECLARE
@@ -1115,7 +1130,7 @@ BEGIN
     END IF;
 
     -- Use 1-hour window for rate calculation
-    v_consumption_rate := pgfr_analyze.oid_consumption_rate('1 hour'::interval);
+    v_consumption_rate := pgfr_control.oid_consumption_rate('1 hour'::interval);
 
     IF v_consumption_rate IS NULL OR v_consumption_rate <= 0 THEN
         RETURN NULL;  -- No consumption or negative rate
@@ -1132,4 +1147,4 @@ BEGIN
     RETURN make_interval(secs => v_seconds_to_exhaustion);
 END;
 $$;
-COMMENT ON FUNCTION pgfr_analyze.time_to_oid_exhaustion() IS 'Estimates time until OID exhaustion based on consumption rate over the last hour';
+COMMENT ON FUNCTION pgfr_control.time_to_oid_exhaustion() IS 'Estimates time until OID exhaustion based on consumption rate over the last hour';

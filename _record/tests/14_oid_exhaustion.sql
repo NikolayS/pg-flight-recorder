@@ -103,20 +103,20 @@ SELECT ok(
 
 -- Verify oid_consumption_rate function exists and runs
 SELECT lives_ok(
-    $$SELECT pgfr_analyze.oid_consumption_rate('1 hour'::interval)$$,
+    $$SELECT pgfr_control.oid_consumption_rate('1 hour'::interval)$$,
     'oid_consumption_rate() should run without error'
 );
 
 -- Verify time_to_oid_exhaustion function exists and runs
 SELECT lives_ok(
-    $$SELECT pgfr_analyze.time_to_oid_exhaustion()$$,
+    $$SELECT pgfr_control.time_to_oid_exhaustion()$$,
     'time_to_oid_exhaustion() should run without error'
 );
 
 -- Rate returns NULL when insufficient data or non-negative when data exists
 SELECT ok(
-    (SELECT pgfr_analyze.oid_consumption_rate('1 hour'::interval)) IS NULL
-    OR (SELECT pgfr_analyze.oid_consumption_rate('1 hour'::interval)) >= 0,
+    (SELECT pgfr_control.oid_consumption_rate('1 hour'::interval)) IS NULL
+    OR (SELECT pgfr_control.oid_consumption_rate('1 hour'::interval)) >= 0,
     'oid_consumption_rate() should return NULL or non-negative value'
 );
 
@@ -125,8 +125,8 @@ SELECT pgfr.snapshot();
 
 -- After multiple snapshots, rate should still be NULL or non-negative
 SELECT ok(
-    (SELECT pgfr_analyze.oid_consumption_rate('1 hour'::interval)) IS NULL
-    OR (SELECT pgfr_analyze.oid_consumption_rate('1 hour'::interval)) >= 0,
+    (SELECT pgfr_control.oid_consumption_rate('1 hour'::interval)) IS NULL
+    OR (SELECT pgfr_control.oid_consumption_rate('1 hour'::interval)) >= 0,
     'oid_consumption_rate() should return NULL or non-negative value after multiple snapshots'
 );
 

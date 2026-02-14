@@ -20,22 +20,22 @@ UPDATE pgfr.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
 -- =============================================================================
 
 SELECT has_table(
-    'pgfr', 'vacuum_control_state',
+    'pgfr_control', 'vacuum_control_state',
     'vacuum_control_state table should exist'
 );
 
 SELECT has_column(
-    'pgfr', 'vacuum_control_state', 'relid',
+    'pgfr_control', 'vacuum_control_state', 'relid',
     'vacuum_control_state should have relid column'
 );
 
 SELECT has_column(
-    'pgfr', 'vacuum_control_state', 'operating_mode',
+    'pgfr_control', 'vacuum_control_state', 'operating_mode',
     'vacuum_control_state should have operating_mode column'
 );
 
 SELECT has_column(
-    'pgfr', 'vacuum_control_state', 'last_recommended_scale_factor',
+    'pgfr_control', 'vacuum_control_state', 'last_recommended_scale_factor',
     'vacuum_control_state should have last_recommended_scale_factor column'
 );
 
@@ -109,37 +109,37 @@ SELECT ok(
 -- =============================================================================
 
 SELECT has_function(
-    'pgfr', 'vacuum_control_mode',
+    'pgfr_control', 'vacuum_control_mode',
     ARRAY['oid'],
     'vacuum_control_mode(oid) function should exist'
 );
 
 SELECT has_function(
-    'pgfr', 'compute_recommended_scale_factor',
+    'pgfr_control', 'compute_recommended_scale_factor',
     ARRAY['oid'],
     'compute_recommended_scale_factor(oid) function should exist'
 );
 
 SELECT has_function(
-    'pgfr', 'vacuum_diagnostic',
+    'pgfr_control', 'vacuum_diagnostic',
     ARRAY['oid'],
     'vacuum_diagnostic(oid) function should exist'
 );
 
 SELECT has_function(
-    'pgfr', 'vacuum_control_report',
+    'pgfr_control', 'vacuum_control_report',
     ARRAY['timestamp with time zone', 'timestamp with time zone'],
     'vacuum_control_report(timestamptz, timestamptz) function should exist'
 );
 
 SELECT has_function(
-    'pgfr', '_get_table_autovacuum_settings',
+    'pgfr_control', '_get_table_autovacuum_settings',
     ARRAY['oid'],
     '_get_table_autovacuum_settings(oid) function should exist'
 );
 
 SELECT has_function(
-    'pgfr', 'dead_tuple_trend',
+    'pgfr_control', 'dead_tuple_trend',
     ARRAY['oid', 'interval'],
     'dead_tuple_trend(oid, interval) function should exist'
 );
@@ -150,7 +150,7 @@ SELECT has_function(
 
 -- Test _get_table_autovacuum_settings returns global defaults for tables without overrides
 SELECT lives_ok(
-    $$SELECT * FROM pgfr._get_table_autovacuum_settings(
+    $$SELECT * FROM pgfr_control._get_table_autovacuum_settings(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     '_get_table_autovacuum_settings should execute without error'
@@ -158,7 +158,7 @@ SELECT lives_ok(
 
 -- Test dead_tuple_trend executes without error
 SELECT lives_ok(
-    $$SELECT pgfr.dead_tuple_trend(
+    $$SELECT pgfr_control.dead_tuple_trend(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1),
         '1 hour'::interval
     )$$,
@@ -167,7 +167,7 @@ SELECT lives_ok(
 
 -- Test dead_tuple_trend returns NUMERIC
 SELECT ok(
-    pg_typeof(pgfr.dead_tuple_trend(
+    pg_typeof(pgfr_control.dead_tuple_trend(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1),
         '1 hour'::interval
     ))::text = 'numeric',
@@ -177,7 +177,7 @@ SELECT ok(
 -- Test _get_table_autovacuum_settings returns expected columns
 SELECT ok(
     (SELECT scale_factor IS NOT NULL
-     FROM pgfr._get_table_autovacuum_settings(
+     FROM pgfr_control._get_table_autovacuum_settings(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
      )),
     '_get_table_autovacuum_settings should return scale_factor'
@@ -192,7 +192,7 @@ SELECT pgfr.snapshot();
 
 -- Test vacuum_control_mode executes without error
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.vacuum_control_mode(
+    $$SELECT * FROM pgfr_control.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_control_mode should execute without error'
@@ -201,7 +201,7 @@ SELECT lives_ok(
 -- Test vacuum_control_mode returns expected columns
 SELECT ok(
     (SELECT mode IS NOT NULL
-     FROM pgfr.vacuum_control_mode(
+     FROM pgfr_control.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
      )),
     'vacuum_control_mode should return mode column'
@@ -210,7 +210,7 @@ SELECT ok(
 -- Test vacuum_control_mode returns 'normal' for healthy tables
 SELECT ok(
     (SELECT mode IN ('normal', 'catch_up', 'safety')
-     FROM pgfr.vacuum_control_mode(
+     FROM pgfr_control.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
      )),
     'vacuum_control_mode should return valid mode value'
@@ -219,7 +219,7 @@ SELECT ok(
 -- Test vacuum_control_mode returns reason
 SELECT ok(
     (SELECT reason IS NOT NULL
-     FROM pgfr.vacuum_control_mode(
+     FROM pgfr_control.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
      )),
     'vacuum_control_mode should return reason column'
@@ -228,7 +228,7 @@ SELECT ok(
 -- Test vacuum_control_mode returns entered_at
 SELECT ok(
     (SELECT entered_at IS NOT NULL
-     FROM pgfr.vacuum_control_mode(
+     FROM pgfr_control.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
      )),
     'vacuum_control_mode should return entered_at column'
@@ -236,7 +236,7 @@ SELECT ok(
 
 -- Test vacuum_control_mode returns evidence
 SELECT lives_ok(
-    $$SELECT evidence FROM pgfr.vacuum_control_mode(
+    $$SELECT evidence FROM pgfr_control.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_control_mode should return evidence column'
@@ -246,7 +246,7 @@ SELECT lives_ok(
 -- but catch_up/safety could occur depending on system state during test)
 SELECT ok(
     (SELECT mode IN ('normal', 'catch_up', 'safety')
-     FROM pgfr.vacuum_control_mode(
+     FROM pgfr_control.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
      )),
     'vacuum_control_mode should return valid mode for typical table'
@@ -255,20 +255,20 @@ SELECT ok(
 -- Test mode detection with non-existent OID
 SELECT ok(
     (SELECT mode IS NULL
-     FROM pgfr.vacuum_control_mode(0::oid)
+     FROM pgfr_control.vacuum_control_mode(0::oid)
     ) IS NOT FALSE,
     'vacuum_control_mode should handle non-existent OID gracefully'
 );
 
 -- Test mode persists in vacuum_control_state
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.vacuum_control_state LIMIT 1$$,
+    $$SELECT * FROM pgfr_control.vacuum_control_state LIMIT 1$$,
     'vacuum_control_state table should be queryable'
 );
 
 -- Test safety mode detection (XID age check)
 SELECT lives_ok(
-    $$SELECT mode, reason FROM pgfr.vacuum_control_mode(
+    $$SELECT mode, reason FROM pgfr_control.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     ) WHERE mode = 'safety' OR mode != 'safety'$$,
     'vacuum_control_mode safety check should not error'
@@ -276,7 +276,7 @@ SELECT lives_ok(
 
 -- Test catch_up mode detection
 SELECT lives_ok(
-    $$SELECT mode, reason FROM pgfr.vacuum_control_mode(
+    $$SELECT mode, reason FROM pgfr_control.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     ) WHERE mode = 'catch_up' OR mode != 'catch_up'$$,
     'vacuum_control_mode catch_up check should not error'
@@ -284,7 +284,7 @@ SELECT lives_ok(
 
 -- Test mode with pgfr tables (should work)
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.vacuum_control_mode(
+    $$SELECT * FROM pgfr_control.vacuum_control_mode(
         'pgfr.snapshots'::regclass::oid
     )$$,
     'vacuum_control_mode should work on pgfr tables'
@@ -296,7 +296,7 @@ SELECT lives_ok(
 
 -- Test compute_recommended_scale_factor executes without error
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.compute_recommended_scale_factor(
+    $$SELECT * FROM pgfr_control.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'compute_recommended_scale_factor should execute without error'
@@ -304,7 +304,7 @@ SELECT lives_ok(
 
 -- Test compute_recommended_scale_factor returns current_scale_factor
 SELECT lives_ok(
-    $$SELECT current_scale_factor FROM pgfr.compute_recommended_scale_factor(
+    $$SELECT current_scale_factor FROM pgfr_control.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'compute_recommended_scale_factor should return current_scale_factor'
@@ -312,7 +312,7 @@ SELECT lives_ok(
 
 -- Test compute_recommended_scale_factor returns recommended_scale_factor
 SELECT lives_ok(
-    $$SELECT recommended_scale_factor FROM pgfr.compute_recommended_scale_factor(
+    $$SELECT recommended_scale_factor FROM pgfr_control.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'compute_recommended_scale_factor should return recommended_scale_factor'
@@ -320,7 +320,7 @@ SELECT lives_ok(
 
 -- Test compute_recommended_scale_factor returns change_pct
 SELECT lives_ok(
-    $$SELECT change_pct FROM pgfr.compute_recommended_scale_factor(
+    $$SELECT change_pct FROM pgfr_control.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'compute_recommended_scale_factor should return change_pct'
@@ -328,7 +328,7 @@ SELECT lives_ok(
 
 -- Test compute_recommended_scale_factor returns rationale
 SELECT lives_ok(
-    $$SELECT rationale FROM pgfr.compute_recommended_scale_factor(
+    $$SELECT rationale FROM pgfr_control.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'compute_recommended_scale_factor should return rationale'
@@ -337,7 +337,7 @@ SELECT lives_ok(
 -- Test scale factor respects minimum bound
 SELECT ok(
     (SELECT COALESCE(recommended_scale_factor, 0.001) >= 0.001
-     FROM pgfr.compute_recommended_scale_factor(
+     FROM pgfr_control.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )),
     'recommended_scale_factor should respect minimum bound (0.001)'
@@ -346,7 +346,7 @@ SELECT ok(
 -- Test scale factor respects maximum bound
 SELECT ok(
     (SELECT COALESCE(recommended_scale_factor, 0.2) <= 0.2
-     FROM pgfr.compute_recommended_scale_factor(
+     FROM pgfr_control.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )),
     'recommended_scale_factor should respect maximum bound (0.2)'
@@ -354,14 +354,14 @@ SELECT ok(
 
 -- Test scale factor with non-existent OID
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.compute_recommended_scale_factor(0::oid)$$,
+    $$SELECT * FROM pgfr_control.compute_recommended_scale_factor(0::oid)$$,
     'compute_recommended_scale_factor should handle non-existent OID gracefully'
 );
 
 -- Test change_pct calculation is reasonable
 SELECT ok(
     (SELECT COALESCE(change_pct, 0) >= -100
-     FROM pgfr.compute_recommended_scale_factor(
+     FROM pgfr_control.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )),
     'change_pct should be reasonable (>= -100)'
@@ -370,7 +370,7 @@ SELECT ok(
 -- Test that rationale provides meaningful information
 SELECT ok(
     (SELECT rationale IS NULL OR length(rationale) > 0
-     FROM pgfr.compute_recommended_scale_factor(
+     FROM pgfr_control.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )),
     'rationale should be meaningful when provided'
@@ -382,7 +382,7 @@ SELECT ok(
 
 -- Test vacuum_diagnostic executes without error
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.vacuum_diagnostic(
+    $$SELECT * FROM pgfr_control.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_diagnostic should execute without error'
@@ -390,7 +390,7 @@ SELECT lives_ok(
 
 -- Test vacuum_diagnostic returns classification
 SELECT lives_ok(
-    $$SELECT classification FROM pgfr.vacuum_diagnostic(
+    $$SELECT classification FROM pgfr_control.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_diagnostic should return classification'
@@ -400,7 +400,7 @@ SELECT lives_ok(
 SELECT ok(
     (SELECT classification IN ('NOT_SCHEDULED', 'RUNNING_BUT_LOSING', 'BLOCKED', 'HEALTHY')
             OR classification IS NULL
-     FROM pgfr.vacuum_diagnostic(
+     FROM pgfr_control.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )),
     'vacuum_diagnostic classification should be valid'
@@ -408,7 +408,7 @@ SELECT ok(
 
 -- Test vacuum_diagnostic returns evidence
 SELECT lives_ok(
-    $$SELECT evidence FROM pgfr.vacuum_diagnostic(
+    $$SELECT evidence FROM pgfr_control.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_diagnostic should return evidence'
@@ -416,7 +416,7 @@ SELECT lives_ok(
 
 -- Test vacuum_diagnostic returns confidence
 SELECT lives_ok(
-    $$SELECT confidence FROM pgfr.vacuum_diagnostic(
+    $$SELECT confidence FROM pgfr_control.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_diagnostic should return confidence'
@@ -424,7 +424,7 @@ SELECT lives_ok(
 
 -- Test vacuum_diagnostic returns likely_cause
 SELECT lives_ok(
-    $$SELECT likely_cause FROM pgfr.vacuum_diagnostic(
+    $$SELECT likely_cause FROM pgfr_control.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_diagnostic should return likely_cause'
@@ -432,7 +432,7 @@ SELECT lives_ok(
 
 -- Test vacuum_diagnostic returns mitigation
 SELECT lives_ok(
-    $$SELECT mitigation FROM pgfr.vacuum_diagnostic(
+    $$SELECT mitigation FROM pgfr_control.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_diagnostic should return mitigation'
@@ -440,7 +440,7 @@ SELECT lives_ok(
 
 -- Test vacuum_diagnostic returns mitigation_sql
 SELECT lives_ok(
-    $$SELECT mitigation_sql FROM pgfr.vacuum_diagnostic(
+    $$SELECT mitigation_sql FROM pgfr_control.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_diagnostic should return mitigation_sql'
@@ -452,20 +452,20 @@ SELECT lives_ok(
 
 -- Test vacuum_control_report executes without error
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.vacuum_control_report(now() - interval '1 hour', now())$$,
+    $$SELECT * FROM pgfr_control.vacuum_control_report(now() - interval '1 hour', now())$$,
     'vacuum_control_report should execute without error'
 );
 
 -- Test vacuum_control_report returns should_recommend flag
 SELECT lives_ok(
-    $$SELECT should_recommend FROM pgfr.vacuum_control_report(now() - interval '1 hour', now()) LIMIT 1$$,
+    $$SELECT should_recommend FROM pgfr_control.vacuum_control_report(now() - interval '1 hour', now()) LIMIT 1$$,
     'vacuum_control_report should return should_recommend flag'
 );
 
 -- Test vacuum_control_report respects hysteresis threshold
 SELECT lives_ok(
     $$SELECT should_recommend, change_pct
-      FROM pgfr.vacuum_control_report(now() - interval '1 hour', now())
+      FROM pgfr_control.vacuum_control_report(now() - interval '1 hour', now())
       LIMIT 5$$,
     'vacuum_control_report should include hysteresis info'
 );
@@ -473,14 +473,14 @@ SELECT lives_ok(
 -- Test vacuum_control_report respects rate limiting
 SELECT lives_ok(
     $$SELECT should_recommend, last_recommendation_at
-      FROM pgfr.vacuum_control_report(now() - interval '1 hour', now())
+      FROM pgfr_control.vacuum_control_report(now() - interval '1 hour', now())
       LIMIT 5$$,
     'vacuum_control_report should include rate limit info'
 );
 
 -- Test vacuum_control_report includes alter_table_sql
 SELECT lives_ok(
-    $$SELECT alter_table_sql FROM pgfr.vacuum_control_report(now() - interval '1 hour', now()) LIMIT 1$$,
+    $$SELECT alter_table_sql FROM pgfr_control.vacuum_control_report(now() - interval '1 hour', now()) LIMIT 1$$,
     'vacuum_control_report should return alter_table_sql'
 );
 
@@ -489,7 +489,7 @@ SELECT ok(
     (SELECT alter_table_sql IS NULL
             OR alter_table_sql LIKE 'ALTER TABLE%'
             OR alter_table_sql = ''
-     FROM pgfr.vacuum_control_report(now() - interval '1 hour', now())
+     FROM pgfr_control.vacuum_control_report(now() - interval '1 hour', now())
      LIMIT 1),
     'alter_table_sql should be valid ALTER TABLE statement or NULL'
 );
@@ -531,7 +531,7 @@ SELECT lives_ok(
 -- Test vacuum_control_state is populated after snapshot
 SELECT lives_ok(
     $$SELECT operating_mode, mode_entered_at, updated_at
-      FROM pgfr.vacuum_control_state
+      FROM pgfr_control.vacuum_control_state
       LIMIT 1$$,
     'vacuum_control_state should be populated after snapshot'
 );
@@ -541,7 +541,7 @@ SELECT lives_ok(
     $$SELECT schemaname, relname, operating_mode, diagnostic_classification,
              current_scale_factor, recommended_scale_factor, change_pct,
              should_recommend, alter_table_sql
-      FROM pgfr.vacuum_control_report(now() - interval '1 hour', now())
+      FROM pgfr_control.vacuum_control_report(now() - interval '1 hour', now())
       LIMIT 1$$,
     'vacuum_control_report should return all expected columns'
 );
@@ -552,34 +552,34 @@ SELECT lives_ok(
 
 -- Test with non-existent OID - vacuum_control_mode
 SELECT is(
-    (SELECT mode FROM pgfr.vacuum_control_mode(0::oid)),
+    (SELECT mode FROM pgfr_control.vacuum_control_mode(0::oid)),
     NULL::text,
     'vacuum_control_mode should return NULL mode for non-existent OID'
 );
 
 -- Test with non-existent OID - compute_recommended_scale_factor
 SELECT is(
-    (SELECT recommended_scale_factor FROM pgfr.compute_recommended_scale_factor(0::oid)),
+    (SELECT recommended_scale_factor FROM pgfr_control.compute_recommended_scale_factor(0::oid)),
     NULL::numeric,
     'compute_recommended_scale_factor should return NULL for non-existent OID'
 );
 
 -- Test with non-existent OID - vacuum_diagnostic
 SELECT is(
-    (SELECT classification FROM pgfr.vacuum_diagnostic(0::oid)),
+    (SELECT classification FROM pgfr_control.vacuum_diagnostic(0::oid)),
     NULL::text,
     'vacuum_diagnostic should return NULL classification for non-existent OID'
 );
 
 -- Test with empty time range
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.vacuum_control_report(now(), now() - interval '1 hour')$$,
+    $$SELECT * FROM pgfr_control.vacuum_control_report(now(), now() - interval '1 hour')$$,
     'vacuum_control_report should handle reversed time range gracefully'
 );
 
 -- Test dead_tuple_trend with non-existent OID
 SELECT is(
-    pgfr.dead_tuple_trend(0::oid, '1 hour'::interval),
+    pgfr_control.dead_tuple_trend(0::oid, '1 hour'::interval),
     NULL::numeric,
     'dead_tuple_trend should return NULL for non-existent OID'
 );

@@ -38,13 +38,11 @@ END $$;
 --   - statement_snapshots ...................... CREATE TABLE IF NOT EXISTS pgfr.statement_snapshots
 --   - ring buffer tables ....................... samples_ring, wait_samples_ring, etc.
 --   - table_snapshots .......................... CREATE TABLE IF NOT EXISTS pgfr.table_snapshots
---   - vacuum_control_state ..................... CREATE TABLE IF NOT EXISTS pgfr.vacuum_control_state (v2.8)
 --
 -- CONFIGURATION
 --   - config table ............................. CREATE TABLE IF NOT EXISTS pgfr.config
 --
 -- VACUUM CONTROL MODE STUB
---   - vacuum_control_mode ...................... pgfr.vacuum_control_mode (stub)
 --
 -- COLLECTION FUNCTIONS
 --   - _collect_table_stats ..................... pgfr._collect_table_stats
@@ -467,19 +465,6 @@ CREATE INDEX IF NOT EXISTS table_snapshots_relid_idx
 COMMENT ON TABLE pgfr.table_snapshots IS 'Table-level statistics snapshots for hotspot tracking and bloat detection. Includes size metrics for extension-free bloat estimation.';
 
 
--- Tracks vacuum operating mode and recommendation state per table
--- Used by vacuum control system for closed-loop tuning recommendations
--- Note: Only stores OID per project policy; join to pg_class for names
-CREATE TABLE IF NOT EXISTS pgfr.vacuum_control_state (
-    relid                           OID PRIMARY KEY,
-    operating_mode                  TEXT NOT NULL DEFAULT 'normal',
-    mode_entered_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_recommendation_at          TIMESTAMPTZ,
-    last_recommended_scale_factor   NUMERIC,
-    consecutive_budget_exceeded     INTEGER NOT NULL DEFAULT 0,
-    updated_at                      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-COMMENT ON TABLE pgfr.vacuum_control_state IS 'Tracks vacuum operating mode (normal/catch_up/safety) and recommendation state per table for closed-loop vacuum control';
 
 
 -- Captures index-level statistics from pg_stat_user_indexes
@@ -2715,25 +2700,6 @@ BEGIN
         LIMIT v_top_n;
     END IF;
 
-    -- Update vacuum_control_state for monitored tables using a lateral join
-    -- to properly handle the set-returning function
-    INSERT INTO pgfr.vacuum_control_state (relid, operating_mode, mode_entered_at, updated_at)
-    SELECT
-        ts.relid,
-        COALESCE(vcm.mode, 'normal'),
-        now(),
-        now()
-    FROM pgfr.table_snapshots ts
-    LEFT JOIN LATERAL pgfr.vacuum_control_mode(ts.relid) vcm ON true
-    WHERE ts.snapshot_id = p_snapshot_id
-    ON CONFLICT (relid) DO UPDATE SET
-        operating_mode = EXCLUDED.operating_mode,
-        mode_entered_at = CASE
-            WHEN pgfr.vacuum_control_state.operating_mode != EXCLUDED.operating_mode
-            THEN now()
-            ELSE pgfr.vacuum_control_state.mode_entered_at
-        END,
-        updated_at = now();
 END;
 $$;
 
@@ -4396,29 +4362,6 @@ LANGUAGE sql STABLE AS $$
     CROSS JOIN wait_array wa
 $$;
 
--- =============================================================================
--- Vacuum Control Mode Stub
--- =============================================================================
--- Minimal stub so _collect_table_stats works without _control/install.sql.
--- Install _control/install.sql to get the full implementation.
-
-CREATE OR REPLACE FUNCTION pgfr.vacuum_control_mode(
-    p_relid OID
-)
-RETURNS TABLE(
-    mode        TEXT,
-    reason      TEXT,
-    entered_at  TIMESTAMPTZ,
-    evidence    TEXT
-)
-LANGUAGE sql STABLE AS $$
-    SELECT
-        'normal'::TEXT,
-        'Autovacuum control not installed'::TEXT,
-        now(),
-        NULL::TEXT;
-$$;
-COMMENT ON FUNCTION pgfr.vacuum_control_mode(OID) IS 'Stub: returns normal mode. Install _control/install.sql for full vacuum control.';
 
 -- Switches flight recorder to specified mode (normal/light/emergency) with different overhead and retention trade-offs
 -- Validates mode and configures sampling interval and collector enablement accordingly

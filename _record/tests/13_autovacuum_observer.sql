@@ -67,7 +67,7 @@ SELECT is(
 -- =============================================================================
 
 SELECT has_function(
-    'pgfr_analyze', 'dead_tuple_growth_rate',
+    'pgfr_control', 'dead_tuple_growth_rate',
     ARRAY['oid', 'interval'],
     'dead_tuple_growth_rate(oid, interval) function should exist'
 );
@@ -85,7 +85,7 @@ SELECT has_function(
 );
 
 SELECT has_function(
-    'pgfr_analyze', 'time_to_budget_exhaustion',
+    'pgfr_control', 'time_to_budget_exhaustion',
     ARRAY['oid', 'bigint'],
     'time_to_budget_exhaustion(oid, bigint) function should exist'
 );
@@ -133,7 +133,7 @@ SELECT lives_ok(
 
 -- Test dead_tuple_growth_rate executes without error
 SELECT lives_ok(
-    $$SELECT pgfr_analyze.dead_tuple_growth_rate(
+    $$SELECT pgfr_control.dead_tuple_growth_rate(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1),
         '1 hour'::interval
       )$$,
@@ -142,7 +142,7 @@ SELECT lives_ok(
 
 -- Test dead_tuple_growth_rate returns NUMERIC
 SELECT ok(
-    pg_typeof(pgfr_analyze.dead_tuple_growth_rate(
+    pg_typeof(pgfr_control.dead_tuple_growth_rate(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1),
         '1 hour'::interval
     ))::text = 'numeric',
@@ -185,7 +185,7 @@ SELECT ok(
 
 -- Test time_to_budget_exhaustion executes without error
 SELECT lives_ok(
-    $$SELECT pgfr_analyze.time_to_budget_exhaustion(
+    $$SELECT pgfr_control.time_to_budget_exhaustion(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1),
         10000::bigint
       )$$,
@@ -194,7 +194,7 @@ SELECT lives_ok(
 
 -- Test time_to_budget_exhaustion returns INTERVAL
 SELECT ok(
-    pg_typeof(pgfr_analyze.time_to_budget_exhaustion(
+    pg_typeof(pgfr_control.time_to_budget_exhaustion(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1),
         10000::bigint
     ))::text = 'interval',
@@ -294,7 +294,7 @@ SELECT lives_ok(
 
 -- Test rate functions with non-existent OID
 SELECT is(
-    pgfr_analyze.dead_tuple_growth_rate(0::oid, '1 hour'::interval),
+    pgfr_control.dead_tuple_growth_rate(0::oid, '1 hour'::interval),
     NULL::numeric,
     'dead_tuple_growth_rate should return NULL for non-existent OID'
 );
@@ -312,7 +312,7 @@ SELECT is(
 );
 
 SELECT is(
-    pgfr_analyze.time_to_budget_exhaustion(0::oid, 10000::bigint),
+    pgfr_control.time_to_budget_exhaustion(0::oid, 10000::bigint),
     NULL::interval,
     'time_to_budget_exhaustion should return NULL for non-existent OID'
 );
