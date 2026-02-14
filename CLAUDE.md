@@ -68,8 +68,8 @@ Or if you have pglast installed (`pip install pglast>=7.0`):
 
 A GitHub Actions workflow (`.github/workflows/sql-index.yml`) regenerates SQL_INDEX.json on every push to main when SQL files change:
 
+- **Automatic commit**: SQL_INDEX.json is committed directly to main
 - **sql-index Artifact**: Downloadable from the workflow run for local use
-- **sql-index Branch**: SQL_INDEX.json is pushed to the `sql-index` branch
 
 ## Markdown Formatting
 

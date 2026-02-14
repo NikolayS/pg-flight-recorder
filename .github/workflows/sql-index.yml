@@ -57,16 +57,12 @@ jobs:
           path: SQL_INDEX.json
           retention-days: 30
 
-      - name: Push SQL_INDEX.json to sql-index branch
+      - name: Commit SQL_INDEX.json to main
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Create orphan branch with just the index file
-          git checkout --orphan sql-index-temp
-          git reset
-          git add -f SQL_INDEX.json
-          git commit -m "Update SQL_INDEX.json"
-
-          # Force push to sql-index branch
-          git push origin sql-index-temp:sql-index --force
+          git add SQL_INDEX.json
+          git diff --cached --quiet && echo "No changes to SQL_INDEX.json" && exit 0
+          git commit -m "regenerate SQL_INDEX.json"
+          git push origin main
