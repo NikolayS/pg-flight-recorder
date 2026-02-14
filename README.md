@@ -2,6 +2,16 @@
 
 Server-side flight recorder for PostgreSQL. Answers "what was happening in my database?"
 
+## Structure
+
+Three extensions, each in its own subdirectory:
+
+| Directory | Extension | Schema | Purpose |
+|-----------|-----------|--------|---------|
+| `_record/` | `pgfr_record` | `pgfr` | Core: tables, collection, scheduling, ring buffers |
+| `_analyze/` | `pgfr_analyze` | `pgfr_analyze` | Optional: reporting, anomaly detection, time travel |
+| `_control/` | `pgfr_control` | `pgfr_control` | Optional: vacuum diagnostics, scale factor tuning, bloat |
+
 ## Install
 
 Requires PostgreSQL 15+ with pg_cron.
