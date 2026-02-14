@@ -14,6 +14,11 @@ psql --single-transaction -f install.sql
 ```
 
 ```bash
+# Autovacuum control (optional — vacuum diagnostics, scale factor tuning, bloat analysis)
+psql --single-transaction -f autovacuum_control.sql
+```
+
+```bash
 # Reporting & analysis (optional)
 psql --single-transaction -f reporting.sql
 ```
@@ -31,6 +36,11 @@ That's it. It runs automatically. The report tells you what happened.
 ```bash
 # Remove everything (destructive)
 psql --single-transaction -f uninstall.sql
+```
+
+```bash
+# Remove only autovacuum control functions (keeps core + data)
+psql --single-transaction -f uninstall_autovacuum_control.sql
 ```
 
 ```bash
