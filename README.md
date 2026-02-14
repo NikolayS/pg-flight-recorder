@@ -14,7 +14,7 @@ psql --single-transaction -f install.sql
 ```
 
 ```bash
-# Autovacuum control (optional — vacuum diagnostics, scale factor tuning, bloat analysis)
+# Control (optional — vacuum diagnostics, scale factor tuning, bloat analysis)
 psql --single-transaction -f autovacuum_control.sql
 ```
 
@@ -39,7 +39,7 @@ psql --single-transaction -f uninstall.sql
 ```
 
 ```bash
-# Remove only autovacuum control functions (keeps core + data)
+# Remove only control functions (keeps core + data)
 psql --single-transaction -f uninstall_autovacuum_control.sql
 ```
 
