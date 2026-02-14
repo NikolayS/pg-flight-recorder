@@ -1,10 +1,10 @@
 -- =============================================================================
--- Uninstall pg_flight_recorder (DESTRUCTIVE)
+-- Uninstall pgfr_record (DESTRUCTIVE)
 -- =============================================================================
 -- WARNING: This removes ALL data including historical snapshots!
--- Use this only when you want to completely remove flight_recorder.
+-- Use this only when you want to completely remove pgfr.
 --
--- To remove only reporting functions: psql --single-transaction -f uninstall_reporting.sql
+-- To remove only reporting functions: psql --single-transaction -f uninstall_analyze.sql
 --
 -- Run with: psql --single-transaction -f uninstall.sql
 -- =============================================================================
@@ -18,23 +18,23 @@ BEGIN
     -- Collect job IDs before unscheduling
     SELECT array_agg(jobid) INTO v_jobids
     FROM cron.job
-    WHERE jobname IN ('flight_recorder_snapshot', 'flight_recorder_sample', 'flight_recorder_flush', 'flight_recorder_archive', 'flight_recorder_cleanup');
+    WHERE jobname IN ('pgfr_snapshot', 'pgfr_sample', 'pgfr_flush', 'pgfr_archive', 'pgfr_cleanup');
 
     -- Unschedule jobs
-    PERFORM cron.unschedule('flight_recorder_snapshot')
-    WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'flight_recorder_snapshot');
+    PERFORM cron.unschedule('pgfr_snapshot')
+    WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr_snapshot');
 
-    PERFORM cron.unschedule('flight_recorder_sample')
-    WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'flight_recorder_sample');
+    PERFORM cron.unschedule('pgfr_sample')
+    WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr_sample');
 
-    PERFORM cron.unschedule('flight_recorder_flush')
-    WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'flight_recorder_flush');
+    PERFORM cron.unschedule('pgfr_flush')
+    WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr_flush');
 
-    PERFORM cron.unschedule('flight_recorder_archive')
-    WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'flight_recorder_archive');
+    PERFORM cron.unschedule('pgfr_archive')
+    WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr_archive');
 
-    PERFORM cron.unschedule('flight_recorder_cleanup')
-    WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'flight_recorder_cleanup');
+    PERFORM cron.unschedule('pgfr_cleanup')
+    WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr_cleanup');
 
     -- Clean up job run history
     IF v_jobids IS NOT NULL THEN
@@ -51,8 +51,8 @@ END;
 $$;
 
 -- Drop schemas and all objects
-DROP SCHEMA IF EXISTS flight_recorder_reporting CASCADE;
-DROP SCHEMA IF EXISTS flight_recorder CASCADE;
+DROP SCHEMA IF EXISTS pgfr_analyze CASCADE;
+DROP SCHEMA IF EXISTS pgfr CASCADE;
 
 DO $$
 BEGIN

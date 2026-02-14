@@ -5,8 +5,8 @@ services:
       context: .
       args:
         PG_VERSION: 15
-    image: pg_flight_recorder_test:15
-    container_name: pg_flight_recorder_test-15
+    image: pgfr_record_test:15
+    container_name: pgfr_record_test-15
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres
@@ -16,8 +16,8 @@ services:
     volumes:
       - postgres15_data:/var/lib/postgresql/data
       - ./install.sql:/install.sql:ro
-      - ./autovacuum_control.sql:/autovacuum_control.sql:ro
-      - ./reporting.sql:/reporting.sql:ro
+      - ./control.sql:/control.sql:ro
+      - ./analyze.sql:/analyze.sql:ro
       - ./tests:/tests:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -31,8 +31,8 @@ services:
       context: .
       args:
         PG_VERSION: 16
-    image: pg_flight_recorder_test:16
-    container_name: pg_flight_recorder_test-16
+    image: pgfr_record_test:16
+    container_name: pgfr_record_test-16
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres
@@ -42,8 +42,8 @@ services:
     volumes:
       - postgres16_data:/var/lib/postgresql/data
       - ./install.sql:/install.sql:ro
-      - ./autovacuum_control.sql:/autovacuum_control.sql:ro
-      - ./reporting.sql:/reporting.sql:ro
+      - ./control.sql:/control.sql:ro
+      - ./analyze.sql:/analyze.sql:ro
       - ./tests:/tests:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -57,8 +57,8 @@ services:
       context: .
       args:
         PG_VERSION: 17
-    image: pg_flight_recorder_test:17
-    container_name: pg_flight_recorder_test-17
+    image: pgfr_record_test:17
+    container_name: pgfr_record_test-17
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres
@@ -68,8 +68,8 @@ services:
     volumes:
       - postgres17_data:/var/lib/postgresql/data
       - ./install.sql:/install.sql:ro
-      - ./autovacuum_control.sql:/autovacuum_control.sql:ro
-      - ./reporting.sql:/reporting.sql:ro
+      - ./control.sql:/control.sql:ro
+      - ./analyze.sql:/analyze.sql:ro
       - ./tests:/tests:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]

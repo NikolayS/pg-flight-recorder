@@ -98,12 +98,12 @@ Run tests with:
 ## Code Style
 
 - Follow existing patterns in `install.sql`
-- Use `flight_recorder.` schema prefix for all objects
+- Use `pgfr.` schema prefix for all objects
 - Include COMMENT ON statements for new functions and tables
 
 ## Schema Evolution
 
-pg_flight_recorder uses **additive-only schema changes**:
+pgfr_record uses **additive-only schema changes**:
 
 - Add new nullable columns (never remove or rename existing ones)
 - Historical data with NULL in new columns is correct ("not collected then")
@@ -113,5 +113,5 @@ pg_flight_recorder uses **additive-only schema changes**:
 
 - Query performance matters during incident analysis
 - Strong typing catches errors early
-- Schema-as-documentation (`\d flight_recorder.snapshots` shows what's collected)
+- Schema-as-documentation (`\d pgfr.snapshots` shows what's collected)
 - Underlying pg_stat_* views evolve slowly and additively

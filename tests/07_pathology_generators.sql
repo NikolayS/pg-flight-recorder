@@ -1,7 +1,7 @@
 -- =============================================================================
--- pg_flight_recorder pgTAP Tests - Pathological Data Generators
+-- pgfr_record pgTAP Tests - Pathological Data Generators
 -- =============================================================================
--- Tests: Generate real-world pathologies and verify pg_flight_recorder detects them
+-- Tests: Generate real-world pathologies and verify pgfr_record detects them
 -- Purpose: Validate that diagnostic playbooks work end-to-end
 -- Based on: DIAGNOSTIC_PLAYBOOKS.md
 -- Sections: All 9 DIAGNOSTIC_PLAYBOOKS.md pathologies
@@ -12,13 +12,13 @@ BEGIN;
 SELECT plan(48);
 
 -- Disable checkpoint detection during tests to prevent snapshot skipping
-UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
+UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
 -- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE flight_recorder.config SET value = 'false' WHERE key = 'adaptive_sampling';
+UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
 
 -- Disable collection jitter to speed up tests (default is 0-10 second random delay)
-UPDATE flight_recorder.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
+UPDATE pgfr.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
 
 -- =============================================================================
 -- PATHOLOGY 1: LOCK CONTENTION (6 tests)
@@ -55,7 +55,7 @@ BEGIN
     PERFORM pg_advisory_lock(12345);
 
     -- Capture the state while lock is held
-    PERFORM flight_recorder.sample();
+    PERFORM pgfr.sample();
 
     -- Try to acquire the same lock in a non-blocking way (simulates a blocked session)
     -- This will fail immediately and return false, but the attempt is logged
@@ -68,7 +68,7 @@ $$;
 
 -- Test that sample() continues to work after lock operations
 SELECT lives_ok(
-    $$SELECT flight_recorder.sample()$$,
+    $$SELECT pgfr.sample()$$,
     'LOCK PATHOLOGY: sample() should execute after lock contention scenario'
 );
 
@@ -76,13 +76,13 @@ SELECT lives_ok(
 -- Note: Lock samples may be empty if no actual blocking occurred
 -- (advisory locks don't create blocked sessions in single transaction)
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.lock_samples_ring) >= 0,
+    (SELECT count(*) FROM pgfr.lock_samples_ring) >= 0,
     'LOCK PATHOLOGY: lock_samples_ring should be queryable'
 );
 
 -- Test recent_locks_current() function works
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.recent_locks_current()$$,
+    $$SELECT * FROM pgfr.recent_locks_current()$$,
     'LOCK PATHOLOGY: recent_locks_current() should execute without error'
 );
 
@@ -131,7 +131,7 @@ SELECT ok(
 );
 
 -- Capture baseline snapshot before generating pathology
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- Generate pathology: Force temp file spills with low work_mem
 DO $$
@@ -167,24 +167,24 @@ $$;
 
 -- Capture snapshot after generating pathology
 SELECT pg_sleep(0.2); -- Small delay to ensure statement stats are updated
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- Test that snapshot captured the period
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.snapshots WHERE captured_at > now() - interval '10 seconds') >= 2,
+    (SELECT count(*) FROM pgfr.snapshots WHERE captured_at > now() - interval '10 seconds') >= 2,
     'MEMORY PATHOLOGY: At least 2 snapshots should exist from the test period'
 );
 
 -- Test that temp file data was captured in snapshots
 -- Note: temp_files and temp_bytes are cumulative, so we check they exist
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.snapshots WHERE temp_files IS NOT NULL) >= 1,
+    (SELECT count(*) FROM pgfr.snapshots WHERE temp_files IS NOT NULL) >= 1,
     'MEMORY PATHOLOGY: Snapshots should capture temp_files metric'
 );
 
 -- Test that statement_snapshots table exists and has data
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.statement_snapshots) >= 0,
+    (SELECT count(*) FROM pgfr.statement_snapshots) >= 0,
     'MEMORY PATHOLOGY: statement_snapshots should contain query statistics'
 );
 
@@ -197,16 +197,16 @@ DECLARE
     v_anomaly_count INT;
 BEGIN
     SELECT min(captured_at) INTO v_start_time
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
     WHERE captured_at > now() - interval '10 seconds';
 
     SELECT max(captured_at) INTO v_end_time
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
     WHERE captured_at > now() - interval '10 seconds';
 
     -- Check if anomaly_report can run on this time range
     SELECT count(*) INTO v_anomaly_count
-    FROM flight_recorder_reporting.anomaly_report(v_start_time, v_end_time);
+    FROM pgfr_analyze.anomaly_report(v_start_time, v_end_time);
 
     -- Store result for test
     CREATE TEMP TABLE IF NOT EXISTS pathology_test_results (test_name text, result boolean);
@@ -253,7 +253,7 @@ SELECT ok(
 );
 
 -- Capture baseline snapshot
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- Generate pathology: CPU-intensive calculations
 DO $$
@@ -279,23 +279,23 @@ END;
 $$;
 
 -- Capture snapshot after CPU work
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- Test that snapshots were captured
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.snapshots WHERE captured_at > now() - interval '10 seconds') >= 2,
+    (SELECT count(*) FROM pgfr.snapshots WHERE captured_at > now() - interval '10 seconds') >= 2,
     'CPU PATHOLOGY: At least 2 snapshots should exist from test period'
 );
 
 -- Test that statement_snapshots table is accessible (may or may not have data depending on pg_stat_statements)
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.statement_snapshots) >= 0,
+    (SELECT count(*) FROM pgfr.statement_snapshots) >= 0,
     'CPU PATHOLOGY: statement_snapshots should be queryable'
 );
 
 -- Test that recent_activity_current() works (used for real-time CPU monitoring)
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.recent_activity_current()$$,
+    $$SELECT * FROM pgfr.recent_activity_current()$$,
     'CPU PATHOLOGY: recent_activity_current() should execute for CPU monitoring'
 );
 
@@ -337,7 +337,7 @@ SELECT ok(
 DO $$
 BEGIN
     -- Capture activity before slow operation
-    PERFORM flight_recorder.sample();
+    PERFORM pgfr.sample();
 
     -- Simulate slow query (short sleep to not slow down tests too much)
     PERFORM pg_sleep(0.5);
@@ -346,25 +346,25 @@ BEGIN
     PERFORM count(*) FROM test_slow_realtime;
 
     -- Capture activity after slow operation
-    PERFORM flight_recorder.sample();
+    PERFORM pgfr.sample();
 END;
 $$;
 
 -- Test that sample() captured activity
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.activity_samples_ring) >= 0,
+    (SELECT count(*) FROM pgfr.activity_samples_ring) >= 0,
     'SLOW REALTIME PATHOLOGY: activity_samples_ring should be queryable'
 );
 
 -- Test that recent_activity_current() works for real-time monitoring
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.recent_activity_current() ORDER BY query_start NULLS LAST LIMIT 10$$,
+    $$SELECT * FROM pgfr.recent_activity_current() ORDER BY query_start NULLS LAST LIMIT 10$$,
     'SLOW REALTIME PATHOLOGY: recent_activity_current() should execute for triage'
 );
 
 -- Test that recent_waits_current() works for wait event analysis
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.recent_waits_current() ORDER BY count DESC$$,
+    $$SELECT * FROM pgfr.recent_waits_current() ORDER BY count DESC$$,
     'SLOW REALTIME PATHOLOGY: recent_waits_current() should execute for wait analysis'
 );
 
@@ -409,7 +409,7 @@ SELECT ok(
 );
 
 -- Capture baseline snapshot
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- Generate pathology: Force sequential scans and expensive operations
 DO $$
@@ -440,12 +440,12 @@ END;
 $$;
 
 -- Capture snapshot after slow queries
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- Test that statement_snapshots is queryable (may not have data if pg_stat_statements isn't tracking)
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.statement_snapshots ss
-     JOIN flight_recorder.snapshots s ON s.id = ss.snapshot_id
+    (SELECT count(*) FROM pgfr.statement_snapshots ss
+     JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
      WHERE s.captured_at > now() - interval '10 seconds') >= 0,
     'SLOW QUERIES PATHOLOGY: statement_snapshots should be queryable for recent period'
 );
@@ -453,8 +453,8 @@ SELECT ok(
 -- Test that we can query statement stats for slow query analysis
 SELECT lives_ok(
     $$SELECT query_preview, calls, mean_exec_time, shared_blks_read
-      FROM flight_recorder.statement_snapshots ss
-      JOIN flight_recorder.snapshots s ON s.id = ss.snapshot_id
+      FROM pgfr.statement_snapshots ss
+      JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
       WHERE s.captured_at > now() - interval '10 seconds'
       ORDER BY mean_exec_time DESC NULLS LAST
       LIMIT 10$$,
@@ -470,12 +470,12 @@ DECLARE
 BEGIN
     SELECT min(captured_at), max(captured_at)
     INTO v_start_time, v_end_time
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
     WHERE captured_at > now() - interval '10 seconds';
 
     -- Verify compare() executes
     SELECT count(*) INTO v_compare_count
-    FROM flight_recorder.compare(v_start_time, v_end_time);
+    FROM pgfr.compare(v_start_time, v_end_time);
 
     -- Store result
     INSERT INTO pathology_test_results VALUES ('compare_executed', v_compare_count >= 0)
@@ -560,7 +560,7 @@ END;
 $$;
 
 -- Capture snapshot with elevated connection count
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- Test that pg_stat_activity is queryable (connections may or may not have increased depending on dblink success)
 SELECT ok(
@@ -570,14 +570,14 @@ SELECT ok(
 
 -- Test that snapshots capture connection metrics
 SELECT ok(
-    (SELECT connections_total FROM flight_recorder.snapshots
+    (SELECT connections_total FROM pgfr.snapshots
      ORDER BY captured_at DESC LIMIT 1) IS NOT NULL,
     'CONNECTION PATHOLOGY: Snapshot should capture connections_total'
 );
 
 -- Test that recent_activity_current() is queryable
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.recent_activity_current()) >= 0,
+    (SELECT count(*) FROM pgfr.recent_activity_current()) >= 0,
     'CONNECTION PATHOLOGY: recent_activity_current() should be queryable'
 );
 
@@ -585,7 +585,7 @@ SELECT ok(
 SELECT lives_ok(
     $$SELECT connections_active, connections_total, connections_max,
              round(100.0 * connections_total / NULLIF(connections_max, 0), 1) AS utilization_pct
-      FROM flight_recorder.snapshots
+      FROM pgfr.snapshots
       ORDER BY captured_at DESC
       LIMIT 1$$,
     'CONNECTION PATHOLOGY: Should be able to query connection utilization metrics'
@@ -647,7 +647,7 @@ BEGIN
     v_start_time := now();
 
     -- Capture initial snapshot
-    PERFORM flight_recorder.snapshot();
+    PERFORM pgfr.snapshot();
 
     -- Run some queries to generate activity
     PERFORM count(*) FROM test_historical WHERE data LIKE '%a%';
@@ -657,7 +657,7 @@ BEGIN
     PERFORM pg_sleep(0.2);
 
     -- Capture another snapshot
-    PERFORM flight_recorder.snapshot();
+    PERFORM pgfr.snapshot();
 
     -- Store time range for later tests
     PERFORM set_config('pathology.historical_start', v_start_time::text, false);
@@ -667,7 +667,7 @@ $$;
 
 -- Test that summary_report() function works for time range analysis
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder_reporting.summary_report(
+    $$SELECT * FROM pgfr_analyze.summary_report(
         current_setting('pathology.historical_start')::timestamptz,
         current_setting('pathology.historical_end')::timestamptz
     )$$,
@@ -676,7 +676,7 @@ SELECT lives_ok(
 
 -- Test that wait_summary() function works for historical wait analysis
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.wait_summary(
+    $$SELECT * FROM pgfr.wait_summary(
         current_setting('pathology.historical_start')::timestamptz,
         current_setting('pathology.historical_end')::timestamptz
     )$$,
@@ -685,7 +685,7 @@ SELECT lives_ok(
 
 -- Test that activity_samples_archive is queryable (may be empty if archiving hasn't run)
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.activity_samples_archive) >= 0,
+    (SELECT count(*) FROM pgfr.activity_samples_archive) >= 0,
     'HISTORICAL PATHOLOGY: activity_samples_archive should be queryable'
 );
 
@@ -724,7 +724,7 @@ SELECT ok(
 );
 
 -- Capture baseline snapshot
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- Generate pathology: Force sequential scan and capture I/O metrics
 DO $$
@@ -752,12 +752,12 @@ END;
 $$;
 
 -- Capture snapshot after I/O operations
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- Test that wait_summary can filter by IO wait events
 SELECT lives_ok(
     $$SELECT wait_event, total_waiters, avg_waiters
-      FROM flight_recorder.wait_summary(
+      FROM pgfr.wait_summary(
           now() - interval '1 minute',
           now()
       )
@@ -769,8 +769,8 @@ SELECT lives_ok(
 -- Test that we can query disk read metrics from statement_snapshots
 SELECT lives_ok(
     $$SELECT query_preview, shared_blks_read, blk_read_time
-      FROM flight_recorder.statement_snapshots ss
-      JOIN flight_recorder.snapshots s ON s.id = ss.snapshot_id
+      FROM pgfr.statement_snapshots ss
+      JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
       WHERE s.captured_at > now() - interval '1 minute'
       ORDER BY shared_blks_read DESC NULLS LAST
       LIMIT 10$$,
@@ -786,7 +786,7 @@ SELECT lives_ok(
                   THEN round(100.0 * blks_hit / (blks_hit + blks_read), 1)
                   ELSE NULL
              END AS cache_hit_pct
-      FROM flight_recorder.snapshots
+      FROM pgfr.snapshots
       WHERE captured_at > now() - interval '1 minute'
       ORDER BY captured_at DESC
       LIMIT 5$$,
@@ -812,17 +812,17 @@ SELECT ok(
 -- =============================================================================
 
 -- Capture baseline snapshot before checkpoint operations
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- Test that checkpoint metrics are captured in snapshots
 SELECT ok(
     EXISTS (
-        SELECT 1 FROM flight_recorder.snapshots
+        SELECT 1 FROM pgfr.snapshots
         WHERE checkpoint_time IS NOT NULL
            OR ckpt_timed IS NOT NULL
            OR ckpt_requested IS NOT NULL
         LIMIT 1
-    ) OR (SELECT count(*) FROM flight_recorder.snapshots) >= 0,  -- Always pass if snapshots exist
+    ) OR (SELECT count(*) FROM pgfr.snapshots) >= 0,  -- Always pass if snapshots exist
     'CHECKPOINT PATHOLOGY: Snapshots should capture checkpoint metrics (or be queryable)'
 );
 
@@ -831,7 +831,7 @@ CHECKPOINT;
 
 -- Small delay then capture
 SELECT pg_sleep(0.2);
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- Test that we can query checkpoint timing data
 SELECT lives_ok(
@@ -842,7 +842,7 @@ SELECT lives_ok(
              ckpt_buffers,
              ckpt_timed,
              ckpt_requested
-      FROM flight_recorder.snapshots
+      FROM pgfr.snapshots
       WHERE captured_at > now() - interval '1 minute'
       ORDER BY captured_at DESC
       LIMIT 5$$,
@@ -852,7 +852,7 @@ SELECT lives_ok(
 -- Test that anomaly_report can run and check for checkpoint issues
 SELECT lives_ok(
     $$SELECT anomaly_type, severity, description
-      FROM flight_recorder_reporting.anomaly_report(
+      FROM pgfr_analyze.anomaly_report(
           now() - interval '1 minute',
           now()
       )
@@ -868,7 +868,7 @@ SELECT lives_ok(
              wal_bytes,
              bgw_buffers_backend,
              bgw_buffers_backend_fsync
-      FROM flight_recorder.snapshots
+      FROM pgfr.snapshots
       WHERE captured_at > now() - interval '1 minute'
       ORDER BY captured_at DESC
       LIMIT 5$$,
@@ -884,12 +884,12 @@ DECLARE
 BEGIN
     SELECT min(captured_at), max(captured_at)
     INTO v_start_time, v_end_time
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
     WHERE captured_at > now() - interval '1 minute';
 
     -- Verify compare() executes for checkpoint analysis
     SELECT count(*) INTO v_compare_count
-    FROM flight_recorder.compare(v_start_time, v_end_time);
+    FROM pgfr.compare(v_start_time, v_end_time);
 
     -- Store result
     INSERT INTO pathology_test_results VALUES ('checkpoint_compare_executed', v_compare_count >= 0)

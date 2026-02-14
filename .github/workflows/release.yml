@@ -138,20 +138,20 @@ jobs:
         run: |
           mkdir -p release-assets
           cp install.sql release-assets/
-          cp reporting.sql release-assets/
+          cp analyze.sql release-assets/
           cp uninstall.sql release-assets/
-          cp uninstall_reporting.sql release-assets/
+          cp uninstall_analyze.sql release-assets/
           cp README.md release-assets/
           cp REFERENCE.md release-assets/
           [ -f CHANGELOG.md ] && cp CHANGELOG.md release-assets/
 
           # Create tarball
-          tar -czf release-assets/pg_flight_recorder-${{ steps.version.outputs.version }}.tar.gz \
-            install.sql reporting.sql uninstall.sql uninstall_reporting.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
+          tar -czf release-assets/pgfr_record-${{ steps.version.outputs.version }}.tar.gz \
+            install.sql analyze.sql uninstall.sql uninstall_analyze.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
 
           # Create zip
-          zip -q release-assets/pg_flight_recorder-${{ steps.version.outputs.version }}.zip \
-            install.sql reporting.sql uninstall.sql uninstall_reporting.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
+          zip -q release-assets/pgfr_record-${{ steps.version.outputs.version }}.zip \
+            install.sql analyze.sql uninstall.sql uninstall_analyze.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -165,9 +165,9 @@ jobs:
             release-assets/*.tar.gz
             release-assets/*.zip
             install.sql
-            reporting.sql
+            analyze.sql
             uninstall.sql
-            uninstall_reporting.sql
+            uninstall_analyze.sql
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -197,7 +197,7 @@ jobs:
 
       - name: Release announcement
         run: |
-          echo "🎉 pg_flight_recorder ${{ steps.version.outputs.version }} has been released!"
+          echo "🎉 pgfr_record ${{ steps.version.outputs.version }} has been released!"
           echo "📦 Download: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.version }}"
           echo ""
           echo "Installation:"

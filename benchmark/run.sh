@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run pg_flight_recorder benchmarks
+# Run pgfr_record benchmarks
 
 set -euo pipefail
 
@@ -30,8 +30,8 @@ info() {
 }
 
 # Check if flight recorder is installed
-check_flight_recorder() {
-    if psql -c "SELECT flight_recorder.get_mode()" &> /dev/null; then
+check_pgfr() {
+    if psql -c "SELECT pgfr.get_mode()" &> /dev/null; then
         log "✓ Flight recorder is installed"
         return 0
     else
@@ -49,7 +49,7 @@ run_baseline() {
     log "Running baseline (flight recorder DISABLED)..."
 
     # Disable flight recorder
-    psql -c "SELECT flight_recorder.disable()" &> /dev/null || true
+    psql -c "SELECT pgfr.disable()" &> /dev/null || true
 
     # Wait for any in-flight collections to complete
     sleep 5
@@ -64,7 +64,7 @@ run_baseline() {
 }
 
 # Run benchmark with flight recorder enabled
-run_with_flight_recorder() {
+run_with_pgfr() {
     local scenario=$1
     local duration=$2
     local clients=$3
@@ -73,8 +73,8 @@ run_with_flight_recorder() {
     log "Running with flight recorder ENABLED (mode: $mode)..."
 
     # Enable flight recorder
-    psql -c "SELECT flight_recorder.enable()" &> /dev/null
-    psql -c "SELECT flight_recorder.set_mode('$mode')" &> /dev/null
+    psql -c "SELECT pgfr.enable()" &> /dev/null
+    psql -c "SELECT pgfr.set_mode('$mode')" &> /dev/null
 
     # Wait for flight recorder to stabilize
     sleep 5
@@ -127,7 +127,7 @@ run_scenario() {
     sleep 60
 
     # Run with flight recorder
-    run_with_flight_recorder "$scenario" "$duration" "$clients" "$mode"
+    run_with_pgfr "$scenario" "$duration" "$clients" "$mode"
 
     # Compare
     compare_results "$scenario" "$mode"
@@ -216,7 +216,7 @@ main() {
                 ;;
             --help)
                 cat <<EOF
-Run pg_flight_recorder benchmarks
+Run pgfr_record benchmarks
 
 Usage: $0 [OPTIONS]
 
@@ -256,12 +256,12 @@ EOF
     # Create results directory
     mkdir -p "$RESULTS_DIR"
 
-    log "=== pg_flight_recorder Benchmark Runner ==="
+    log "=== pgfr_record Benchmark Runner ==="
     log "Results directory: $RESULTS_DIR"
     log ""
 
     # Check prerequisites
-    if ! check_flight_recorder; then
+    if ! check_pgfr; then
         error "Install flight recorder first: psql --single-transaction -f install.sql"
         exit 1
     fi

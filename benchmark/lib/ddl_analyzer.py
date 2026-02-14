@@ -26,11 +26,11 @@ class DDLOperation:
     lock_wait_ms: float = None
 
     @property
-    def blocked_by_flight_recorder(self) -> bool:
+    def blocked_by_pgfr(self) -> bool:
         """Check if this operation was blocked by flight recorder."""
         if not self.was_blocked or not self.blocked_by:
             return False
-        return 'flight_recorder' in self.blocked_by.lower()
+        return 'pgfr' in self.blocked_by.lower()
 
 
 class DDLAnalyzer:
@@ -71,7 +71,7 @@ class DDLAnalyzer:
     def blocking_analysis(self) -> Dict:
         """Analyze blocking patterns."""
         blocked = [op for op in self.operations if op.was_blocked]
-        fr_blocked = [op for op in self.operations if op.blocked_by_flight_recorder]
+        fr_blocked = [op for op in self.operations if op.blocked_by_pgfr]
 
         return {
             'total_blocked': len(blocked),
@@ -95,7 +95,7 @@ class DDLAnalyzer:
             breakdown[op.ddl_type]['operations'].append(op)
             if op.was_blocked:
                 breakdown[op.ddl_type]['blocked'].append(op)
-            if op.blocked_by_flight_recorder:
+            if op.blocked_by_pgfr:
                 breakdown[op.ddl_type]['fr_blocked'].append(op)
 
         result = {}
@@ -113,7 +113,7 @@ class DDLAnalyzer:
 
     def collision_probability(self, interval_seconds: int = 180, operations_per_hour: int = 100) -> Dict:
         """Calculate collision probability at different rates."""
-        fr_blocked_pct = (len([op for op in self.operations if op.blocked_by_flight_recorder]) /
+        fr_blocked_pct = (len([op for op in self.operations if op.blocked_by_pgfr]) /
                          self.total_count * 100) if self.total_count > 0 else 0
 
         # Collections per day at given interval
@@ -133,10 +133,10 @@ class DDLAnalyzer:
 
     def risk_assessment(self, interval_seconds: int = 180) -> Tuple[str, str]:
         """Assess risk level and provide recommendations."""
-        fr_blocked_pct = (len([op for op in self.operations if op.blocked_by_flight_recorder]) /
+        fr_blocked_pct = (len([op for op in self.operations if op.blocked_by_pgfr]) /
                          self.total_count * 100) if self.total_count > 0 else 0
 
-        fr_blocked = [op for op in self.operations if op.blocked_by_flight_recorder]
+        fr_blocked = [op for op in self.operations if op.blocked_by_pgfr]
         avg_delay = statistics.mean([op.duration_ms for op in fr_blocked]) if fr_blocked else 0
 
         if fr_blocked_pct < 1:

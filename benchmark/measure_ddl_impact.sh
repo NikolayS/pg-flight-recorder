@@ -32,12 +32,12 @@ echo ""
 echo "Checking flight recorder installation..."
 FR_INSTALLED=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -qtA -c "
     SELECT EXISTS (
-        SELECT 1 FROM pg_namespace WHERE nspname = 'flight_recorder'
+        SELECT 1 FROM pg_namespace WHERE nspname = 'pgfr'
     );
 ")
 
 if [ "$FR_INSTALLED" != "t" ]; then
-    echo "ERROR: flight_recorder not installed. Installing..."
+    echo "ERROR: pgfr not installed. Installing..."
     psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" --single-transaction -f "${SCRIPT_DIR}/../install.sql"
 fi
 
@@ -45,22 +45,22 @@ fi
 echo "Configuring flight recorder (${INTERVAL}s interval)..."
 psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -c "
     -- Set sampling interval
-    UPDATE flight_recorder.config
+    UPDATE pgfr.config
     SET value = '${INTERVAL}'
     WHERE key = 'sample_interval_seconds';
 
     -- Disable adaptive sampling (we want consistent timing)
-    UPDATE flight_recorder.config
+    UPDATE pgfr.config
     SET value = 'false'
     WHERE key = 'adaptive_sampling';
 
     -- Enable snapshot-based collection (reduces locks from 3 to 1)
-    UPDATE flight_recorder.config
+    UPDATE pgfr.config
     SET value = 'true'
     WHERE key = 'snapshot_based_collection';
 
     -- Enable flight recorder
-    SELECT flight_recorder.enable();
+    SELECT pgfr.enable();
 "
 
 # Wait for first collection to ensure jobs are running
@@ -69,7 +69,7 @@ sleep $((INTERVAL + 5))
 
 # Clear collection stats to start fresh
 psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -c "
-    TRUNCATE flight_recorder.collection_stats;
+    TRUNCATE pgfr.collection_stats;
 "
 
 # Start background process to log collections
@@ -84,7 +84,7 @@ echo "Starting collection monitor..."
                     collection_type,
                     duration_ms,
                     success
-                FROM flight_recorder.collection_stats
+                FROM pgfr.collection_stats
                 ORDER BY started_at DESC
                 LIMIT 1
             ) t;
@@ -163,7 +163,7 @@ collision_rate = (blocked_count / total_ops * 100) if total_ops > 0 else 0
 fr_blocked = 0
 for op in blocked_ops:
     blocked_by = op.get('blocked_by', '')
-    if blocked_by and 'flight_recorder' in blocked_by.lower():
+    if blocked_by and 'pgfr' in blocked_by.lower():
         fr_blocked += 1
 
 fr_collision_rate = (fr_blocked / total_ops * 100) if total_ops > 0 else 0

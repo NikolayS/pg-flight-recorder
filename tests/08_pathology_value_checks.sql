@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg_flight_recorder pgTAP Tests - Pathology VALUE CHECKS
+-- pgfr_record pgTAP Tests - Pathology VALUE CHECKS
 -- =============================================================================
 -- Tests: Verify that pathologies produce DETECTABLE metric changes
 -- Purpose: Stronger assertions than "does it run" - check actual values/deltas
@@ -11,11 +11,11 @@ BEGIN;
 SELECT plan(12);
 
 -- Disable checkpoint detection during tests
-UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
+UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
 -- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE flight_recorder.config SET value = 'false' WHERE key = 'adaptive_sampling';
-UPDATE flight_recorder.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
+UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
+UPDATE pgfr.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
 
 -- =============================================================================
 -- VALUE CHECK 1: MEMORY PRESSURE - Temp Files Should Increase (4 tests)
@@ -35,9 +35,9 @@ SELECT ok(
 -- Capture baseline temp_files
 DO $$
 BEGIN
-    PERFORM flight_recorder.snapshot();
+    PERFORM pgfr.snapshot();
     PERFORM set_config('vc.baseline_temp_files',
-        COALESCE((SELECT temp_files::text FROM flight_recorder.snapshots
+        COALESCE((SELECT temp_files::text FROM pgfr.snapshots
                   ORDER BY captured_at DESC LIMIT 1), '0'),
         false);
 END;
@@ -59,18 +59,18 @@ END;
 $$;
 
 -- Capture after snapshot
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- VALUE CHECK: temp_files should have increased (or at least not decreased)
 SELECT ok(
-    (SELECT temp_files FROM flight_recorder.snapshots ORDER BY captured_at DESC LIMIT 1)
+    (SELECT temp_files FROM pgfr.snapshots ORDER BY captured_at DESC LIMIT 1)
     >= current_setting('vc.baseline_temp_files')::bigint,
     'VALUE CHECK MEMORY: temp_files should not decrease after memory pressure'
 );
 
 -- VALUE CHECK: temp_bytes should be non-null and >= 0
 SELECT ok(
-    (SELECT temp_bytes FROM flight_recorder.snapshots
+    (SELECT temp_bytes FROM pgfr.snapshots
      ORDER BY captured_at DESC LIMIT 1) >= 0,
     'VALUE CHECK MEMORY: temp_bytes should be captured (>= 0)'
 );
@@ -108,7 +108,7 @@ END;
 $$;
 
 -- Capture baseline snapshot
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- Generate CPU-intensive work
 DO $$
@@ -130,11 +130,11 @@ END;
 $$;
 
 -- Capture after snapshot
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- VALUE CHECK: Should have snapshots with statement data
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.snapshots
+    (SELECT count(*) FROM pgfr.snapshots
      WHERE captured_at > now() - interval '30 seconds') >= 2,
     'VALUE CHECK CPU: At least 2 snapshots captured'
 );
@@ -144,9 +144,9 @@ SELECT ok(
 -- because pg_stat_statements timing and snapshot timing don't always align.
 -- Instead, verify that statement_snapshots has been populated with data.
 SELECT ok(
-    (SELECT count(*) FROM flight_recorder.statement_snapshots) > 0
+    (SELECT count(*) FROM pgfr.statement_snapshots) > 0
     OR EXISTS (
-        SELECT 1 FROM flight_recorder.snapshots
+        SELECT 1 FROM pgfr.snapshots
         WHERE captured_at > now() - interval '30 seconds'
     ),
     'VALUE CHECK CPU: statement_snapshots should have data (or snapshots exist)'
@@ -175,9 +175,9 @@ SELECT ok(
 -- Capture baseline connection count
 DO $$
 BEGIN
-    PERFORM flight_recorder.snapshot();
+    PERFORM pgfr.snapshot();
     PERFORM set_config('vc.baseline_connections',
-        (SELECT connections_total::text FROM flight_recorder.snapshots
+        (SELECT connections_total::text FROM pgfr.snapshots
          ORDER BY captured_at DESC LIMIT 1),
         false);
 END;
@@ -201,12 +201,12 @@ END;
 $$;
 
 -- Capture snapshot with connections open
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- VALUE CHECK: connections_total should have increased
 -- Using >= baseline because some connections might have failed
 SELECT ok(
-    (SELECT connections_total FROM flight_recorder.snapshots
+    (SELECT connections_total FROM pgfr.snapshots
      ORDER BY captured_at DESC LIMIT 1)
     >= current_setting('vc.baseline_connections')::int,
     'VALUE CHECK CONNECTIONS: connections_total should be >= baseline'

@@ -1,4 +1,4 @@
-# pg_flight_recorder Reference
+# pgfr_record Reference
 
 [![GitHub release](https://img.shields.io/github/v/release/dventimisupabase/pg-flight-recorder)](https://github.com/dventimisupabase/pg-flight-recorder/releases/latest)
 [![Test Suite](https://github.com/dventimisupabase/pg-flight-recorder/actions/workflows/test.yml/badge.svg)](https://github.com/dventimisupabase/pg-flight-recorder/actions/workflows/test.yml)
@@ -13,16 +13,16 @@ A PostgreSQL monitoring extension that continuously samples database state for i
 \i install.sql
 
 -- Install reporting & analysis (optional)
-\i reporting.sql
+\i analyze.sql
 
 -- Enable collection
-SELECT flight_recorder.enable();
+SELECT pgfr.enable();
 
 -- Check health
-SELECT * FROM flight_recorder.health_check();
+SELECT * FROM pgfr.health_check();
 
 -- Generate diagnostic report
-SELECT flight_recorder_reporting.report('1 hour');
+SELECT pgfr_analyze.report('1 hour');
 ```
 
 ## Requirements
@@ -57,16 +57,16 @@ Profiles are pre-configured settings for different environments.
 
 ```sql
 -- List profiles
-SELECT * FROM flight_recorder.list_profiles();
+SELECT * FROM pgfr.list_profiles();
 
 -- Preview changes before applying
-SELECT * FROM flight_recorder.explain_profile('production_safe');
+SELECT * FROM pgfr.explain_profile('production_safe');
 
 -- Apply a profile
-SELECT * FROM flight_recorder.apply_profile('production_safe');
+SELECT * FROM pgfr.apply_profile('production_safe');
 
 -- Check current profile
-SELECT * FROM flight_recorder.get_current_profile();
+SELECT * FROM pgfr.get_current_profile();
 ```
 
 ## Functions
@@ -74,9 +74,9 @@ SELECT * FROM flight_recorder.get_current_profile();
 Functions are split across two files:
 
 - **`install.sql`** (core): Collection, control, ring buffer management, profiles, views
-- **`reporting.sql`** (optional): Analysis, anomaly detection, capacity planning, configuration analysis
+- **`analyze.sql`** (optional): Analysis, anomaly detection, capacity planning, configuration analysis
 
-### Analysis (reporting.sql)
+### Analysis (analyze.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -91,7 +91,7 @@ Functions are split across two files:
 | `what_happened_at(timestamp)` | Point-in-time analysis |
 | `incident_timeline(start, end)` | Event timeline for incidents |
 
-### Anomaly Detection (reporting.sql)
+### Anomaly Detection (analyze.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -100,7 +100,7 @@ Functions are split across two files:
 | `blast_radius(queryid)` | Analyze query impact |
 | `blast_radius_report(interval)` | Report on high-impact queries |
 
-### Capacity Planning (reporting.sql)
+### Capacity Planning (analyze.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -111,7 +111,7 @@ Functions are split across two files:
 | `oid_consumption_rate(interval)` | OID usage rate |
 | `time_to_oid_exhaustion()` | Estimate OID exhaustion |
 
-### Configuration Analysis (reporting.sql)
+### Configuration Analysis (analyze.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -258,18 +258,18 @@ Flight Recorder includes multiple safety mechanisms to prevent impacting product
 
 ```sql
 -- Emergency stop
-SELECT flight_recorder.set_mode('kill');
+SELECT pgfr.set_mode('kill');
 
 -- Resume normal operation
-SELECT flight_recorder.set_mode('normal');
+SELECT pgfr.set_mode('normal');
 
 -- Check current mode
-SELECT flight_recorder.get_mode();
+SELECT pgfr.get_mode();
 ```
 
 ## Key Configuration Settings
 
-Settings are stored in `flight_recorder.config`. Profiles set groups of related settings.
+Settings are stored in `pgfr.config`. Profiles set groups of related settings.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -282,10 +282,10 @@ Settings are stored in `flight_recorder.config`. Profiles set groups of related 
 
 ```sql
 -- View all settings
-SELECT * FROM flight_recorder.config ORDER BY key;
+SELECT * FROM pgfr.config ORDER BY key;
 
 -- Update a setting
-UPDATE flight_recorder.config SET value = '300' WHERE key = 'sample_interval_seconds';
+UPDATE pgfr.config SET value = '300' WHERE key = 'sample_interval_seconds';
 ```
 
 ## Common Workflows
@@ -294,58 +294,58 @@ UPDATE flight_recorder.config SET value = '300' WHERE key = 'sample_interval_sec
 
 ```sql
 -- Quick health check
-SELECT * FROM flight_recorder.health_check();
+SELECT * FROM pgfr.health_check();
 
 -- Recent report
-SELECT flight_recorder_reporting.report('1 hour');
+SELECT pgfr_analyze.report('1 hour');
 ```
 
 ### Incident Response
 
 ```sql
 -- Switch to detailed collection
-SELECT * FROM flight_recorder.apply_profile('troubleshooting');
+SELECT * FROM pgfr.apply_profile('troubleshooting');
 
 -- Analyze specific time window
-SELECT flight_recorder_reporting.report(
+SELECT pgfr_analyze.report(
     '2024-01-15 14:00'::timestamptz,
     '2024-01-15 15:00'::timestamptz
 );
 
 -- Point-in-time analysis
-SELECT * FROM flight_recorder_reporting.what_happened_at('2024-01-15 14:32');
+SELECT * FROM pgfr_analyze.what_happened_at('2024-01-15 14:32');
 
 -- Return to normal after incident
-SELECT * FROM flight_recorder.apply_profile('default');
+SELECT * FROM pgfr.apply_profile('default');
 ```
 
 ### Performance Analysis
 
 ```sql
 -- Find slow queries
-SELECT * FROM flight_recorder_reporting.detect_regressions('1 day');
+SELECT * FROM pgfr_analyze.detect_regressions('1 day');
 
 -- Find query storms
-SELECT * FROM flight_recorder_reporting.detect_query_storms('1 hour');
+SELECT * FROM pgfr_analyze.detect_query_storms('1 hour');
 
 -- Table hotspots
-SELECT * FROM flight_recorder_reporting.table_hotspots(now() - '1 day', now());
+SELECT * FROM pgfr_analyze.table_hotspots(now() - '1 day', now());
 
 -- Index efficiency
-SELECT * FROM flight_recorder_reporting.index_efficiency(now() - '1 day', now());
+SELECT * FROM pgfr_analyze.index_efficiency(now() - '1 day', now());
 ```
 
 ### Capacity Planning
 
 ```sql
 -- Resource summary
-SELECT * FROM flight_recorder_reporting.capacity_summary('7 days');
+SELECT * FROM pgfr_analyze.capacity_summary('7 days');
 
 -- Full quarterly review
-SELECT * FROM flight_recorder_reporting.quarterly_review();
+SELECT * FROM pgfr_analyze.quarterly_review();
 
 -- View capacity dashboard
-SELECT * FROM flight_recorder_reporting.capacity_dashboard;
+SELECT * FROM pgfr_analyze.capacity_dashboard;
 ```
 
 ## Upgrading
@@ -363,7 +363,7 @@ psql --single-transaction -f install.sql
 psql --single-transaction -f uninstall.sql
 
 # Remove only reporting functions (keeps core + data)
-psql --single-transaction -f uninstall_reporting.sql
+psql --single-transaction -f uninstall_analyze.sql
 ```
 
 ## Testing

@@ -1,8 +1,8 @@
-# pg_flight_recorder Benchmark Framework
+# pgfr_record Benchmark Framework
 
 **Status:** Implemented (Simplified Approach)
 
-This framework measures the **absolute cost** of pg_flight_recorder collections. The key insight: observer effect is roughly constant, independent of workload.
+This framework measures the **absolute cost** of pgfr_record collections. The key insight: observer effect is roughly constant, independent of workload.
 
 ## Philosophy: No Benchmarketing
 
@@ -20,7 +20,7 @@ See [BENCHMARKING.md](../BENCHMARKING.md) for full methodology.
 ### Prerequisites
 
 1. **PostgreSQL 15+** with pg_cron installed
-2. **pg_flight_recorder** installed: `psql --single-transaction -f ../install.sql`
+2. **pgfr_record** installed: `psql --single-transaction -f ../install.sql`
 3. **Python 3**: For statistical analysis
 4. **Standard libpq auth**: Set `PGHOST`, `PGUSER`, `PGDATABASE`, `PGPASSWORD` or use `.pgpass`
 
@@ -157,17 +157,17 @@ If collision rate is concerning:
 
 ```sql
 -- Option 1: Use emergency mode (300s intervals = 40% fewer collections)
-SELECT flight_recorder.set_mode('emergency');
+SELECT pgfr.set_mode('emergency');
 
 -- Option 2: Increase lock_timeout (fail faster, less DDL delay)
-UPDATE flight_recorder.config
+UPDATE pgfr.config
 SET value = '50'
 WHERE key = 'lock_timeout_ms';
 
 -- Option 3: Disable during DDL-heavy maintenance
-SELECT flight_recorder.disable();
+SELECT pgfr.disable();
 -- ... run DDL operations ...
-SELECT flight_recorder.enable();
+SELECT pgfr.enable();
 ```
 
 ### When to Run This Test
@@ -275,7 +275,7 @@ This builds community evidence.
 
 After running `measure_absolute.sh`, consider sharing your `absolute_costs_*.json` file:
 
-1. Open an issue at: https://github.com/your-org/pg_flight_recorder
+1. Open an issue at: https://github.com/your-org/pgfr_record
 2. Title: "Absolute cost measurement: [your environment]"
 3. Attach JSON file
 4. Include context: database size, table count, hardware
@@ -290,13 +290,13 @@ Based on your absolute cost measurement:
 
 ```sql
 -- Start conservative
-SELECT flight_recorder.set_mode('emergency');  -- 300s
+SELECT pgfr.set_mode('emergency');  -- 300s
 
 -- Monitor for 24h
-SELECT * FROM flight_recorder.collection_health;
+SELECT * FROM pgfr.collection_health;
 
 -- Upgrade if comfortable
-SELECT flight_recorder.set_mode('normal');  -- 180s
+SELECT pgfr.set_mode('normal');  -- 180s
 ```
 
 ### For 1 vCPU Systems

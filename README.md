@@ -1,4 +1,4 @@
-# pg_flight_recorder
+# pgfr_record
 
 Server-side flight recorder for PostgreSQL. Answers "what was happening in my database?"
 
@@ -15,21 +15,32 @@ psql --single-transaction -f install.sql
 
 ```bash
 # Control (optional — vacuum diagnostics, scale factor tuning, bloat analysis)
-psql --single-transaction -f autovacuum_control.sql
+psql --single-transaction -f control.sql
 ```
 
 ```bash
 # Reporting & analysis (optional)
-psql --single-transaction -f reporting.sql
+psql --single-transaction -f analyze.sql
 ```
 
-## Use
+## Export
 
-```sql
-SELECT flight_recorder_reporting.report('1 hour');
+With default retention: ~2.5GB uncompressed, ~150MB compressed.
+
+```bash
+# Without compression
+pg_dump -d your_database -n pgfr --data-only -f pgfr_data.sql
 ```
 
-That's it. It runs automatically. The report tells you what happened.
+```bash
+# With compression (PostgreSQL 16+)
+pg_dump -d your_database -n pgfr --data-only --compress=gzip:9 -f pgfr_data.sql.gz
+```
+
+```bash
+# With compression (PostgreSQL 15)
+pg_dump -d your_database -n pgfr --data-only | gzip > pgfr_data.sql.gz
+```
 
 ## Uninstall
 
@@ -40,31 +51,12 @@ psql --single-transaction -f uninstall.sql
 
 ```bash
 # Remove only control functions (keeps core + data)
-psql --single-transaction -f uninstall_autovacuum_control.sql
+psql --single-transaction -f uninstall_control.sql
 ```
 
 ```bash
 # Remove only reporting functions (keeps core + data)
-psql --single-transaction -f uninstall_reporting.sql
-```
-
-## Export
-
-With default retention: ~2.5GB uncompressed, ~150MB compressed.
-
-```bash
-# Without compression
-pg_dump -d your_database -n flight_recorder --data-only -f flight_recorder_data.sql
-```
-
-```bash
-# With compression (PostgreSQL 16+)
-pg_dump -d your_database -n flight_recorder --data-only --compress=gzip:9 -f flight_recorder_data.sql.gz
-```
-
-```bash
-# With compression (PostgreSQL 15)
-pg_dump -d your_database -n flight_recorder --data-only | gzip > flight_recorder_data.sql.gz
+psql --single-transaction -f uninstall_analyze.sql
 ```
 
 ## Reference

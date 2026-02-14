@@ -1,25 +1,25 @@
 -- =============================================================================
--- pg_flight_recorder: Reporting & Analysis Functions
+-- pgfr_record: Reporting & Analysis Functions
 -- =============================================================================
 -- Optional add-on for install.sql. Provides analysis, forensics, and reporting.
 -- Requires: install.sql must be run first (creates tables and core functions).
 --
--- Install: psql --single-transaction -f reporting.sql
+-- Install: psql --single-transaction -f analyze.sql
 -- =============================================================================
 
 -- Verify core is installed
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM flight_recorder.config WHERE key = 'schema_version') THEN
+    IF NOT EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'schema_version') THEN
         RAISE EXCEPTION 'Flight Recorder core not installed. Run install.sql first.';
     END IF;
 END $$;
 
-CREATE SCHEMA IF NOT EXISTS flight_recorder_reporting;
+CREATE SCHEMA IF NOT EXISTS pgfr_analyze;
 
 -- Calculates the rate of row modifications (INSERT/UPDATE/DELETE) over a time window
 -- Returns modifications per second, or NULL if insufficient data
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.modification_rate(
+CREATE OR REPLACE FUNCTION pgfr_analyze.modification_rate(
     p_relid OID,
     p_window INTERVAL
 )
@@ -34,8 +34,8 @@ BEGIN
     -- Get earliest snapshot within window
     SELECT ts.n_tup_ins, ts.n_tup_upd, ts.n_tup_del, s.captured_at
     INTO v_first_snapshot
-    FROM flight_recorder.table_snapshots ts
-    JOIN flight_recorder.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr.table_snapshots ts
+    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
       AND s.captured_at >= now() - p_window
     ORDER BY s.captured_at ASC
@@ -44,8 +44,8 @@ BEGIN
     -- Get latest snapshot
     SELECT ts.n_tup_ins, ts.n_tup_upd, ts.n_tup_del, s.captured_at
     INTO v_last_snapshot
-    FROM flight_recorder.table_snapshots ts
-    JOIN flight_recorder.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr.table_snapshots ts
+    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
       AND s.captured_at >= now() - p_window
     ORDER BY s.captured_at DESC
@@ -68,12 +68,12 @@ BEGIN
     RETURN ROUND(v_delta_mods::numeric / v_delta_seconds, 4);
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.modification_rate(OID, INTERVAL) IS 'Returns row modification rate (modifications/second) for a table over a time window';
+COMMENT ON FUNCTION pgfr_analyze.modification_rate(OID, INTERVAL) IS 'Returns row modification rate (modifications/second) for a table over a time window';
 
 -- Calculates the HOT (Heap-Only Tuple) update ratio for a table
 -- Higher ratio indicates more efficient updates that don't require index maintenance
 -- Returns percentage (0-100), or NULL if no updates
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.hot_update_ratio(
+CREATE OR REPLACE FUNCTION pgfr_analyze.hot_update_ratio(
     p_relid OID
 )
 RETURNS NUMERIC
@@ -85,8 +85,8 @@ BEGIN
     -- Get latest snapshot for this table
     SELECT ts.n_tup_upd, ts.n_tup_hot_upd
     INTO v_n_tup_upd, v_n_tup_hot_upd
-    FROM flight_recorder.table_snapshots ts
-    JOIN flight_recorder.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr.table_snapshots ts
+    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
     ORDER BY s.captured_at DESC
     LIMIT 1;
@@ -98,11 +98,11 @@ BEGIN
     RETURN ROUND((COALESCE(v_n_tup_hot_upd, 0)::numeric / v_n_tup_upd) * 100, 2);
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.hot_update_ratio(OID) IS 'Returns HOT update percentage (0-100) for a table based on latest snapshot';
+COMMENT ON FUNCTION pgfr_analyze.hot_update_ratio(OID) IS 'Returns HOT update percentage (0-100) for a table based on latest snapshot';
 
 -- Analyzes database metrics within a time window and reports detected anomalies (checkpoints, buffer pressure, lock contention, etc.)
 -- Returns anomalies with severity levels and actionable remediation recommendations
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.anomaly_report(
+CREATE OR REPLACE FUNCTION pgfr_analyze.anomaly_report(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -134,7 +134,7 @@ BEGIN
     v_warning_threshold := (v_freeze_max_age * 0.5)::bigint;   -- 50% of freeze_max_age
     v_critical_threshold := (v_freeze_max_age * 0.8)::bigint;  -- 80% of freeze_max_age
 
-    SELECT * INTO v_cmp FROM flight_recorder.compare(p_start_time, p_end_time);
+    SELECT * INTO v_cmp FROM pgfr.compare(p_start_time, p_end_time);
     IF v_cmp.checkpoint_occurred THEN
         anomaly_type := 'CHECKPOINT_DURING_WINDOW';
         severity := CASE
@@ -197,8 +197,8 @@ BEGIN
     END IF;
     SELECT count(DISTINCT blocked_pid), max(blocked_duration)
     INTO v_lock_count, v_max_block_duration
-    FROM flight_recorder.lock_samples_ring l
-    JOIN flight_recorder.samples_ring s ON s.slot_id = l.slot_id
+    FROM pgfr.lock_samples_ring l
+    JOIN pgfr.samples_ring s ON s.slot_id = l.slot_id
     WHERE s.captured_at BETWEEN p_start_time AND p_end_time;
     IF v_lock_count > 0 THEN
         anomaly_type := 'LOCK_CONTENTION';
@@ -216,7 +216,7 @@ BEGIN
     END IF;
     -- Database-level XID wraparound check
     SELECT datfrozenxid_age INTO v_datfrozenxid_age
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
     WHERE captured_at BETWEEN p_start_time AND p_end_time
       AND datfrozenxid_age IS NOT NULL
     ORDER BY captured_at DESC
@@ -251,10 +251,10 @@ BEGIN
                  LIMIT 1),
                 v_freeze_max_age
             ) AS table_freeze_max_age
-        FROM flight_recorder.table_snapshots ts
+        FROM pgfr.table_snapshots ts
         LEFT JOIN pg_class c ON c.oid = ts.relid
         WHERE ts.snapshot_id = (
-            SELECT id FROM flight_recorder.snapshots
+            SELECT id FROM pgfr.snapshots
             WHERE captured_at BETWEEN p_start_time AND p_end_time
             ORDER BY captured_at DESC
             LIMIT 1
@@ -303,7 +303,7 @@ BEGIN
     BEGIN
         SELECT max_catalog_oid, large_object_count
         INTO v_max_catalog_oid, v_large_object_count
-        FROM flight_recorder.snapshots
+        FROM pgfr.snapshots
         WHERE captured_at BETWEEN p_start_time AND p_end_time
           AND max_catalog_oid IS NOT NULL
         ORDER BY captured_at DESC
@@ -331,7 +331,7 @@ BEGIN
     FOR v_row IN
         SELECT pid, usename, application_name,
                EXTRACT(EPOCH FROM (now() - xact_start))/60 AS idle_minutes
-        FROM flight_recorder.activity_samples_archive
+        FROM pgfr.activity_samples_archive
         WHERE captured_at BETWEEN p_start_time AND p_end_time
           AND state = 'idle in transaction'
           AND xact_start IS NOT NULL
@@ -357,10 +357,10 @@ BEGIN
                COALESCE(ts.relname, split_part(ts.relid::regclass::text, '.', 2)) AS relname,
                ts.n_dead_tup, ts.n_live_tup,
                round(100.0 * ts.n_dead_tup / NULLIF(ts.n_dead_tup + ts.n_live_tup, 0), 1) AS dead_pct
-        FROM flight_recorder.table_snapshots ts
-        JOIN flight_recorder.snapshots s ON s.id = ts.snapshot_id
-        WHERE s.captured_at = (SELECT MAX(s2.captured_at) FROM flight_recorder.snapshots s2
-                               JOIN flight_recorder.table_snapshots ts2 ON ts2.snapshot_id = s2.id
+        FROM pgfr.table_snapshots ts
+        JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+        WHERE s.captured_at = (SELECT MAX(s2.captured_at) FROM pgfr.snapshots s2
+                               JOIN pgfr.table_snapshots ts2 ON ts2.snapshot_id = s2.id
                                WHERE s2.captured_at <= p_end_time)
           AND ts.n_dead_tup > 10000
           AND ts.n_dead_tup::float / NULLIF(ts.n_dead_tup + ts.n_live_tup, 0) > 0.1
@@ -386,8 +386,8 @@ BEGIN
                    ts.relid, ts.n_dead_tup, ts.last_autovacuum,
                    s.captured_at,
                    LAG(ts.n_dead_tup) OVER (PARTITION BY ts.relid ORDER BY s.captured_at) AS prev_dead
-            FROM flight_recorder.table_snapshots ts
-            JOIN flight_recorder.snapshots s ON s.id = ts.snapshot_id
+            FROM pgfr.table_snapshots ts
+            JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
             WHERE s.captured_at BETWEEN p_start_time AND p_end_time
         )
         SELECT schemaname, relname, n_dead_tup, last_autovacuum,
@@ -414,7 +414,7 @@ BEGIN
     FOR v_row IN
         SELECT DISTINCT ON (pid) pid, usename, application_name, backend_start,
                EXTRACT(DAY FROM (now() - backend_start)) AS days_open
-        FROM flight_recorder.activity_samples_archive
+        FROM pgfr.activity_samples_archive
         WHERE captured_at BETWEEN p_start_time AND p_end_time
           AND backend_start IS NOT NULL
           AND backend_start < now() - interval '7 days'
@@ -438,8 +438,8 @@ BEGIN
                    EXTRACT(EPOCH FROM r.replay_lag) AS lag_seconds,
                    s.captured_at,
                    ROW_NUMBER() OVER (PARTITION BY r.application_name ORDER BY s.captured_at) AS rn
-            FROM flight_recorder.replication_snapshots r
-            JOIN flight_recorder.snapshots s ON s.id = r.snapshot_id
+            FROM pgfr.replication_snapshots r
+            JOIN pgfr.snapshots s ON s.id = r.snapshot_id
             WHERE s.captured_at BETWEEN p_start_time AND p_end_time
               AND r.replay_lag IS NOT NULL
         ),
@@ -474,7 +474,7 @@ $$;
 
 -- Generates a comprehensive performance report with metrics and interpretations for a specified time window
 -- Aggregates data from compare, anomaly detection, wait events, and lock contention to provide human-readable insights
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.summary_report(
+CREATE OR REPLACE FUNCTION pgfr_analyze.summary_report(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -492,11 +492,11 @@ DECLARE
     v_top_wait RECORD;
     v_lock_summary RECORD;
 BEGIN
-    SELECT * INTO v_cmp FROM flight_recorder.compare(p_start_time, p_end_time);
+    SELECT * INTO v_cmp FROM pgfr.compare(p_start_time, p_end_time);
     SELECT count(*) INTO v_sample_count
-    FROM flight_recorder.samples_ring WHERE captured_at BETWEEN p_start_time AND p_end_time;
+    FROM pgfr.samples_ring WHERE captured_at BETWEEN p_start_time AND p_end_time;
     SELECT count(*) INTO v_anomaly_count
-    FROM flight_recorder_reporting.anomaly_report(p_start_time, p_end_time);
+    FROM pgfr_analyze.anomaly_report(p_start_time, p_end_time);
     section := 'OVERVIEW';
     metric := 'Time Window';
     value := format('%s to %s', p_start_time, p_end_time);
@@ -504,7 +504,7 @@ BEGIN
     RETURN NEXT;
     metric := 'Data Coverage';
     value := format('%s snapshots, %s samples',
-                   (SELECT count(*) FROM flight_recorder.snapshots
+                   (SELECT count(*) FROM pgfr.snapshots
                     WHERE captured_at BETWEEN p_start_time AND p_end_time),
                    v_sample_count);
     interpretation := CASE
@@ -556,7 +556,7 @@ BEGIN
     section := 'WAIT EVENTS';
     FOR v_top_wait IN
         SELECT wait_event_type || ':' || wait_event AS we, total_waiters, pct_of_samples
-        FROM flight_recorder.wait_summary(p_start_time, p_end_time)
+        FROM pgfr.wait_summary(p_start_time, p_end_time)
         LIMIT 5
     LOOP
         metric := v_top_wait.we;
@@ -577,8 +577,8 @@ BEGIN
         count(DISTINCT blocked_pid) AS blocked_count,
         max(blocked_duration) AS max_duration
     INTO v_lock_summary
-    FROM flight_recorder.lock_samples_ring l
-    JOIN flight_recorder.samples_ring s ON s.slot_id = l.slot_id
+    FROM pgfr.lock_samples_ring l
+    JOIN pgfr.samples_ring s ON s.slot_id = l.slot_id
     WHERE s.captured_at BETWEEN p_start_time AND p_end_time;
     metric := 'Blocked Sessions';
     value := COALESCE(v_lock_summary.blocked_count, 0)::text;
@@ -592,7 +592,7 @@ END;
 $$;
 -- Detects query storms by comparing recent query execution counts to baseline
 -- Returns queries with execution spikes classified by type and severity
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.detect_query_storms(
+CREATE OR REPLACE FUNCTION pgfr_analyze.detect_query_storms(
     p_lookback INTERVAL DEFAULT NULL,
     p_threshold_multiplier NUMERIC DEFAULT NULL
 )
@@ -617,21 +617,21 @@ BEGIN
     -- Get configuration with defaults
     v_lookback := COALESCE(
         p_lookback,
-        flight_recorder._get_config('storm_lookback_interval', '1 hour')::interval
+        pgfr._get_config('storm_lookback_interval', '1 hour')::interval
     );
     v_threshold := COALESCE(
         p_threshold_multiplier,
-        flight_recorder._get_config('storm_threshold_multiplier', '3.0')::numeric
+        pgfr._get_config('storm_threshold_multiplier', '3.0')::numeric
     );
     v_baseline_days := COALESCE(
-        flight_recorder._get_config('storm_baseline_days', '7')::integer,
+        pgfr._get_config('storm_baseline_days', '7')::integer,
         7
     );
 
     -- Get severity thresholds
-    v_low_max := flight_recorder._get_config('storm_severity_low_max', '5.0')::numeric;
-    v_medium_max := flight_recorder._get_config('storm_severity_medium_max', '10.0')::numeric;
-    v_high_max := flight_recorder._get_config('storm_severity_high_max', '50.0')::numeric;
+    v_low_max := pgfr._get_config('storm_severity_low_max', '5.0')::numeric;
+    v_medium_max := pgfr._get_config('storm_severity_medium_max', '10.0')::numeric;
+    v_high_max := pgfr._get_config('storm_severity_high_max', '50.0')::numeric;
 
     RETURN QUERY
     WITH recent_stats AS (
@@ -640,8 +640,8 @@ BEGIN
             ss.queryid,
             left(ss.query_preview, 100) AS query_preview,
             SUM(ss.calls) AS total_calls
-        FROM flight_recorder.statement_snapshots ss
-        JOIN flight_recorder.snapshots s ON s.id = ss.snapshot_id
+        FROM pgfr.statement_snapshots ss
+        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
         WHERE s.captured_at >= now() - v_lookback
         GROUP BY ss.queryid, left(ss.query_preview, 100)
     ),
@@ -651,8 +651,8 @@ BEGIN
             ss.queryid,
             AVG(ss.calls) AS avg_calls,
             COUNT(DISTINCT date_trunc('day', s.captured_at)) AS days_sampled
-        FROM flight_recorder.statement_snapshots ss
-        JOIN flight_recorder.snapshots s ON s.id = ss.snapshot_id
+        FROM pgfr.statement_snapshots ss
+        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
         WHERE s.captured_at >= now() - (v_baseline_days || ' days')::interval
           AND s.captured_at < now() - v_lookback
         GROUP BY ss.queryid
@@ -709,7 +709,7 @@ BEGIN
         st.recent_count DESC;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.detect_query_storms(INTERVAL, NUMERIC) IS 'Detect query storms by comparing recent execution counts to baseline. Classifies as RETRY_STORM, CACHE_MISS, SPIKE, or NORMAL with severity levels (LOW, MEDIUM, HIGH, CRITICAL).';
+COMMENT ON FUNCTION pgfr_analyze.detect_query_storms(INTERVAL, NUMERIC) IS 'Detect query storms by comparing recent execution counts to baseline. Classifies as RETRY_STORM, CACHE_MISS, SPIKE, or NORMAL with severity levels (LOW, MEDIUM, HIGH, CRITICAL).';
 
 -- =============================================================================
 -- PERFORMANCE REGRESSION DETECTION
@@ -717,7 +717,7 @@ COMMENT ON FUNCTION flight_recorder_reporting.detect_query_storms(INTERVAL, NUME
 
 -- Diagnose probable causes for a query's performance regression
 -- Analyzes pg_stat_statements and snapshots for indicators
-CREATE OR REPLACE FUNCTION flight_recorder_reporting._diagnose_regression_causes(
+CREATE OR REPLACE FUNCTION pgfr_analyze._diagnose_regression_causes(
     p_queryid BIGINT
 )
 RETURNS TEXT[]
@@ -765,7 +765,7 @@ BEGIN
         ckpt_write_time,
         ckpt_sync_time
     INTO v_recent_snapshot
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
     WHERE captured_at >= now() - interval '1 hour'
     ORDER BY captured_at DESC
     LIMIT 1;
@@ -785,12 +785,12 @@ BEGIN
     RETURN v_causes;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting._diagnose_regression_causes(BIGINT) IS 'Internal: Analyze a query to suggest probable causes for performance regression.';
+COMMENT ON FUNCTION pgfr_analyze._diagnose_regression_causes(BIGINT) IS 'Internal: Analyze a query to suggest probable causes for performance regression.';
 
 -- Detects performance regressions by comparing recent query metrics to baseline
 -- Uses buffer metrics by default (configurable via regression_detection_metric)
 -- Returns queries with significant regression classified by severity
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.detect_regressions(
+CREATE OR REPLACE FUNCTION pgfr_analyze.detect_regressions(
     p_lookback INTERVAL DEFAULT NULL,
     p_threshold_pct NUMERIC DEFAULT NULL
 )
@@ -820,24 +820,24 @@ BEGIN
     -- Get configuration with defaults
     v_lookback := COALESCE(
         p_lookback,
-        flight_recorder._get_config('regression_lookback_interval', '1 hour')::interval
+        pgfr._get_config('regression_lookback_interval', '1 hour')::interval
     );
     v_threshold_pct := COALESCE(
         p_threshold_pct,
-        flight_recorder._get_config('regression_threshold_pct', '50.0')::numeric
+        pgfr._get_config('regression_threshold_pct', '50.0')::numeric
     );
     v_baseline_days := COALESCE(
-        flight_recorder._get_config('regression_baseline_days', '7')::integer,
+        pgfr._get_config('regression_baseline_days', '7')::integer,
         7
     );
 
     -- Get severity thresholds (percentage-based)
-    v_low_max := flight_recorder._get_config('regression_severity_low_max', '200.0')::numeric;
-    v_medium_max := flight_recorder._get_config('regression_severity_medium_max', '500.0')::numeric;
-    v_high_max := flight_recorder._get_config('regression_severity_high_max', '1000.0')::numeric;
+    v_low_max := pgfr._get_config('regression_severity_low_max', '200.0')::numeric;
+    v_medium_max := pgfr._get_config('regression_severity_medium_max', '500.0')::numeric;
+    v_high_max := pgfr._get_config('regression_severity_high_max', '1000.0')::numeric;
 
     -- Get detection metric (default to buffers)
-    v_detection_metric := flight_recorder._get_config('regression_detection_metric', 'buffers');
+    v_detection_metric := pgfr._get_config('regression_detection_metric', 'buffers');
 
     RETURN QUERY
     WITH recent_stats AS (
@@ -850,8 +850,8 @@ BEGIN
             AVG(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS avg_total_buffers,
             STDDEV(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS stddev_total_buffers,
             COUNT(*) AS sample_count
-        FROM flight_recorder.statement_snapshots ss
-        JOIN flight_recorder.snapshots s ON s.id = ss.snapshot_id
+        FROM pgfr.statement_snapshots ss
+        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
         WHERE s.captured_at >= now() - v_lookback
           AND ss.mean_exec_time IS NOT NULL
           AND ss.mean_exec_time > 0
@@ -866,8 +866,8 @@ BEGIN
             AVG(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS avg_total_buffers,
             STDDEV(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS stddev_total_buffers,
             COUNT(DISTINCT date_trunc('day', s.captured_at)) AS days_sampled
-        FROM flight_recorder.statement_snapshots ss
-        JOIN flight_recorder.snapshots s ON s.id = ss.snapshot_id
+        FROM pgfr.statement_snapshots ss
+        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
         WHERE s.captured_at >= now() - (v_baseline_days || ' days')::interval
           AND s.captured_at < now() - v_lookback
           AND ss.mean_exec_time IS NOT NULL
@@ -936,7 +936,7 @@ BEGIN
         ROUND(reg.current_avg_buffers, 0) AS current_avg_buffers,
         reg.buffer_change_pct,
         v_detection_metric AS detection_metric,
-        flight_recorder_reporting._diagnose_regression_causes(reg.queryid) AS probable_causes
+        pgfr_analyze._diagnose_regression_causes(reg.queryid) AS probable_causes
     FROM regressions reg
     WHERE reg.z_score > 2 OR reg.primary_change_pct > v_medium_max  -- Statistical filter or significant change
     ORDER BY
@@ -949,10 +949,10 @@ BEGIN
         reg.primary_change_pct DESC;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.detect_regressions(INTERVAL, NUMERIC) IS 'Detect performance regressions using buffer metrics (default) or timing. Classifies severity based on percentage change (LOW <200%, MEDIUM <500%, HIGH <1000%, CRITICAL >1000%). Configure via regression_detection_metric.';
+COMMENT ON FUNCTION pgfr_analyze.detect_regressions(INTERVAL, NUMERIC) IS 'Detect performance regressions using buffer metrics (default) or timing. Classifies severity based on percentage change (LOW <200%, MEDIUM <500%, HIGH <1000%, CRITICAL >1000%). Configure via regression_detection_metric.';
 -- Generates a health report of flight recorder operations, including collection performance metrics,
 -- success rates, and schema size with qualitative assessments
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.performance_report(p_lookback_interval INTERVAL DEFAULT '24 hours')
+CREATE OR REPLACE FUNCTION pgfr_analyze.performance_report(p_lookback_interval INTERVAL DEFAULT '24 hours')
 RETURNS TABLE(
     metric TEXT,
     value TEXT,
@@ -979,9 +979,9 @@ BEGIN
         count(*) FILTER (WHERE skipped = true)
     INTO v_avg_sample_ms, v_max_sample_ms, v_avg_snapshot_ms, v_max_snapshot_ms,
          v_total_collections, v_failed_collections, v_skipped_collections
-    FROM flight_recorder.collection_stats
+    FROM pgfr.collection_stats
     WHERE started_at > now() - p_lookback_interval;
-    SELECT schema_size_mb INTO v_schema_size_mb FROM flight_recorder._check_schema_size();
+    SELECT schema_size_mb INTO v_schema_size_mb FROM pgfr._check_schema_size();
     RETURN QUERY SELECT
         'Avg Sample Duration'::text,
         COALESCE(round(v_avg_sample_ms)::text || ' ms', 'N/A'),
@@ -1055,13 +1055,13 @@ BEGIN
             WHEN avg(sections_succeeded::numeric / NULLIF(sections_total, 0)) >= 0.75 THEN 'Fair - some section failures'
             ELSE 'Poor - frequent section failures'
         END::text
-    FROM flight_recorder.collection_stats
+    FROM pgfr.collection_stats
     WHERE started_at > now() - p_lookback_interval
       AND sections_total IS NOT NULL;
     RETURN QUERY
     WITH recent AS (
         SELECT duration_ms
-        FROM flight_recorder.collection_stats
+        FROM pgfr.collection_stats
         WHERE collection_type = 'sample'
           AND success = true
           AND skipped = false
@@ -1071,7 +1071,7 @@ BEGIN
     ),
     baseline AS (
         SELECT duration_ms
-        FROM flight_recorder.collection_stats
+        FROM pgfr.collection_stats
         WHERE collection_type = 'sample'
           AND success = true
           AND skipped = false
@@ -1104,7 +1104,7 @@ $$;
 
 -- Monitors flight recorder system health by checking for circuit breaker trips, schema size limits, collection failures, and stale data
 -- Returns alerts with severity levels (CRITICAL/WARNING) and recommendations when thresholds are exceeded
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.check_alerts(p_lookback_interval INTERVAL DEFAULT '1 hour')
+CREATE OR REPLACE FUNCTION pgfr_analyze.check_alerts(p_lookback_interval INTERVAL DEFAULT '1 hour')
 RETURNS TABLE(
     alert_type TEXT,
     severity TEXT,
@@ -1121,18 +1121,18 @@ DECLARE
     v_schema_size_mb NUMERIC;
 BEGIN
     v_enabled := COALESCE(
-        flight_recorder._get_config('alert_enabled', 'false')::boolean,
+        pgfr._get_config('alert_enabled', 'false')::boolean,
         false
     );
     IF NOT v_enabled THEN
         RETURN;
     END IF;
     v_cb_threshold := COALESCE(
-        flight_recorder._get_config('alert_circuit_breaker_count', '5')::integer,
+        pgfr._get_config('alert_circuit_breaker_count', '5')::integer,
         5
     );
     SELECT count(*) INTO v_cb_count
-    FROM flight_recorder.collection_stats
+    FROM pgfr.collection_stats
     WHERE skipped = true
       AND started_at > now() - p_lookback_interval
       AND skipped_reason LIKE '%Circuit breaker%';
@@ -1145,23 +1145,23 @@ BEGIN
             'System under severe stress. Consider switching to emergency mode or disabling flight recorder temporarily.'::text;
     END IF;
     v_schema_threshold_mb := COALESCE(
-        flight_recorder._get_config('alert_schema_size_mb', '8000')::integer,
+        pgfr._get_config('alert_schema_size_mb', '8000')::integer,
         8000
     );
-    SELECT schema_size_mb INTO v_schema_size_mb FROM flight_recorder._check_schema_size();
+    SELECT schema_size_mb INTO v_schema_size_mb FROM pgfr._check_schema_size();
     IF v_schema_size_mb >= v_schema_threshold_mb THEN
         RETURN QUERY SELECT
             'SCHEMA_SIZE_HIGH'::text,
             'WARNING'::text,
             format('Schema size is %s MB (threshold: %s MB)', round(v_schema_size_mb)::text, v_schema_threshold_mb),
             now(),
-            'Run flight_recorder.cleanup() to reclaim space.'::text;
+            'Run pgfr.cleanup() to reclaim space.'::text;
     END IF;
     DECLARE
         v_recent_failures INTEGER;
     BEGIN
         SELECT count(*) INTO v_recent_failures
-        FROM flight_recorder.collection_stats
+        FROM pgfr.collection_stats
         WHERE success = false
           AND started_at > now() - p_lookback_interval;
         IF v_recent_failures >= 5 THEN
@@ -1176,7 +1176,7 @@ BEGIN
     DECLARE
         v_last_sample TIMESTAMPTZ;
     BEGIN
-        SELECT max(captured_at) INTO v_last_sample FROM flight_recorder.samples_ring;
+        SELECT max(captured_at) INTO v_last_sample FROM pgfr.samples_ring;
         IF v_last_sample IS NULL OR v_last_sample < now() - interval '15 minutes' THEN
             RETURN QUERY SELECT
                 'STALE_DATA'::text,
@@ -1186,7 +1186,7 @@ BEGIN
                     ELSE format('Last sample was %s ago', age(now(), v_last_sample))
                 END,
                 now(),
-                'Check pg_cron jobs: SELECT * FROM cron.job WHERE jobname LIKE ''flight_recorder_%'''::text;
+                'Check pg_cron jobs: SELECT * FROM cron.job WHERE jobname LIKE ''pgfr_%'''::text;
         END IF;
     END;
 END;
@@ -1194,7 +1194,7 @@ $$;
 
 -- Exports flight recorder diagnostic data as human-readable Markdown
 -- Produces a report with tables that is legible to both humans and AI
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.report(
+CREATE OR REPLACE FUNCTION pgfr_analyze.report(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -1207,7 +1207,7 @@ DECLARE
     v_count INTEGER;
 BEGIN
     -- Get schema version from config
-    SELECT value INTO v_version FROM flight_recorder.config WHERE key = 'schema_version';
+    SELECT value INTO v_version FROM pgfr.config WHERE key = 'schema_version';
     v_version := COALESCE(v_version, 'unknown');
 
     -- Header
@@ -1223,13 +1223,13 @@ BEGIN
     -- ==========================================================================
     v_result := v_result || '## Anomalies' || E'\n\n';
 
-    SELECT count(*) INTO v_count FROM flight_recorder_reporting.anomaly_report(p_start_time, p_end_time);
+    SELECT count(*) INTO v_count FROM pgfr_analyze.anomaly_report(p_start_time, p_end_time);
     IF v_count = 0 THEN
         v_result := v_result || '**No anomalies detected.** System appears healthy.' || E'\n\n';
     ELSE
         v_result := v_result || '| Type | Severity | Description | Metric | Recommendation |' || E'\n';
         v_result := v_result || '|------|----------|-------------|--------|----------------|' || E'\n';
-        FOR v_row IN SELECT * FROM flight_recorder_reporting.anomaly_report(p_start_time, p_end_time) LOOP
+        FOR v_row IN SELECT * FROM pgfr_analyze.anomaly_report(p_start_time, p_end_time) LOOP
             v_result := v_result || '| ' ||
                 COALESCE(v_row.anomaly_type, '-') || ' | ' ||
                 COALESCE(v_row.severity, '-') || ' | ' ||
@@ -1245,13 +1245,13 @@ BEGIN
     -- ==========================================================================
     v_result := v_result || '## Wait Event Summary' || E'\n\n';
 
-    SELECT count(*) INTO v_count FROM flight_recorder.wait_summary(p_start_time, p_end_time);
+    SELECT count(*) INTO v_count FROM pgfr.wait_summary(p_start_time, p_end_time);
     IF v_count = 0 THEN
         v_result := v_result || '(no wait events recorded)' || E'\n\n';
     ELSE
         v_result := v_result || '| Backend | Event Type | Event | Samples | Avg Waiters | Max | % |' || E'\n';
         v_result := v_result || '|---------|------------|-------|---------|-------------|-----|---|' || E'\n';
-        FOR v_row IN SELECT * FROM flight_recorder.wait_summary(p_start_time, p_end_time) LOOP
+        FOR v_row IN SELECT * FROM pgfr.wait_summary(p_start_time, p_end_time) LOOP
             v_result := v_result || '| ' ||
                 COALESCE(v_row.backend_type, '-') || ' | ' ||
                 COALESCE(v_row.wait_event_type, '-') || ' | ' ||
@@ -1270,7 +1270,7 @@ BEGIN
     v_result := v_result || '## Snapshots' || E'\n\n';
 
     SELECT count(*) INTO v_count
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
     WHERE captured_at BETWEEN p_start_time AND p_end_time;
 
     IF v_count = 0 THEN
@@ -1280,13 +1280,13 @@ BEGIN
         v_result := v_result || '|-------------|-----------|--------------|------------|----------------|' || E'\n';
         FOR v_row IN
             SELECT captured_at, wal_bytes, ckpt_timed, ckpt_requested, bgw_buffers_backend
-            FROM flight_recorder.snapshots
+            FROM pgfr.snapshots
             WHERE captured_at BETWEEN p_start_time AND p_end_time
             ORDER BY captured_at
         LOOP
             v_result := v_result || '| ' ||
                 to_char(v_row.captured_at, 'YYYY-MM-DD HH24:MI:SS') || ' | ' ||
-                COALESCE(flight_recorder._pretty_bytes(v_row.wal_bytes), '-') || ' | ' ||
+                COALESCE(pgfr._pretty_bytes(v_row.wal_bytes), '-') || ' | ' ||
                 COALESCE(v_row.ckpt_timed::TEXT, '-') || ' | ' ||
                 COALESCE(v_row.ckpt_requested::TEXT, '-') || ' | ' ||
                 COALESCE(v_row.bgw_buffers_backend::TEXT, '-') || ' |' || E'\n';
@@ -1299,13 +1299,13 @@ BEGIN
     -- ==========================================================================
     v_result := v_result || '## Table Hotspots' || E'\n\n';
 
-    SELECT count(*) INTO v_count FROM flight_recorder_reporting.table_hotspots(p_start_time, p_end_time);
+    SELECT count(*) INTO v_count FROM pgfr_analyze.table_hotspots(p_start_time, p_end_time);
     IF v_count = 0 THEN
         v_result := v_result || '(no issues detected)' || E'\n\n';
     ELSE
         v_result := v_result || '| Schema | Table | Issue | Severity | Description | Recommendation |' || E'\n';
         v_result := v_result || '|--------|-------|-------|----------|-------------|----------------|' || E'\n';
-        FOR v_row IN SELECT * FROM flight_recorder_reporting.table_hotspots(p_start_time, p_end_time) LOOP
+        FOR v_row IN SELECT * FROM pgfr_analyze.table_hotspots(p_start_time, p_end_time) LOOP
             v_result := v_result || '| ' ||
                 COALESCE(v_row.schemaname, '-') || ' | ' ||
                 COALESCE(v_row.relname, '-') || ' | ' ||
@@ -1322,13 +1322,13 @@ BEGIN
     -- ==========================================================================
     v_result := v_result || '## Index Efficiency' || E'\n\n';
 
-    SELECT count(*) INTO v_count FROM flight_recorder_reporting.index_efficiency(p_start_time, p_end_time);
+    SELECT count(*) INTO v_count FROM pgfr_analyze.index_efficiency(p_start_time, p_end_time);
     IF v_count = 0 THEN
         v_result := v_result || '(no index activity in range)' || E'\n\n';
     ELSE
         v_result := v_result || '| Schema | Table | Index | Scans | Selectivity | Size | Scans/GB |' || E'\n';
         v_result := v_result || '|--------|-------|-------|-------|-------------|------|----------|' || E'\n';
-        FOR v_row IN SELECT * FROM flight_recorder_reporting.index_efficiency(p_start_time, p_end_time) LOOP
+        FOR v_row IN SELECT * FROM pgfr_analyze.index_efficiency(p_start_time, p_end_time) LOOP
             v_result := v_result || '| ' ||
                 COALESCE(v_row.schemaname, '-') || ' | ' ||
                 COALESCE(v_row.relname, '-') || ' | ' ||
@@ -1347,14 +1347,14 @@ BEGIN
     v_result := v_result || '## Statement Performance' || E'\n\n';
 
     BEGIN
-        SELECT count(*) INTO v_count FROM flight_recorder.statement_compare(p_start_time, p_end_time, 100, 25);
+        SELECT count(*) INTO v_count FROM pgfr.statement_compare(p_start_time, p_end_time, 100, 25);
         IF v_count = 0 THEN
             v_result := v_result || '(no significant query changes)' || E'\n\n';
         ELSE
             v_result := v_result || '| Query | Calls Δ | Total Time Δ (ms) | Mean (ms) | Temp Writes | Hit % |' || E'\n';
             v_result := v_result || '|-------|---------|-------------------|-----------|-------------|-------|' || E'\n';
             FOR v_row IN
-                SELECT * FROM flight_recorder.statement_compare(p_start_time, p_end_time, 100, 25)
+                SELECT * FROM pgfr.statement_compare(p_start_time, p_end_time, 100, 25)
                 ORDER BY total_exec_time_delta_ms DESC NULLS LAST
             LOOP
                 v_result := v_result || '| ' ||
@@ -1378,7 +1378,7 @@ BEGIN
     v_result := v_result || '## Lock Contention' || E'\n\n';
 
     SELECT count(*) INTO v_count
-    FROM flight_recorder.lock_samples_archive
+    FROM pgfr.lock_samples_archive
     WHERE captured_at BETWEEN p_start_time AND p_end_time;
 
     IF v_count = 0 THEN
@@ -1388,7 +1388,7 @@ BEGIN
         v_result := v_result || '|------|-------------|--------------|-----------|----------|---------------|' || E'\n';
         FOR v_row IN
             SELECT *
-            FROM flight_recorder.lock_samples_archive
+            FROM pgfr.lock_samples_archive
             WHERE captured_at BETWEEN p_start_time AND p_end_time
             ORDER BY captured_at DESC
             LIMIT 50
@@ -1410,7 +1410,7 @@ BEGIN
     v_result := v_result || '## Long-Running Transactions' || E'\n\n';
 
     SELECT count(*) INTO v_count
-    FROM flight_recorder.activity_samples_archive
+    FROM pgfr.activity_samples_archive
     WHERE captured_at BETWEEN p_start_time AND p_end_time
       AND xact_start IS NOT NULL
       AND captured_at - xact_start > interval '5 minutes';
@@ -1429,7 +1429,7 @@ BEGIN
                 captured_at - xact_start AS xact_age,
                 state,
                 query_preview
-            FROM flight_recorder.activity_samples_archive
+            FROM pgfr.activity_samples_archive
             WHERE captured_at BETWEEN p_start_time AND p_end_time
               AND xact_start IS NOT NULL
               AND captured_at - xact_start > interval '5 minutes'
@@ -1454,8 +1454,8 @@ BEGIN
     v_result := v_result || '## Vacuum Progress' || E'\n\n';
 
     SELECT count(*) INTO v_count
-    FROM flight_recorder.vacuum_progress_snapshots v
-    JOIN flight_recorder.snapshots s ON s.id = v.snapshot_id
+    FROM pgfr.vacuum_progress_snapshots v
+    JOIN pgfr.snapshots s ON s.id = v.snapshot_id
     WHERE s.captured_at BETWEEN p_start_time AND p_end_time;
 
     IF v_count = 0 THEN
@@ -1478,8 +1478,8 @@ BEGIN
                     ELSE NULL
                 END AS pct_vacuumed,
                 v.num_dead_tuples
-            FROM flight_recorder.vacuum_progress_snapshots v
-            JOIN flight_recorder.snapshots s ON s.id = v.snapshot_id
+            FROM pgfr.vacuum_progress_snapshots v
+            JOIN pgfr.snapshots s ON s.id = v.snapshot_id
             WHERE s.captured_at BETWEEN p_start_time AND p_end_time
             ORDER BY s.captured_at DESC
             LIMIT 25
@@ -1502,7 +1502,7 @@ BEGIN
     v_result := v_result || '## WAL Archiver Status' || E'\n\n';
 
     SELECT count(*) INTO v_count
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
     WHERE captured_at BETWEEN p_start_time AND p_end_time
       AND archived_count IS NOT NULL;
 
@@ -1520,7 +1520,7 @@ BEGIN
                 max(failed_count) - min(failed_count) AS failed_delta,
                 max(last_failed_wal) AS last_failed_wal,
                 max(last_failed_time) AS last_failed_time
-            FROM flight_recorder.snapshots
+            FROM pgfr.snapshots
             WHERE captured_at BETWEEN p_start_time AND p_end_time
               AND archived_count IS NOT NULL
         LOOP
@@ -1545,13 +1545,13 @@ BEGIN
     -- ==========================================================================
     v_result := v_result || '## Configuration Changes' || E'\n\n';
 
-    SELECT count(*) INTO v_count FROM flight_recorder_reporting.config_changes(p_start_time, p_end_time);
+    SELECT count(*) INTO v_count FROM pgfr_analyze.config_changes(p_start_time, p_end_time);
     IF v_count = 0 THEN
         v_result := v_result || '(no changes detected)' || E'\n\n';
     ELSE
         v_result := v_result || '| Parameter | Old Value | New Value | Old Source | New Source | Changed At |' || E'\n';
         v_result := v_result || '|-----------|-----------|-----------|------------|------------|------------|' || E'\n';
-        FOR v_row IN SELECT * FROM flight_recorder_reporting.config_changes(p_start_time, p_end_time) LOOP
+        FOR v_row IN SELECT * FROM pgfr_analyze.config_changes(p_start_time, p_end_time) LOOP
             v_result := v_result || '| ' ||
                 COALESCE(v_row.parameter_name, '-') || ' | ' ||
                 COALESCE(v_row.old_value, '-') || ' | ' ||
@@ -1568,13 +1568,13 @@ BEGIN
     -- ==========================================================================
     v_result := v_result || '## Role Configuration Changes' || E'\n\n';
 
-    SELECT count(*) INTO v_count FROM flight_recorder_reporting.db_role_config_changes(p_start_time, p_end_time);
+    SELECT count(*) INTO v_count FROM pgfr_analyze.db_role_config_changes(p_start_time, p_end_time);
     IF v_count = 0 THEN
         v_result := v_result || '(no changes detected)' || E'\n\n';
     ELSE
         v_result := v_result || '| Database | Role | Parameter | Old Value | New Value | Type |' || E'\n';
         v_result := v_result || '|----------|------|-----------|-----------|-----------|------|' || E'\n';
-        FOR v_row IN SELECT * FROM flight_recorder_reporting.db_role_config_changes(p_start_time, p_end_time) LOOP
+        FOR v_row IN SELECT * FROM pgfr_analyze.db_role_config_changes(p_start_time, p_end_time) LOOP
             v_result := v_result || '| ' ||
                 COALESCE(v_row.database_name, '-') || ' | ' ||
                 COALESCE(v_row.role_name, '-') || ' | ' ||
@@ -1589,22 +1589,22 @@ BEGIN
     RETURN v_result;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.report(TIMESTAMPTZ, TIMESTAMPTZ) IS
+COMMENT ON FUNCTION pgfr_analyze.report(TIMESTAMPTZ, TIMESTAMPTZ) IS
 'Generate diagnostic report from flight recorder data. Readable by humans and AI systems.';
 
 -- Interval convenience overload: report('1 hour') instead of timestamps
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.report(
+CREATE OR REPLACE FUNCTION pgfr_analyze.report(
     p_interval INTERVAL
 )
 RETURNS TEXT
 LANGUAGE sql STABLE AS $$
-    SELECT flight_recorder_reporting.report(now() - p_interval, now());
+    SELECT pgfr_analyze.report(now() - p_interval, now());
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.report(INTERVAL) IS
-'Generate diagnostic report for the specified interval ending now. Usage: SELECT flight_recorder_reporting.report(''1 hour'')';
+COMMENT ON FUNCTION pgfr_analyze.report(INTERVAL) IS
+'Generate diagnostic report for the specified interval ending now. Usage: SELECT pgfr_analyze.report(''1 hour'')';
 -- Validates system readiness for flight recorder installation by checking resources, connections, and dependencies
 -- Returns component status (GO/CAUTION/NO-GO) to determine installation viability
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.preflight_check()
+CREATE OR REPLACE FUNCTION pgfr_analyze.preflight_check()
 RETURNS TABLE(
     check_name TEXT,
     status TEXT,
@@ -1712,7 +1712,7 @@ BEGIN
             'Scheduling (pg_cron)'::text,
             'CAUTION'::text,
             'pg_cron extension not found',
-            'You will need to schedule flight_recorder.sample() and flight_recorder.snapshot() manually via external cron or pg_agent.'::text;
+            'You will need to schedule pgfr.sample() and pgfr.snapshot() manually via external cron or pg_agent.'::text;
     END IF;
     RETURN QUERY SELECT
         'Safety Mechanisms'::text,
@@ -1721,11 +1721,11 @@ BEGIN
         'Flight recorder will auto-reduce overhead under stress.'::text;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.preflight_check() IS
+COMMENT ON FUNCTION pgfr_analyze.preflight_check() IS
 
 'Pre-installation validation checks. Returns component status (GO/CAUTION/NO-GO). For summary, use preflight_check_with_summary().';
 -- Executes preflight validation checks and appends a summary row indicating overall system readiness (READY, CAUTION, or NO-GO)
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.preflight_check_with_summary()
+CREATE OR REPLACE FUNCTION pgfr_analyze.preflight_check_with_summary()
 RETURNS TABLE(
     check_name TEXT,
     status TEXT,
@@ -1737,12 +1737,12 @@ DECLARE
     v_nogo_count INTEGER;
     v_caution_count INTEGER;
 BEGIN
-    RETURN QUERY SELECT * FROM flight_recorder_reporting.preflight_check();
+    RETURN QUERY SELECT * FROM pgfr_analyze.preflight_check();
     SELECT
         count(*) FILTER (WHERE c.status = 'NO-GO'),
         count(*) FILTER (WHERE c.status = 'CAUTION')
     INTO v_nogo_count, v_caution_count
-    FROM flight_recorder_reporting.preflight_check() c;
+    FROM pgfr_analyze.preflight_check() c;
     IF v_nogo_count > 0 THEN
         RETURN QUERY SELECT
             '=== SUMMARY ==='::text,
@@ -1764,12 +1764,12 @@ BEGIN
     END IF;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.preflight_check_with_summary() IS
+COMMENT ON FUNCTION pgfr_analyze.preflight_check_with_summary() IS
 
 'Pre-installation validation with summary. Calls preflight_check() twice - once for results, once to count. More expensive but includes summary row.';
--- Generates a comprehensive quarterly health review of the flight_recorder system
+-- Generates a comprehensive quarterly health review of the pgfr system
 -- Assesses collection performance, storage consumption, reliability, circuit breaker activity, and data freshness
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.quarterly_review()
+CREATE OR REPLACE FUNCTION pgfr_analyze.quarterly_review()
 RETURNS TABLE(
     component TEXT,
     status TEXT,
@@ -1800,7 +1800,7 @@ BEGIN
         count(*) FILTER (WHERE skipped),
         count(*)
     INTO v_avg_duration_ms, v_max_duration_ms, v_skipped_count, v_total_count
-    FROM flight_recorder.collection_stats
+    FROM pgfr.collection_stats
     WHERE started_at > now() - interval '30 days'
       AND collection_type = 'sample';
     IF v_avg_duration_ms IS NULL THEN
@@ -1831,8 +1831,8 @@ BEGIN
                    round(v_avg_duration_ms), round(v_max_duration_ms), v_skipped_count, v_total_count),
             'Collections are slower than expected. Consider: (1) switching to light mode, (2) increasing sample_interval_seconds to 300, or (3) checking for system bottlenecks.'::text;
     END IF;
-    SELECT schema_size_mb INTO v_schema_size_mb FROM flight_recorder._check_schema_size();
-    SELECT count(*) INTO v_sample_count FROM flight_recorder.samples_ring;
+    SELECT schema_size_mb INTO v_schema_size_mb FROM pgfr._check_schema_size();
+    SELECT count(*) INTO v_sample_count FROM pgfr.samples_ring;
     IF v_schema_size_mb < 3000 THEN
         RETURN QUERY SELECT
             '2. Storage Consumption'::text,
@@ -1855,7 +1855,7 @@ BEGIN
     SELECT
         count(*) FILTER (WHERE NOT success AND NOT skipped)
     INTO v_failed_collections
-    FROM flight_recorder.collection_stats
+    FROM pgfr.collection_stats
     WHERE started_at > now() - interval '90 days';
     IF v_failed_collections = 0 THEN
         RETURN QUERY SELECT
@@ -1877,7 +1877,7 @@ BEGIN
             'Frequent failures detected. Check collection_stats for error patterns.'::text;
     END IF;
     SELECT count(*) INTO v_circuit_breaker_trips
-    FROM flight_recorder.collection_stats
+    FROM pgfr.collection_stats
     WHERE skipped = true
       AND skipped_reason LIKE '%Circuit breaker%'
       AND started_at > now() - interval '90 days';
@@ -1900,8 +1900,8 @@ BEGIN
             format('%s trips in 90 days', v_circuit_breaker_trips),
             'Frequent circuit breaker trips indicate system stress. Consider switching to light mode permanently.'::text;
     END IF;
-    SELECT max(captured_at) INTO v_last_sample FROM flight_recorder.samples_ring;
-    SELECT max(captured_at) INTO v_last_snapshot FROM flight_recorder.snapshots;
+    SELECT max(captured_at) INTO v_last_sample FROM pgfr.samples_ring;
+    SELECT max(captured_at) INTO v_last_snapshot FROM pgfr.snapshots;
     IF v_last_sample > now() - interval '10 minutes' AND v_last_snapshot > now() - interval '15 minutes' THEN
         RETURN QUERY SELECT
             '5. Data Freshness'::text,
@@ -1915,7 +1915,7 @@ BEGIN
             'ERROR'::text,
             format('Last sample: %s ago | Last snapshot: %s ago',
                    age(now(), v_last_sample)::text, age(now(), v_last_snapshot)::text),
-            'Collections are stale. Check pg_cron jobs: SELECT * FROM cron.job WHERE jobname LIKE ''flight_recorder_%'';'::text;
+            'Collections are stale. Check pg_cron jobs: SELECT * FROM cron.job WHERE jobname LIKE ''pgfr_%'';'::text;
     END IF;
     DECLARE
         v_missing_count INTEGER;
@@ -1925,10 +1925,10 @@ BEGIN
     BEGIN
         WITH required_jobs AS (
             SELECT unnest(ARRAY[
-                'flight_recorder_sample',
-                'flight_recorder_snapshot',
-                'flight_recorder_flush',
-                'flight_recorder_cleanup'
+                'pgfr_sample',
+                'pgfr_snapshot',
+                'pgfr_flush',
+                'pgfr_cleanup'
             ]) AS job_name
         )
         SELECT
@@ -1950,13 +1950,13 @@ BEGIN
                 '6. pg_cron Job Health'::text,
                 'CRITICAL'::text,
                 format('%s/%s jobs missing: %s', v_missing_count, 4, array_to_string(v_missing_jobs, ', ')),
-                'CRITICAL: Flight recorder is not collecting data. Run flight_recorder.enable() to restore.'::text;
+                'CRITICAL: Flight recorder is not collecting data. Run pgfr.enable() to restore.'::text;
         ELSE
             RETURN QUERY SELECT
                 '6. pg_cron Job Health'::text,
                 'CRITICAL'::text,
                 format('%s/%s jobs inactive: %s', v_inactive_count, 4, array_to_string(v_inactive_jobs, ', ')),
-                'CRITICAL: pg_cron jobs exist but are disabled. Run flight_recorder.enable() to reactivate.'::text;
+                'CRITICAL: pg_cron jobs exist but are disabled. Run pgfr.enable() to reactivate.'::text;
         END IF;
     EXCEPTION WHEN OTHERS THEN
         RETURN QUERY SELECT
@@ -1967,12 +1967,12 @@ BEGIN
     END;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.quarterly_review() IS
+COMMENT ON FUNCTION pgfr_analyze.quarterly_review() IS
 
 'Quarterly health check for flight recorder. Returns component metrics (EXCELLENT/GOOD/REVIEW NEEDED/ERROR). For summary, use quarterly_review_with_summary().';
 -- Quarterly health check with summary. Appends overall health status (HEALTHY or ACTION REQUIRED) based on count of ERROR or REVIEW NEEDED items detected
 -- More expensive than quarterly_review() as it calls it twice - once for detailed results, once to count critical issues
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.quarterly_review_with_summary()
+CREATE OR REPLACE FUNCTION pgfr_analyze.quarterly_review_with_summary()
 RETURNS TABLE(
     component TEXT,
     status TEXT,
@@ -1983,9 +1983,9 @@ LANGUAGE plpgsql AS $$
 DECLARE
     v_issues_count INTEGER;
 BEGIN
-    RETURN QUERY SELECT * FROM flight_recorder_reporting.quarterly_review();
+    RETURN QUERY SELECT * FROM pgfr_analyze.quarterly_review();
     SELECT count(*) INTO v_issues_count
-    FROM flight_recorder_reporting.quarterly_review() qr
+    FROM pgfr_analyze.quarterly_review() qr
     WHERE qr.status IN ('ERROR', 'REVIEW NEEDED');
     IF v_issues_count = 0 THEN
         RETURN QUERY SELECT
@@ -2002,12 +2002,12 @@ BEGIN
     END IF;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.quarterly_review_with_summary() IS
+COMMENT ON FUNCTION pgfr_analyze.quarterly_review_with_summary() IS
 
 'Quarterly health check with summary. Calls quarterly_review() twice - once for results, once to count. More expensive but includes summary row.';
 -- Analyzes database resource capacity metrics (connections, memory, storage, transactions) over a time window
 -- Returns utilization status with actionable recommendations
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.capacity_summary(
+CREATE OR REPLACE FUNCTION pgfr_analyze.capacity_summary(
     p_time_window INTERVAL DEFAULT interval '24 hours'
 )
 RETURNS TABLE(
@@ -2046,17 +2046,17 @@ DECLARE
     v_sample_count INTEGER;
 BEGIN
     v_warning_pct := COALESCE(
-        flight_recorder._get_config('capacity_thresholds_warning_pct', '60')::integer,
+        pgfr._get_config('capacity_thresholds_warning_pct', '60')::integer,
         60
     );
     v_critical_pct := COALESCE(
-        flight_recorder._get_config('capacity_thresholds_critical_pct', '80')::integer,
+        pgfr._get_config('capacity_thresholds_critical_pct', '80')::integer,
         80
     );
     v_window_start := now() - p_time_window;
     v_window_hours := EXTRACT(EPOCH FROM p_time_window) / 3600.0;
     SELECT count(*) INTO v_sample_count
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
     WHERE captured_at >= v_window_start;
     IF v_sample_count < 2 THEN
         RETURN QUERY SELECT
@@ -2075,7 +2075,7 @@ BEGIN
     FROM pg_settings WHERE name = 'max_connections';
     SELECT COALESCE(connections_total, 0)
     INTO v_current_connections
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
     WHERE captured_at >= v_window_start
       AND connections_total IS NOT NULL
     ORDER BY captured_at DESC
@@ -2084,7 +2084,7 @@ BEGIN
         COALESCE(round(avg(connections_total), 0), 0),
         COALESCE(max(connections_total), 0)
     INTO v_avg_connections, v_peak_connections
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
     WHERE captured_at >= v_window_start
       AND connections_total IS NOT NULL;
     IF v_current_connections IS NOT NULL THEN
@@ -2122,9 +2122,9 @@ BEGIN
             s.captured_at,
             s.bgw_buffers_backend - prev.bgw_buffers_backend AS backend_writes_delta,
             EXTRACT(EPOCH FROM (s.captured_at - prev.captured_at)) / 60.0 AS interval_minutes
-        FROM flight_recorder.snapshots s
-        JOIN flight_recorder.snapshots prev ON prev.id = (
-            SELECT MAX(id) FROM flight_recorder.snapshots WHERE id < s.id
+        FROM pgfr.snapshots s
+        JOIN pgfr.snapshots prev ON prev.id = (
+            SELECT MAX(id) FROM pgfr.snapshots WHERE id < s.id
         )
         WHERE s.captured_at >= v_window_start
           AND s.bgw_buffers_backend IS NOT NULL
@@ -2171,9 +2171,9 @@ BEGIN
     WITH temp_deltas AS (
         SELECT
             s.temp_bytes - prev.temp_bytes AS temp_bytes_delta
-        FROM flight_recorder.snapshots s
-        JOIN flight_recorder.snapshots prev ON prev.id = (
-            SELECT MAX(id) FROM flight_recorder.snapshots WHERE id < s.id
+        FROM pgfr.snapshots s
+        JOIN pgfr.snapshots prev ON prev.id = (
+            SELECT MAX(id) FROM pgfr.snapshots WHERE id < s.id
         )
         WHERE s.captured_at >= v_window_start
           AND s.temp_bytes IS NOT NULL
@@ -2187,8 +2187,8 @@ BEGIN
     v_temp_bytes_per_hour := v_temp_bytes_total / NULLIF(v_window_hours, 0);
     metric := 'memory_work_mem';
     current_usage := format('%s spilled (%s/hour)',
-                           flight_recorder._pretty_bytes(v_temp_bytes_total),
-                           flight_recorder._pretty_bytes(v_temp_bytes_per_hour::bigint));
+                           pgfr._pretty_bytes(v_temp_bytes_total),
+                           pgfr._pretty_bytes(v_temp_bytes_per_hour::bigint));
     provisioned_capacity := (SELECT setting FROM pg_settings WHERE name = 'work_mem');
     utilization_pct := CASE
         WHEN v_temp_bytes_per_hour IS NULL OR v_temp_bytes_per_hour <= 0 THEN 0
@@ -2204,24 +2204,24 @@ BEGIN
     recommendation := CASE
         WHEN v_temp_bytes_per_hour >= 1073741824 THEN
             format('CRITICAL: Heavy temp file spills (%s/hour). Increase work_mem for affected queries or globally.',
-                   flight_recorder._pretty_bytes(v_temp_bytes_per_hour::bigint))
+                   pgfr._pretty_bytes(v_temp_bytes_per_hour::bigint))
         WHEN v_temp_bytes_per_hour >= 104857600 THEN
             format('WARNING: Moderate temp file spills (%s/hour). Consider increasing work_mem for sort/hash operations.',
-                   flight_recorder._pretty_bytes(v_temp_bytes_per_hour::bigint))
+                   pgfr._pretty_bytes(v_temp_bytes_per_hour::bigint))
         WHEN v_temp_bytes_total = 0 THEN
             'HEALTHY: No temp file spills detected. Queries fitting in work_mem.'
         ELSE
             format('HEALTHY: Minimal temp file spills (%s/hour). Current work_mem adequate.',
-                   flight_recorder._pretty_bytes(v_temp_bytes_per_hour::bigint))
+                   pgfr._pretty_bytes(v_temp_bytes_per_hour::bigint))
     END;
     RETURN NEXT;
     WITH io_deltas AS (
         SELECT
             s.blks_read - prev.blks_read AS read_delta,
             s.blks_hit - prev.blks_hit AS hit_delta
-        FROM flight_recorder.snapshots s
-        JOIN flight_recorder.snapshots prev ON prev.id = (
-            SELECT MAX(id) FROM flight_recorder.snapshots WHERE id < s.id
+        FROM pgfr.snapshots s
+        JOIN pgfr.snapshots prev ON prev.id = (
+            SELECT MAX(id) FROM pgfr.snapshots WHERE id < s.id
         )
         WHERE s.captured_at >= v_window_start
           AND s.blks_read IS NOT NULL
@@ -2272,13 +2272,13 @@ BEGIN
     RETURN NEXT;
     SELECT
         COALESCE(
-            (SELECT db_size_bytes FROM flight_recorder.snapshots
+            (SELECT db_size_bytes FROM pgfr.snapshots
              WHERE captured_at >= v_window_start AND db_size_bytes IS NOT NULL
              ORDER BY captured_at DESC LIMIT 1),
             0
         ),
         COALESCE(
-            (SELECT db_size_bytes FROM flight_recorder.snapshots
+            (SELECT db_size_bytes FROM pgfr.snapshots
              WHERE captured_at >= v_window_start AND db_size_bytes IS NOT NULL
              ORDER BY captured_at ASC LIMIT 1),
             0
@@ -2289,7 +2289,7 @@ BEGIN
                                        / NULLIF(v_window_hours / 24.0, 0);
         metric := 'storage_growth';
         current_usage := format('%s current size, growing %s MB/day',
-                               flight_recorder._pretty_bytes(v_current_db_size),
+                               pgfr._pretty_bytes(v_current_db_size),
                                CASE
                                    WHEN v_storage_growth_mb_per_day < 0 THEN '~0'
                                    ELSE round(v_storage_growth_mb_per_day, 1)::text
@@ -2325,9 +2325,9 @@ BEGIN
         SELECT
             (s.xact_commit + s.xact_rollback - prev.xact_commit - prev.xact_rollback) AS xact_delta,
             EXTRACT(EPOCH FROM (s.captured_at - prev.captured_at)) AS interval_seconds
-        FROM flight_recorder.snapshots s
-        JOIN flight_recorder.snapshots prev ON prev.id = (
-            SELECT MAX(id) FROM flight_recorder.snapshots WHERE id < s.id
+        FROM pgfr.snapshots s
+        JOIN pgfr.snapshots prev ON prev.id = (
+            SELECT MAX(id) FROM pgfr.snapshots WHERE id < s.id
         )
         WHERE s.captured_at >= v_window_start
           AND s.xact_commit IS NOT NULL
@@ -2372,13 +2372,13 @@ BEGIN
     END IF;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.capacity_summary(INTERVAL) IS
+COMMENT ON FUNCTION pgfr_analyze.capacity_summary(INTERVAL) IS
 
 'Capacity planning summary across all resource dimensions. Analyzes connections, memory (shared_buffers, work_mem), I/O (cache hit ratio), storage growth, and transaction rates over the specified time window. Returns utilization, status (healthy/warning/critical), and actionable recommendations. Part of Phase 1 MVP capacity planning enhancements (FR-2.1).';
 
 -- Generates a human-readable markdown capacity report grouped by severity
 -- Calls capacity_summary() and formats results as prose text
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.capacity_report(
+CREATE OR REPLACE FUNCTION pgfr_analyze.capacity_report(
     p_time_window INTERVAL DEFAULT interval '24 hours'
 )
 RETURNS TEXT
@@ -2403,7 +2403,7 @@ BEGIN
     -- Process each metric from capacity_summary
     FOR v_row IN
         SELECT *
-        FROM flight_recorder_reporting.capacity_summary(p_time_window)
+        FROM pgfr_analyze.capacity_summary(p_time_window)
         WHERE metric != 'insufficient_data'
         ORDER BY
             CASE status
@@ -2448,7 +2448,7 @@ BEGIN
     -- Handle insufficient data case
     FOR v_row IN
         SELECT *
-        FROM flight_recorder_reporting.capacity_summary(p_time_window)
+        FROM pgfr_analyze.capacity_summary(p_time_window)
         WHERE metric = 'insufficient_data'
     LOOP
         v_result := v_result || E'\n' || v_row.recommendation || E'\n';
@@ -2476,14 +2476,14 @@ BEGIN
     RETURN v_result;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.capacity_report(INTERVAL) IS
+COMMENT ON FUNCTION pgfr_analyze.capacity_report(INTERVAL) IS
 'Human-readable capacity report in markdown format. Groups metrics by severity (critical, warning, healthy) with actionable recommendations. Calls capacity_summary() internally for data. Use this for incident reports and documentation.';
 
-CREATE OR REPLACE VIEW flight_recorder_reporting.capacity_dashboard AS
+CREATE OR REPLACE VIEW pgfr_analyze.capacity_dashboard AS
 WITH
 latest_snapshot AS (
     SELECT max(captured_at) AS last_updated
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
 ),
 capacity_metrics AS (
     SELECT
@@ -2492,7 +2492,7 @@ capacity_metrics AS (
         headroom_pct,
         status,
         recommendation
-    FROM flight_recorder_reporting.capacity_summary(interval '24 hours')
+    FROM pgfr_analyze.capacity_summary(interval '24 hours')
     WHERE metric != 'insufficient_data'
 ),
 connections_metric AS (
@@ -2600,7 +2600,7 @@ LEFT JOIN memory_sb_metric ms ON true
 LEFT JOIN memory_wm_metric mw ON true
 LEFT JOIN io_metric io ON true
 LEFT JOIN storage_metric s ON true;
-COMMENT ON VIEW flight_recorder_reporting.capacity_dashboard IS
+COMMENT ON VIEW pgfr_analyze.capacity_dashboard IS
 'At-a-glance capacity planning dashboard. Shows current status (healthy/warning/critical) across all resource dimensions: connections, memory, I/O, storage. Includes utilization percentages, composite memory pressure score, and array of critical issues requiring attention. Based on last 24 hours of data. Part of Phase 1 MVP capacity planning enhancements (FR-3.1).';
 
 -- NOTE: Storm and Regression dashboard views removed in 2.21
@@ -2611,7 +2611,7 @@ COMMENT ON VIEW flight_recorder_reporting.capacity_dashboard IS
 
 -- Compares table activity between two time points
 -- Returns delta metrics for DML activity, scans, and maintenance events
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.table_compare(
+CREATE OR REPLACE FUNCTION pgfr_analyze.table_compare(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ,
     p_limit INTEGER DEFAULT 25
@@ -2639,15 +2639,15 @@ LANGUAGE sql STABLE AS $$
     WITH
     start_snap AS (
         SELECT DISTINCT ON (ts.relid) ts.*
-        FROM flight_recorder.table_snapshots ts
-        JOIN flight_recorder.snapshots s ON s.id = ts.snapshot_id
+        FROM pgfr.table_snapshots ts
+        JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
         WHERE s.captured_at <= p_start_time
         ORDER BY ts.relid, s.captured_at DESC
     ),
     end_snap AS (
         SELECT DISTINCT ON (ts.relid) ts.*
-        FROM flight_recorder.table_snapshots ts
-        JOIN flight_recorder.snapshots s ON s.id = ts.snapshot_id
+        FROM pgfr.table_snapshots ts
+        JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
         WHERE s.captured_at >= p_end_time
         ORDER BY ts.relid, s.captured_at ASC
     ),
@@ -2702,13 +2702,13 @@ LANGUAGE sql STABLE AS $$
     ORDER BY total_activity DESC
     LIMIT p_limit
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.table_compare(TIMESTAMPTZ, TIMESTAMPTZ, INTEGER) IS
+COMMENT ON FUNCTION pgfr_analyze.table_compare(TIMESTAMPTZ, TIMESTAMPTZ, INTEGER) IS
 'Compare table activity between two time points. Shows DML deltas, scan counts, dead tuple percentage, and maintenance events. Useful for identifying hot tables during incidents.';
 
 
 -- Identifies table hotspots and potential issues
 -- Returns actionable recommendations for tables with problems
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.table_hotspots(
+CREATE OR REPLACE FUNCTION pgfr_analyze.table_hotspots(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -2726,7 +2726,7 @@ DECLARE
     v_hot_ratio NUMERIC;
 BEGIN
     FOR v_table IN
-        SELECT * FROM flight_recorder_reporting.table_compare(p_start_time, p_end_time, 100)
+        SELECT * FROM pgfr_analyze.table_compare(p_start_time, p_end_time, 100)
     LOOP
         -- High sequential scan activity
         IF v_table.seq_scan_delta > 100 AND v_table.seq_tup_read_delta > 100000 THEN
@@ -2795,7 +2795,7 @@ BEGIN
     END LOOP;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.table_hotspots(TIMESTAMPTZ, TIMESTAMPTZ) IS
+COMMENT ON FUNCTION pgfr_analyze.table_hotspots(TIMESTAMPTZ, TIMESTAMPTZ) IS
 'Identify table-level hotspots and issues. Returns actionable recommendations for sequential scan storms, table bloat, low HOT update ratios, and frequent autovacuum activity.';
 
 
@@ -2805,7 +2805,7 @@ COMMENT ON FUNCTION flight_recorder_reporting.table_hotspots(TIMESTAMPTZ, TIMEST
 
 -- Identifies unused or rarely used indexes
 -- Returns indexes that may be candidates for removal
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.unused_indexes(
+CREATE OR REPLACE FUNCTION pgfr_analyze.unused_indexes(
     p_lookback_interval INTERVAL DEFAULT '7 days'
 )
 RETURNS TABLE(
@@ -2819,12 +2819,12 @@ RETURNS TABLE(
 LANGUAGE sql STABLE AS $$
     WITH latest_snapshot AS (
         SELECT max(id) AS snapshot_id
-        FROM flight_recorder.snapshots
+        FROM pgfr.snapshots
         WHERE captured_at > now() - p_lookback_interval
     ),
     earliest_snapshot AS (
         SELECT min(id) AS snapshot_id
-        FROM flight_recorder.snapshots
+        FROM pgfr.snapshots
         WHERE captured_at > now() - p_lookback_interval
     ),
     index_usage AS (
@@ -2835,9 +2835,9 @@ LANGUAGE sql STABLE AS $$
             e.indexrelid,
             e.index_size_bytes,
             COALESCE(e.idx_scan, 0) - COALESCE(s.idx_scan, 0) AS scan_delta
-        FROM flight_recorder.index_snapshots e
+        FROM pgfr.index_snapshots e
         CROSS JOIN latest_snapshot ls
-        LEFT JOIN flight_recorder.index_snapshots s
+        LEFT JOIN pgfr.index_snapshots s
             ON s.indexrelid = e.indexrelid
             AND s.snapshot_id = (SELECT snapshot_id FROM earliest_snapshot)
         WHERE e.snapshot_id = ls.snapshot_id
@@ -2846,7 +2846,7 @@ LANGUAGE sql STABLE AS $$
         iu.schemaname,
         iu.relname,
         iu.indexrelname,
-        flight_recorder._pretty_bytes(iu.index_size_bytes) AS index_size,
+        pgfr._pretty_bytes(iu.index_size_bytes) AS index_size,
         iu.scan_delta AS last_scan_count,
         CASE
             WHEN iu.scan_delta = 0 THEN 'DROP INDEX (never used in ' || p_lookback_interval::text || ')'
@@ -2858,13 +2858,13 @@ LANGUAGE sql STABLE AS $$
         AND iu.indexrelname NOT LIKE '%_pkey'  -- Don't suggest dropping primary keys
     ORDER BY iu.index_size_bytes DESC
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.unused_indexes(INTERVAL) IS
+COMMENT ON FUNCTION pgfr_analyze.unused_indexes(INTERVAL) IS
 'Identify unused or rarely used indexes. Returns indexes that may be candidates for removal to save space and improve write performance. Default lookback is 7 days.';
 
 
 -- Analyzes index efficiency and usage patterns
 -- Returns selectivity and scans-per-GB metrics
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.index_efficiency(
+CREATE OR REPLACE FUNCTION pgfr_analyze.index_efficiency(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ,
     p_limit INTEGER DEFAULT 25
@@ -2884,15 +2884,15 @@ LANGUAGE sql STABLE AS $$
     WITH
     start_snap AS (
         SELECT DISTINCT ON (i.indexrelid) i.*
-        FROM flight_recorder.index_snapshots i
-        JOIN flight_recorder.snapshots s ON s.id = i.snapshot_id
+        FROM pgfr.index_snapshots i
+        JOIN pgfr.snapshots s ON s.id = i.snapshot_id
         WHERE s.captured_at <= p_start_time
         ORDER BY i.indexrelid, s.captured_at DESC
     ),
     end_snap AS (
         SELECT DISTINCT ON (i.indexrelid) i.*
-        FROM flight_recorder.index_snapshots i
-        JOIN flight_recorder.snapshots s ON s.id = i.snapshot_id
+        FROM pgfr.index_snapshots i
+        JOIN pgfr.snapshots s ON s.id = i.snapshot_id
         WHERE s.captured_at >= p_end_time
         ORDER BY i.indexrelid, s.captured_at ASC
     )
@@ -2909,7 +2909,7 @@ LANGUAGE sql STABLE AS $$
                              (COALESCE(e.idx_tup_read, 0) - COALESCE(s.idx_tup_read, 0)), 1)
             ELSE NULL
         END AS selectivity,
-        flight_recorder._pretty_bytes(e.index_size_bytes) AS index_size,
+        pgfr._pretty_bytes(e.index_size_bytes) AS index_size,
         CASE
             WHEN COALESCE(e.index_size_bytes, 0) > 0
             THEN round((COALESCE(e.idx_scan, 0) - COALESCE(s.idx_scan, 0)) /
@@ -2922,7 +2922,7 @@ LANGUAGE sql STABLE AS $$
     ORDER BY idx_scan_delta DESC
     LIMIT p_limit
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.index_efficiency(TIMESTAMPTZ, TIMESTAMPTZ, INTEGER) IS
+COMMENT ON FUNCTION pgfr_analyze.index_efficiency(TIMESTAMPTZ, TIMESTAMPTZ, INTEGER) IS
 'Analyze index efficiency and usage patterns. Returns selectivity (fetch/read ratio) and scans-per-GB metrics. Low selectivity may indicate poor index choices.';
 
 
@@ -2932,7 +2932,7 @@ COMMENT ON FUNCTION flight_recorder_reporting.index_efficiency(TIMESTAMPTZ, TIME
 
 -- Detects configuration changes between two time points
 -- Returns parameters that changed with old and new values
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.config_changes(
+CREATE OR REPLACE FUNCTION pgfr_analyze.config_changes(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -2948,15 +2948,15 @@ LANGUAGE sql STABLE AS $$
     WITH
     start_configs AS (
         SELECT DISTINCT ON (cs.name) cs.name, cs.setting, cs.unit, cs.source, s.captured_at
-        FROM flight_recorder.config_snapshots cs
-        JOIN flight_recorder.snapshots s ON s.id = cs.snapshot_id
+        FROM pgfr.config_snapshots cs
+        JOIN pgfr.snapshots s ON s.id = cs.snapshot_id
         WHERE s.captured_at <= p_start_time
         ORDER BY cs.name, s.captured_at DESC
     ),
     end_configs AS (
         SELECT DISTINCT ON (cs.name) cs.name, cs.setting, cs.unit, cs.source, s.captured_at
-        FROM flight_recorder.config_snapshots cs
-        JOIN flight_recorder.snapshots s ON s.id = cs.snapshot_id
+        FROM pgfr.config_snapshots cs
+        JOIN pgfr.snapshots s ON s.id = cs.snapshot_id
         WHERE s.captured_at >= p_end_time
         ORDER BY cs.name, s.captured_at ASC
     )
@@ -2973,13 +2973,13 @@ LANGUAGE sql STABLE AS $$
         OR e.source IS DISTINCT FROM s.source
     ORDER BY parameter_name
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.config_changes(TIMESTAMPTZ, TIMESTAMPTZ) IS
+COMMENT ON FUNCTION pgfr_analyze.config_changes(TIMESTAMPTZ, TIMESTAMPTZ) IS
 'Detect PostgreSQL configuration changes between two time points. Useful for correlating configuration changes with performance incidents.';
 
 
 -- Retrieves configuration at a specific point in time
 -- Optionally filters by parameter name prefix (category)
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.config_at(
+CREATE OR REPLACE FUNCTION pgfr_analyze.config_at(
     p_timestamp TIMESTAMPTZ,
     p_category TEXT DEFAULT NULL
 )
@@ -2993,19 +2993,19 @@ LANGUAGE sql STABLE AS $$
         cs.name AS parameter_name,
         cs.setting || COALESCE(' ' || cs.unit, '') AS value,
         cs.source
-    FROM flight_recorder.config_snapshots cs
-    JOIN flight_recorder.snapshots s ON s.id = cs.snapshot_id
+    FROM pgfr.config_snapshots cs
+    JOIN pgfr.snapshots s ON s.id = cs.snapshot_id
     WHERE s.captured_at <= p_timestamp
         AND (p_category IS NULL OR cs.name LIKE p_category || '%')
     ORDER BY cs.name, s.captured_at DESC
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.config_at(TIMESTAMPTZ, TEXT) IS
+COMMENT ON FUNCTION pgfr_analyze.config_at(TIMESTAMPTZ, TEXT) IS
 'Retrieve PostgreSQL configuration at a specific point in time. Optionally filter by category prefix (e.g., ''autovacuum'', ''work_mem'').';
 
 
 -- Performs a health check on current PostgreSQL configuration
 -- Returns potential issues and recommendations
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.config_health_check()
+CREATE OR REPLACE FUNCTION pgfr_analyze.config_health_check()
 RETURNS TABLE(
     category        TEXT,
     parameter_name  TEXT,
@@ -3033,7 +3033,7 @@ BEGIN
     IF v_shared_buffers < 134217728 THEN  -- < 128 MB
         category := 'memory';
         parameter_name := 'shared_buffers';
-        current_value := flight_recorder._pretty_bytes(v_shared_buffers);
+        current_value := pgfr._pretty_bytes(v_shared_buffers);
         issue := 'Very low shared_buffers';
         recommendation := 'Increase to at least 25% of available RAM';
         RETURN NEXT;
@@ -3043,7 +3043,7 @@ BEGIN
     IF v_work_mem < 16777216 THEN  -- < 16 MB
         category := 'memory';
         parameter_name := 'work_mem';
-        current_value := flight_recorder._pretty_bytes(v_work_mem);
+        current_value := pgfr._pretty_bytes(v_work_mem);
         issue := 'Low work_mem may cause disk spills';
         recommendation := 'Consider increasing to 32-64MB, depending on workload';
         RETURN NEXT;
@@ -3075,7 +3075,7 @@ BEGIN
     RETURN;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.config_health_check() IS
+COMMENT ON FUNCTION pgfr_analyze.config_health_check() IS
 'Perform a health check on current PostgreSQL configuration. Returns potential issues and recommendations for memory, connections, and safety settings.';
 
 
@@ -3085,7 +3085,7 @@ COMMENT ON FUNCTION flight_recorder_reporting.config_health_check() IS
 
 -- Retrieves database/role configuration overrides at a specific point in time
 -- Optionally filters by database, role, or parameter name prefix
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.db_role_config_at(
+CREATE OR REPLACE FUNCTION pgfr_analyze.db_role_config_at(
     p_timestamp TIMESTAMPTZ,
     p_database TEXT DEFAULT NULL,
     p_role TEXT DEFAULT NULL,
@@ -3110,21 +3110,21 @@ LANGUAGE sql STABLE AS $$
             WHEN drc.role_name <> '' THEN 'role'
             ELSE 'unknown'
         END AS scope
-    FROM flight_recorder.db_role_config_snapshots drc
-    JOIN flight_recorder.snapshots s ON s.id = drc.snapshot_id
+    FROM pgfr.db_role_config_snapshots drc
+    JOIN pgfr.snapshots s ON s.id = drc.snapshot_id
     WHERE s.captured_at <= p_timestamp
         AND (p_database IS NULL OR drc.database_name = p_database)
         AND (p_role IS NULL OR drc.role_name = p_role)
         AND (p_prefix IS NULL OR drc.parameter_name LIKE p_prefix || '%')
     ORDER BY drc.database_name, drc.role_name, drc.parameter_name, s.captured_at DESC
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.db_role_config_at(TIMESTAMPTZ, TEXT, TEXT, TEXT) IS
+COMMENT ON FUNCTION pgfr_analyze.db_role_config_at(TIMESTAMPTZ, TEXT, TEXT, TEXT) IS
 'Retrieve database/role configuration overrides at a specific point in time. Filter by database, role, or parameter prefix.';
 
 
 -- Detects database/role configuration changes between two time points
 -- Returns parameters that were added, removed, or modified
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.db_role_config_changes(
+CREATE OR REPLACE FUNCTION pgfr_analyze.db_role_config_changes(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -3141,16 +3141,16 @@ LANGUAGE sql STABLE AS $$
     start_configs AS (
         SELECT DISTINCT ON (drc.database_name, drc.role_name, drc.parameter_name)
             drc.database_name, drc.role_name, drc.parameter_name, drc.parameter_value
-        FROM flight_recorder.db_role_config_snapshots drc
-        JOIN flight_recorder.snapshots s ON s.id = drc.snapshot_id
+        FROM pgfr.db_role_config_snapshots drc
+        JOIN pgfr.snapshots s ON s.id = drc.snapshot_id
         WHERE s.captured_at <= p_start_time
         ORDER BY drc.database_name, drc.role_name, drc.parameter_name, s.captured_at DESC
     ),
     end_configs AS (
         SELECT DISTINCT ON (drc.database_name, drc.role_name, drc.parameter_name)
             drc.database_name, drc.role_name, drc.parameter_name, drc.parameter_value
-        FROM flight_recorder.db_role_config_snapshots drc
-        JOIN flight_recorder.snapshots s ON s.id = drc.snapshot_id
+        FROM pgfr.db_role_config_snapshots drc
+        JOIN pgfr.snapshots s ON s.id = drc.snapshot_id
         WHERE s.captured_at <= p_end_time
         ORDER BY drc.database_name, drc.role_name, drc.parameter_name, s.captured_at DESC
     )
@@ -3173,13 +3173,13 @@ LANGUAGE sql STABLE AS $$
     WHERE e.parameter_value IS DISTINCT FROM s.parameter_value
     ORDER BY database_name NULLS FIRST, role_name NULLS FIRST, parameter_name
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.db_role_config_changes(TIMESTAMPTZ, TIMESTAMPTZ) IS
+COMMENT ON FUNCTION pgfr_analyze.db_role_config_changes(TIMESTAMPTZ, TIMESTAMPTZ) IS
 'Detect database/role configuration changes between two time points. Returns added, removed, and modified settings.';
 
 
 -- Provides a summary overview of all database/role configuration overrides
 -- Groups by scope (database-only, role-only, or database+role combination)
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.db_role_config_summary()
+CREATE OR REPLACE FUNCTION pgfr_analyze.db_role_config_summary()
 RETURNS TABLE(
     scope           TEXT,
     database_name   TEXT,
@@ -3189,7 +3189,7 @@ RETURNS TABLE(
 )
 LANGUAGE sql STABLE AS $$
     WITH latest_snapshot AS (
-        SELECT id FROM flight_recorder.snapshots ORDER BY captured_at DESC LIMIT 1
+        SELECT id FROM pgfr.snapshots ORDER BY captured_at DESC LIMIT 1
     ),
     config_data AS (
         SELECT
@@ -3202,7 +3202,7 @@ LANGUAGE sql STABLE AS $$
                 WHEN drc.role_name <> '' THEN 'role'
                 ELSE 'unknown'
             END AS scope
-        FROM flight_recorder.db_role_config_snapshots drc
+        FROM pgfr.db_role_config_snapshots drc
         WHERE drc.snapshot_id = (SELECT id FROM latest_snapshot)
     )
     SELECT
@@ -3215,7 +3215,7 @@ LANGUAGE sql STABLE AS $$
     GROUP BY scope, database_name, role_name
     ORDER BY scope, database_name NULLS FIRST, role_name NULLS FIRST
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.db_role_config_summary() IS
+COMMENT ON FUNCTION pgfr_analyze.db_role_config_summary() IS
 'Overview of database/role configuration overrides grouped by scope. Shows which databases and roles have custom settings.';
 
 
@@ -3231,7 +3231,7 @@ COMMENT ON FUNCTION flight_recorder_reporting.db_role_config_summary() IS
 -- Provides interpolated system state at any arbitrary timestamp
 -- Input: Target timestamp, context window (default 5 minutes)
 -- Output: Interpolated metrics, events, sessions, locks, wait events, confidence, recommendations
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.what_happened_at(
+CREATE OR REPLACE FUNCTION pgfr_analyze.what_happened_at(
     p_timestamp TIMESTAMPTZ,
     p_context_window INTERVAL DEFAULT '5 minutes'
 )
@@ -3324,13 +3324,13 @@ BEGIN
     -- STEP 1: Find surrounding snapshots
     -- ==========================================================================
     SELECT * INTO v_snap_before
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
     WHERE captured_at <= p_timestamp
     ORDER BY captured_at DESC
     LIMIT 1;
 
     SELECT * INTO v_snap_after
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
     WHERE captured_at >= p_timestamp
     ORDER BY captured_at ASC
     LIMIT 1;
@@ -3344,14 +3344,14 @@ BEGIN
     -- STEP 2: Find surrounding samples (from ring buffer)
     -- ==========================================================================
     SELECT sr.* INTO v_sample_before
-    FROM flight_recorder.samples_ring sr
+    FROM pgfr.samples_ring sr
     WHERE sr.captured_at <= p_timestamp
       AND sr.captured_at > '1970-01-01'::timestamptz
     ORDER BY sr.captured_at DESC
     LIMIT 1;
 
     SELECT sr.* INTO v_sample_after
-    FROM flight_recorder.samples_ring sr
+    FROM pgfr.samples_ring sr
     WHERE sr.captured_at >= p_timestamp
       AND sr.captured_at > '1970-01-01'::timestamptz
     ORDER BY sr.captured_at ASC
@@ -3366,7 +3366,7 @@ BEGIN
     -- STEP 3: Interpolate snapshot metrics
     -- ==========================================================================
     IF v_snap_before IS NOT NULL AND v_snap_after IS NOT NULL THEN
-        v_est_active := flight_recorder._interpolate_metric(
+        v_est_active := pgfr._interpolate_metric(
             v_snap_before.connections_active::NUMERIC,
             v_snap_before.captured_at,
             v_snap_after.connections_active::NUMERIC,
@@ -3374,7 +3374,7 @@ BEGIN
             p_timestamp
         );
 
-        v_est_total := flight_recorder._interpolate_metric(
+        v_est_total := pgfr._interpolate_metric(
             v_snap_before.connections_total::NUMERIC,
             v_snap_before.captured_at,
             v_snap_after.connections_total::NUMERIC,
@@ -3469,14 +3469,14 @@ BEGIN
         -- Count active sessions
         SELECT COUNT(*), COUNT(*) FILTER (WHERE a.state = 'active')
         INTO v_sessions, v_sessions
-        FROM flight_recorder.activity_samples_ring a
+        FROM pgfr.activity_samples_ring a
         WHERE a.slot_id = v_sample_before.slot_id
           AND a.pid IS NOT NULL;
 
         -- Find long-running queries (> 60 seconds at sample time)
         SELECT COUNT(*), MAX(EXTRACT(EPOCH FROM (v_sample_before.captured_at - a.query_start)))
         INTO v_long_running, v_longest_secs
-        FROM flight_recorder.activity_samples_ring a
+        FROM pgfr.activity_samples_ring a
         WHERE a.slot_id = v_sample_before.slot_id
           AND a.pid IS NOT NULL
           AND a.state = 'active'
@@ -3493,7 +3493,7 @@ BEGIN
                 'user', a.usename,
                 'query_preview', a.query_preview
             )
-            FROM flight_recorder.activity_samples_ring a
+            FROM pgfr.activity_samples_ring a
             WHERE a.slot_id = v_sample_before.slot_id
               AND a.pid IS NOT NULL
               AND a.query_start BETWEEN v_window_start AND v_window_end
@@ -3512,7 +3512,7 @@ BEGIN
                 'pid', a.pid,
                 'user', a.usename
             )
-            FROM flight_recorder.activity_samples_ring a
+            FROM pgfr.activity_samples_ring a
             WHERE a.slot_id = v_sample_before.slot_id
               AND a.pid IS NOT NULL
               AND a.xact_start BETWEEN v_window_start AND v_window_end
@@ -3530,7 +3530,7 @@ BEGIN
     IF v_sample_before IS NOT NULL THEN
         SELECT COUNT(*) > 0, COUNT(*)
         INTO v_lock_detected, v_blocked
-        FROM flight_recorder.lock_samples_ring l
+        FROM pgfr.lock_samples_ring l
         WHERE l.slot_id = v_sample_before.slot_id
           AND l.blocked_pid IS NOT NULL;
 
@@ -3551,7 +3551,7 @@ BEGIN
                 'wait_event', ws.wait_event,
                 'count', ws.count
             ) AS w
-            FROM flight_recorder.wait_samples_ring ws
+            FROM pgfr.wait_samples_ring ws
             WHERE ws.slot_id = v_sample_before.slot_id
               AND ws.wait_event IS NOT NULL
             ORDER BY ws.count DESC NULLS LAST
@@ -3663,15 +3663,15 @@ BEGIN
         v_recs;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.what_happened_at IS
-'Time-travel debugging: Forensic analysis of system state at any timestamp. Interpolates between samples to estimate connections, transaction rates, and buffer hit ratio. Surfaces exact-timestamp events (checkpoints, query starts, transaction starts) and analyzes sessions, locks, and wait events. Returns confidence score (0-1) based on data proximity. Use for incident investigation: SELECT * FROM flight_recorder_reporting.what_happened_at(''2024-01-15 10:23:47'');';
+COMMENT ON FUNCTION pgfr_analyze.what_happened_at IS
+'Time-travel debugging: Forensic analysis of system state at any timestamp. Interpolates between samples to estimate connections, transaction rates, and buffer hit ratio. Surfaces exact-timestamp events (checkpoints, query starts, transaction starts) and analyzes sessions, locks, and wait events. Returns confidence score (0-1) based on data proximity. Use for incident investigation: SELECT * FROM pgfr_analyze.what_happened_at(''2024-01-15 10:23:47'');';
 
 
 -- Timeline reconstruction for incident analysis
 -- Merges events from multiple sources into a unified, chronological timeline
 -- Input: Start and end timestamps for the incident window
 -- Output: Ordered timeline of events with type, description, and details
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.incident_timeline(
+CREATE OR REPLACE FUNCTION pgfr_analyze.incident_timeline(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -3696,7 +3696,7 @@ BEGIN
                 'write_time_ms', round(s.ckpt_write_time::NUMERIC, 1),
                 'sync_time_ms', round(s.ckpt_sync_time::NUMERIC, 1)
             ) AS details
-        FROM flight_recorder.snapshots s
+        FROM pgfr.snapshots s
         WHERE s.checkpoint_time BETWEEN p_start_time AND p_end_time
           AND s.checkpoint_time IS NOT NULL
 
@@ -3711,7 +3711,7 @@ BEGIN
                 'wal_file', s.last_archived_wal,
                 'archived_count', s.archived_count
             ) AS details
-        FROM flight_recorder.snapshots s
+        FROM pgfr.snapshots s
         WHERE s.last_archived_time BETWEEN p_start_time AND p_end_time
           AND s.last_archived_time IS NOT NULL
 
@@ -3726,7 +3726,7 @@ BEGIN
                 'wal_file', s.last_failed_wal,
                 'failed_count', s.failed_count
             ) AS details
-        FROM flight_recorder.snapshots s
+        FROM pgfr.snapshots s
         WHERE s.last_failed_time BETWEEN p_start_time AND p_end_time
           AND s.last_failed_time IS NOT NULL
 
@@ -3744,8 +3744,8 @@ BEGIN
                 'client_addr', a.client_addr::TEXT,
                 'query_preview', a.query_preview
             ) AS details
-        FROM flight_recorder.activity_samples_ring a
-        JOIN flight_recorder.samples_ring sr ON sr.slot_id = a.slot_id
+        FROM pgfr.activity_samples_ring a
+        JOIN pgfr.samples_ring sr ON sr.slot_id = a.slot_id
         WHERE a.query_start BETWEEN p_start_time AND p_end_time
           AND a.query_start IS NOT NULL
           AND a.pid IS NOT NULL
@@ -3763,8 +3763,8 @@ BEGIN
                 'user', a.usename,
                 'application', a.application_name
             ) AS details
-        FROM flight_recorder.activity_samples_ring a
-        JOIN flight_recorder.samples_ring sr ON sr.slot_id = a.slot_id
+        FROM pgfr.activity_samples_ring a
+        JOIN pgfr.samples_ring sr ON sr.slot_id = a.slot_id
         WHERE a.xact_start BETWEEN p_start_time AND p_end_time
           AND a.xact_start IS NOT NULL
           AND a.pid IS NOT NULL
@@ -3786,8 +3786,8 @@ BEGIN
                 'client_addr', a.client_addr::TEXT,
                 'backend_type', a.backend_type
             ) AS details
-        FROM flight_recorder.activity_samples_ring a
-        JOIN flight_recorder.samples_ring sr ON sr.slot_id = a.slot_id
+        FROM pgfr.activity_samples_ring a
+        JOIN pgfr.samples_ring sr ON sr.slot_id = a.slot_id
         WHERE a.backend_start BETWEEN p_start_time AND p_end_time
           AND a.backend_start IS NOT NULL
           AND a.pid IS NOT NULL
@@ -3811,8 +3811,8 @@ BEGIN
                 'lock_type', l.lock_type,
                 'duration', l.blocked_duration::TEXT
             ) AS details
-        FROM flight_recorder.lock_samples_ring l
-        JOIN flight_recorder.samples_ring sr ON sr.slot_id = l.slot_id
+        FROM pgfr.lock_samples_ring l
+        JOIN pgfr.samples_ring sr ON sr.slot_id = l.slot_id
         WHERE sr.captured_at BETWEEN p_start_time AND p_end_time
           AND l.blocked_pid IS NOT NULL
           AND sr.captured_at > '1970-01-01'::timestamptz
@@ -3832,7 +3832,7 @@ BEGIN
                 'avg_concurrent', round(wa.avg_waiters, 1),
                 'sample_count', wa.sample_count
             ) AS details
-        FROM flight_recorder.wait_event_aggregates wa
+        FROM pgfr.wait_event_aggregates wa
         WHERE wa.start_time BETWEEN p_start_time AND p_end_time
           AND wa.max_waiters >= 3  -- Only show significant waits
 
@@ -3857,7 +3857,7 @@ BEGIN
                 'blks_read', s.blks_read,
                 'temp_bytes', s.temp_bytes
             ) AS details
-        FROM flight_recorder.snapshots s
+        FROM pgfr.snapshots s
         WHERE s.captured_at BETWEEN p_start_time AND p_end_time
     )
     SELECT ae.event_time, ae.event_type, ae.description, ae.details
@@ -3866,8 +3866,8 @@ BEGIN
     ORDER BY ae.event_time;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.incident_timeline IS
-'Reconstructs a unified timeline for incident analysis by merging events from multiple sources: checkpoints, WAL archiving, query/transaction starts, connection opens, lock contention, wait spikes, and snapshots. Returns chronologically ordered events with type, description, and JSON details. Use for incident review: SELECT * FROM flight_recorder_reporting.incident_timeline(now() - interval ''2 hours'', now() - interval ''1 hour'');';
+COMMENT ON FUNCTION pgfr_analyze.incident_timeline IS
+'Reconstructs a unified timeline for incident analysis by merging events from multiple sources: checkpoints, WAL archiving, query/transaction starts, connection opens, lock contention, wait spikes, and snapshots. Returns chronologically ordered events with type, description, and JSON details. Use for incident review: SELECT * FROM pgfr_analyze.incident_timeline(now() - interval ''2 hours'', now() - interval ''1 hour'');';
 
 
 -- Blast Radius Analysis
@@ -3875,7 +3875,7 @@ COMMENT ON FUNCTION flight_recorder_reporting.incident_timeline IS
 -- Answers: "What was the collateral damage from this incident?"
 -- Input: Start and end timestamps for the incident window
 -- Output: Structured impact assessment including locks, queries, connections, applications
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.blast_radius(
+CREATE OR REPLACE FUNCTION pgfr_analyze.blast_radius(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -3979,8 +3979,8 @@ BEGIN
         MAX(l.blocked_duration),
         AVG(l.blocked_duration)
     INTO v_blocked_total, v_max_block_duration, v_avg_block_duration
-    FROM flight_recorder.lock_samples_ring l
-    JOIN flight_recorder.samples_ring sr ON sr.slot_id = l.slot_id
+    FROM pgfr.lock_samples_ring l
+    JOIN pgfr.samples_ring sr ON sr.slot_id = l.slot_id
     WHERE sr.captured_at BETWEEN p_start_time AND p_end_time
       AND l.blocked_pid IS NOT NULL;
 
@@ -3991,7 +3991,7 @@ BEGIN
             MAX(blocked_duration),
             AVG(blocked_duration)
         INTO v_blocked_total, v_max_block_duration, v_avg_block_duration
-        FROM flight_recorder.lock_samples_archive
+        FROM pgfr.lock_samples_archive
         WHERE captured_at BETWEEN p_start_time AND p_end_time
           AND blocked_pid IS NOT NULL;
     END IF;
@@ -4003,8 +4003,8 @@ BEGIN
     INTO v_blocked_max_concurrent
     FROM (
         SELECT COUNT(DISTINCT l.blocked_pid) AS blocked_count
-        FROM flight_recorder.lock_samples_ring l
-        JOIN flight_recorder.samples_ring sr ON sr.slot_id = l.slot_id
+        FROM pgfr.lock_samples_ring l
+        JOIN pgfr.samples_ring sr ON sr.slot_id = l.slot_id
         WHERE sr.captured_at BETWEEN p_start_time AND p_end_time
           AND l.blocked_pid IS NOT NULL
         GROUP BY sr.slot_id
@@ -4015,8 +4015,8 @@ BEGIN
     INTO v_lock_types
     FROM (
         SELECT l.lock_type, COUNT(*) AS cnt
-        FROM flight_recorder.lock_samples_ring l
-        JOIN flight_recorder.samples_ring sr ON sr.slot_id = l.slot_id
+        FROM pgfr.lock_samples_ring l
+        JOIN pgfr.samples_ring sr ON sr.slot_id = l.slot_id
         WHERE sr.captured_at BETWEEN p_start_time AND p_end_time
           AND l.blocked_pid IS NOT NULL
           AND l.lock_type IS NOT NULL
@@ -4034,8 +4034,8 @@ BEGIN
             ss.queryid,
             left(ss.query_preview, 80) AS query_preview,
             AVG(ss.mean_exec_time) AS baseline_ms
-        FROM flight_recorder.statement_snapshots ss
-        JOIN flight_recorder.snapshots s ON s.id = ss.snapshot_id
+        FROM pgfr.statement_snapshots ss
+        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
         WHERE s.captured_at BETWEEN v_baseline_start AND v_baseline_end
           AND ss.mean_exec_time IS NOT NULL
           AND ss.mean_exec_time > 0
@@ -4046,8 +4046,8 @@ BEGIN
         SELECT
             ss.queryid,
             AVG(ss.mean_exec_time) AS during_ms
-        FROM flight_recorder.statement_snapshots ss
-        JOIN flight_recorder.snapshots s ON s.id = ss.snapshot_id
+        FROM pgfr.statement_snapshots ss
+        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
         WHERE s.captured_at BETWEEN p_start_time AND p_end_time
           AND ss.mean_exec_time IS NOT NULL
           AND ss.mean_exec_time > 0
@@ -4088,7 +4088,7 @@ BEGIN
     -- Baseline connections (average before incident)
     SELECT COALESCE(AVG(connections_total), 0)::integer
     INTO v_conn_before
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
     WHERE captured_at BETWEEN v_baseline_start AND v_baseline_end;
 
     -- During incident connections
@@ -4096,7 +4096,7 @@ BEGIN
         COALESCE(AVG(connections_total), 0)::integer,
         COALESCE(MAX(connections_total), 0)::integer
     INTO v_conn_during_avg, v_conn_during_max
-    FROM flight_recorder.snapshots
+    FROM pgfr.snapshots
     WHERE captured_at BETWEEN p_start_time AND p_end_time;
 
     -- Connection increase percentage
@@ -4119,8 +4119,8 @@ BEGIN
             COALESCE(l.blocked_app, 'unknown') AS app,
             COUNT(DISTINCT l.blocked_pid) AS blocked_count,
             MAX(l.blocked_duration) AS max_wait
-        FROM flight_recorder.lock_samples_ring l
-        JOIN flight_recorder.samples_ring sr ON sr.slot_id = l.slot_id
+        FROM pgfr.lock_samples_ring l
+        JOIN pgfr.samples_ring sr ON sr.slot_id = l.slot_id
         WHERE sr.captured_at BETWEEN p_start_time AND p_end_time
           AND l.blocked_pid IS NOT NULL
         GROUP BY COALESCE(l.blocked_app, 'unknown')
@@ -4137,8 +4137,8 @@ BEGIN
             w.wait_event_type,
             w.wait_event,
             SUM(w.count) AS total_count
-        FROM flight_recorder.wait_samples_ring w
-        JOIN flight_recorder.samples_ring sr ON sr.slot_id = w.slot_id
+        FROM pgfr.wait_samples_ring w
+        JOIN pgfr.samples_ring sr ON sr.slot_id = w.slot_id
         WHERE sr.captured_at BETWEEN v_baseline_start AND v_baseline_end
           AND w.wait_event IS NOT NULL
         GROUP BY w.wait_event_type, w.wait_event
@@ -4148,8 +4148,8 @@ BEGIN
             w.wait_event_type,
             w.wait_event,
             SUM(w.count) AS total_count
-        FROM flight_recorder.wait_samples_ring w
-        JOIN flight_recorder.samples_ring sr ON sr.slot_id = w.slot_id
+        FROM pgfr.wait_samples_ring w
+        JOIN pgfr.samples_ring sr ON sr.slot_id = w.slot_id
         WHERE sr.captured_at BETWEEN p_start_time AND p_end_time
           AND w.wait_event IS NOT NULL
         GROUP BY w.wait_event_type, w.wait_event
@@ -4182,7 +4182,7 @@ BEGIN
             captured_at,
             LAG(xact_commit) OVER (ORDER BY captured_at) AS prev_commit,
             LAG(captured_at) OVER (ORDER BY captured_at) AS prev_time
-        FROM flight_recorder.snapshots
+        FROM pgfr.snapshots
         WHERE captured_at BETWEEN v_baseline_start AND v_baseline_end
     )
     SELECT COALESCE(AVG(
@@ -4203,7 +4203,7 @@ BEGIN
             captured_at,
             LAG(xact_commit) OVER (ORDER BY captured_at) AS prev_commit,
             LAG(captured_at) OVER (ORDER BY captured_at) AS prev_time
-        FROM flight_recorder.snapshots
+        FROM pgfr.snapshots
         WHERE captured_at BETWEEN p_start_time AND p_end_time
     )
     SELECT COALESCE(AVG(
@@ -4372,14 +4372,14 @@ BEGIN
         v_recommendations;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.blast_radius IS
-'Comprehensive blast radius analysis for incident impact assessment. Analyzes lock impact (blocked sessions, duration, types), query degradation (before vs during), connection spike, affected applications, wait events, and transaction throughput. Returns severity classification (low/medium/high/critical) with impact summary and recommendations. Use for incident postmortems: SELECT * FROM flight_recorder_reporting.blast_radius(''2024-01-15 10:23:00'', ''2024-01-15 10:35:00'');';
+COMMENT ON FUNCTION pgfr_analyze.blast_radius IS
+'Comprehensive blast radius analysis for incident impact assessment. Analyzes lock impact (blocked sessions, duration, types), query degradation (before vs during), connection spike, affected applications, wait events, and transaction throughput. Returns severity classification (low/medium/high/critical) with impact summary and recommendations. Use for incident postmortems: SELECT * FROM pgfr_analyze.blast_radius(''2024-01-15 10:23:00'', ''2024-01-15 10:35:00'');';
 
 
 -- Blast Radius Report
 -- Human-readable formatted report for incident postmortems
 -- Returns ASCII-art styled report suitable for sharing and documentation
-CREATE OR REPLACE FUNCTION flight_recorder_reporting.blast_radius_report(
+CREATE OR REPLACE FUNCTION pgfr_analyze.blast_radius_report(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -4397,7 +4397,7 @@ DECLARE
     v_severity_bar TEXT;
 BEGIN
     -- Get blast radius data
-    SELECT * INTO v_data FROM flight_recorder_reporting.blast_radius(p_start_time, p_end_time);
+    SELECT * INTO v_data FROM pgfr_analyze.blast_radius(p_start_time, p_end_time);
 
     -- Header
     v_result := v_result || E'══════════════════════════════════════════════════════════════════════\n';
@@ -4576,5 +4576,5 @@ BEGIN
     RETURN v_result;
 END;
 $$;
-COMMENT ON FUNCTION flight_recorder_reporting.blast_radius_report IS
-'Human-readable blast radius analysis report with ASCII-art formatting. Suitable for incident postmortems, Slack/email sharing, and documentation. Includes visual severity indicators, bar charts for lock types and affected apps, and actionable recommendations. Use: SELECT flight_recorder_reporting.blast_radius_report(''2024-01-15 10:23:00'', ''2024-01-15 10:35:00'');';
+COMMENT ON FUNCTION pgfr_analyze.blast_radius_report IS
+'Human-readable blast radius analysis report with ASCII-art formatting. Suitable for incident postmortems, Slack/email sharing, and documentation. Includes visual severity indicators, bar charts for lock types and affected apps, and actionable recommendations. Use: SELECT pgfr_analyze.blast_radius_report(''2024-01-15 10:23:00'', ''2024-01-15 10:35:00'');';

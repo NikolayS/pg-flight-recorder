@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Test runner for pg_flight_recorder
+# Test runner for pgfr_record
 # Usage: ./test.sh [version]
 #   version: 15, 16, 17 (runs single version)
 #   no args: runs all versions in parallel (default)
@@ -53,20 +53,20 @@ run_single_version() {
     echo "Installing pg_cron extension..."
     $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS pg_cron;" > /dev/null
 
-    echo "Installing pg_flight_recorder..."
+    echo "Installing pgfr_record..."
     $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres --single-transaction -f /install.sql > /dev/null
 
     echo "Installing autovacuum control functions..."
-    $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres --single-transaction -f /autovacuum_control.sql > /dev/null
+    $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres --single-transaction -f /control.sql > /dev/null
 
     echo "Installing reporting functions..."
-    $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres --single-transaction -f /reporting.sql > /dev/null
+    $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres --single-transaction -f /analyze.sql > /dev/null
 
     echo "Installing pgTAP extension..."
     $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS pgtap;" > /dev/null
 
     echo "Disabling scheduled jobs for testing..."
-    $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres -c "SELECT flight_recorder.disable();" > /dev/null
+    $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres -c "SELECT pgfr.disable();" > /dev/null
 
     echo "Running tests with per-file timing..."
     $DOCKER_COMPOSE --profile $profile exec -T $service sh -c 'pg_prove --timer -U postgres -d postgres /tests/*.sql'
@@ -111,10 +111,10 @@ run_all_parallel() {
         (
             $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS pg_cron;" > /dev/null
             $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres --single-transaction -f /install.sql > /dev/null
-            $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres --single-transaction -f /autovacuum_control.sql > /dev/null
-            $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres --single-transaction -f /reporting.sql > /dev/null
+            $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres --single-transaction -f /control.sql > /dev/null
+            $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres --single-transaction -f /analyze.sql > /dev/null
             $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS pgtap;" > /dev/null
-            $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres -c "SELECT flight_recorder.disable();" > /dev/null
+            $DOCKER_COMPOSE --profile all exec -T $service psql -U postgres -d postgres -c "SELECT pgfr.disable();" > /dev/null
         ) &
     done
     wait

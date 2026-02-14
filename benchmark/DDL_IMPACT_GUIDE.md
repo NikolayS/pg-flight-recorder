@@ -13,7 +13,7 @@ This benchmark measures how often flight recorder blocks DDL operations (ALTER T
 ## Quick Start
 
 ```bash
-cd pg_flight_recorder/benchmark
+cd pgfr_record/benchmark
 
 # Run 5-minute test (default: 180s sampling interval)
 ./measure_ddl_impact.sh
@@ -108,7 +108,7 @@ If collision rate is concerning:
 ### Option 1: Emergency Mode (300s intervals)
 
 ```sql
-SELECT flight_recorder.set_mode('emergency');
+SELECT pgfr.set_mode('emergency');
 -- 40% fewer collections = 40% fewer collision opportunities
 ```
 
@@ -116,7 +116,7 @@ SELECT flight_recorder.set_mode('emergency');
 
 ```sql
 -- Fail faster, less DDL delay
-UPDATE flight_recorder.config
+UPDATE pgfr.config
 SET value = '50'
 WHERE key = 'lock_timeout_ms';
 ```
@@ -125,14 +125,14 @@ WHERE key = 'lock_timeout_ms';
 
 ```sql
 -- Before maintenance window
-SELECT flight_recorder.disable();
+SELECT pgfr.disable();
 
 -- Run DDL operations
 ALTER TABLE ...;
 CREATE INDEX ...;
 
 -- After maintenance
-SELECT flight_recorder.enable();
+SELECT pgfr.enable();
 ```
 
 ### Option 4: Schedule DDL During Low-Traffic
@@ -213,7 +213,7 @@ Check that the database is accessible and flight recorder is installed:
 
 ```bash
 psql -c "SELECT version();"
-psql -c "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'flight_recorder');"
+psql -c "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'pgfr');"
 ```
 
 ### High Collision Rate (>10%)

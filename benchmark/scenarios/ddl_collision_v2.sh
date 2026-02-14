@@ -67,11 +67,11 @@ while [ "$(date +%s)" -lt "$END_TIME" ]; do
             ;;
     esac
 
-    # Check for concurrent flight_recorder activity before DDL
+    # Check for concurrent pgfr activity before DDL
     BLOCKERS=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -qtA -c "
         SELECT string_agg(
             CASE
-                WHEN query ILIKE '%flight_recorder%' THEN 'flight_recorder:' || pid::text
+                WHEN query ILIKE '%pgfr%' THEN 'pgfr:' || pid::text
                 ELSE 'other:' || pid::text
             END, ', ')
         FROM pg_stat_activity
@@ -80,7 +80,7 @@ while [ "$(date +%s)" -lt "$END_TIME" ]; do
         AND (query ILIKE '%pg_stat_activity%'
              OR query ILIKE '%pg_locks%'
              OR query ILIKE '%pg_class%'
-             OR query ILIKE '%flight_recorder%');
+             OR query ILIKE '%pgfr%');
     ")
 
     # Execute DDL with timing

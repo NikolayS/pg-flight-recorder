@@ -10,32 +10,32 @@ BEGIN;
 SELECT plan(72);
 
 -- Disable checkpoint detection during tests to prevent snapshot skipping
-UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
+UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
 -- Disable collection jitter to speed up tests
-UPDATE flight_recorder.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
+UPDATE pgfr.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
 
 -- =============================================================================
 -- 1. SCHEMA TESTS - vacuum_control_state TABLE (4 tests)
 -- =============================================================================
 
 SELECT has_table(
-    'flight_recorder', 'vacuum_control_state',
+    'pgfr', 'vacuum_control_state',
     'vacuum_control_state table should exist'
 );
 
 SELECT has_column(
-    'flight_recorder', 'vacuum_control_state', 'relid',
+    'pgfr', 'vacuum_control_state', 'relid',
     'vacuum_control_state should have relid column'
 );
 
 SELECT has_column(
-    'flight_recorder', 'vacuum_control_state', 'operating_mode',
+    'pgfr', 'vacuum_control_state', 'operating_mode',
     'vacuum_control_state should have operating_mode column'
 );
 
 SELECT has_column(
-    'flight_recorder', 'vacuum_control_state', 'last_recommended_scale_factor',
+    'pgfr', 'vacuum_control_state', 'last_recommended_scale_factor',
     'vacuum_control_state should have last_recommended_scale_factor column'
 );
 
@@ -44,22 +44,22 @@ SELECT has_column(
 -- =============================================================================
 
 SELECT has_column(
-    'flight_recorder', 'table_snapshots', 'reltuples',
+    'pgfr', 'table_snapshots', 'reltuples',
     'table_snapshots should have reltuples column'
 );
 
 SELECT col_type_is(
-    'flight_recorder', 'table_snapshots', 'reltuples', 'bigint',
+    'pgfr', 'table_snapshots', 'reltuples', 'bigint',
     'reltuples should be BIGINT type'
 );
 
 SELECT has_column(
-    'flight_recorder', 'table_snapshots', 'vacuum_running',
+    'pgfr', 'table_snapshots', 'vacuum_running',
     'table_snapshots should have vacuum_running column'
 );
 
 SELECT has_column(
-    'flight_recorder', 'table_snapshots', 'last_vacuum_duration_ms',
+    'pgfr', 'table_snapshots', 'last_vacuum_duration_ms',
     'table_snapshots should have last_vacuum_duration_ms column'
 );
 
@@ -68,39 +68,39 @@ SELECT has_column(
 -- =============================================================================
 
 SELECT ok(
-    EXISTS(SELECT 1 FROM flight_recorder.config WHERE key = 'vacuum_control_enabled'),
+    EXISTS(SELECT 1 FROM pgfr.config WHERE key = 'vacuum_control_enabled'),
     'vacuum_control_enabled config parameter should exist'
 );
 
 SELECT is(
-    (SELECT value FROM flight_recorder.config WHERE key = 'vacuum_control_enabled'),
+    (SELECT value FROM pgfr.config WHERE key = 'vacuum_control_enabled'),
     'true',
     'vacuum_control_enabled default should be true'
 );
 
 SELECT ok(
-    EXISTS(SELECT 1 FROM flight_recorder.config WHERE key = 'vacuum_control_dead_tuple_budget_pct'),
+    EXISTS(SELECT 1 FROM pgfr.config WHERE key = 'vacuum_control_dead_tuple_budget_pct'),
     'vacuum_control_dead_tuple_budget_pct config parameter should exist'
 );
 
 SELECT is(
-    (SELECT value FROM flight_recorder.config WHERE key = 'vacuum_control_dead_tuple_budget_pct'),
+    (SELECT value FROM pgfr.config WHERE key = 'vacuum_control_dead_tuple_budget_pct'),
     '5',
     'vacuum_control_dead_tuple_budget_pct default should be 5'
 );
 
 SELECT ok(
-    EXISTS(SELECT 1 FROM flight_recorder.config WHERE key = 'vacuum_control_min_scale_factor'),
+    EXISTS(SELECT 1 FROM pgfr.config WHERE key = 'vacuum_control_min_scale_factor'),
     'vacuum_control_min_scale_factor config parameter should exist'
 );
 
 SELECT ok(
-    EXISTS(SELECT 1 FROM flight_recorder.config WHERE key = 'vacuum_control_hysteresis_pct'),
+    EXISTS(SELECT 1 FROM pgfr.config WHERE key = 'vacuum_control_hysteresis_pct'),
     'vacuum_control_hysteresis_pct config parameter should exist'
 );
 
 SELECT ok(
-    EXISTS(SELECT 1 FROM flight_recorder.config WHERE key = 'vacuum_control_rate_limit_minutes'),
+    EXISTS(SELECT 1 FROM pgfr.config WHERE key = 'vacuum_control_rate_limit_minutes'),
     'vacuum_control_rate_limit_minutes config parameter should exist'
 );
 
@@ -109,37 +109,37 @@ SELECT ok(
 -- =============================================================================
 
 SELECT has_function(
-    'flight_recorder', 'vacuum_control_mode',
+    'pgfr', 'vacuum_control_mode',
     ARRAY['oid'],
     'vacuum_control_mode(oid) function should exist'
 );
 
 SELECT has_function(
-    'flight_recorder', 'compute_recommended_scale_factor',
+    'pgfr', 'compute_recommended_scale_factor',
     ARRAY['oid'],
     'compute_recommended_scale_factor(oid) function should exist'
 );
 
 SELECT has_function(
-    'flight_recorder', 'vacuum_diagnostic',
+    'pgfr', 'vacuum_diagnostic',
     ARRAY['oid'],
     'vacuum_diagnostic(oid) function should exist'
 );
 
 SELECT has_function(
-    'flight_recorder', 'vacuum_control_report',
+    'pgfr', 'vacuum_control_report',
     ARRAY['timestamp with time zone', 'timestamp with time zone'],
     'vacuum_control_report(timestamptz, timestamptz) function should exist'
 );
 
 SELECT has_function(
-    'flight_recorder', '_get_table_autovacuum_settings',
+    'pgfr', '_get_table_autovacuum_settings',
     ARRAY['oid'],
     '_get_table_autovacuum_settings(oid) function should exist'
 );
 
 SELECT has_function(
-    'flight_recorder', 'dead_tuple_trend',
+    'pgfr', 'dead_tuple_trend',
     ARRAY['oid', 'interval'],
     'dead_tuple_trend(oid, interval) function should exist'
 );
@@ -150,7 +150,7 @@ SELECT has_function(
 
 -- Test _get_table_autovacuum_settings returns global defaults for tables without overrides
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder._get_table_autovacuum_settings(
+    $$SELECT * FROM pgfr._get_table_autovacuum_settings(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     '_get_table_autovacuum_settings should execute without error'
@@ -158,7 +158,7 @@ SELECT lives_ok(
 
 -- Test dead_tuple_trend executes without error
 SELECT lives_ok(
-    $$SELECT flight_recorder.dead_tuple_trend(
+    $$SELECT pgfr.dead_tuple_trend(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1),
         '1 hour'::interval
     )$$,
@@ -167,7 +167,7 @@ SELECT lives_ok(
 
 -- Test dead_tuple_trend returns NUMERIC
 SELECT ok(
-    pg_typeof(flight_recorder.dead_tuple_trend(
+    pg_typeof(pgfr.dead_tuple_trend(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1),
         '1 hour'::interval
     ))::text = 'numeric',
@@ -177,7 +177,7 @@ SELECT ok(
 -- Test _get_table_autovacuum_settings returns expected columns
 SELECT ok(
     (SELECT scale_factor IS NOT NULL
-     FROM flight_recorder._get_table_autovacuum_settings(
+     FROM pgfr._get_table_autovacuum_settings(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
      )),
     '_get_table_autovacuum_settings should return scale_factor'
@@ -188,11 +188,11 @@ SELECT ok(
 -- =============================================================================
 
 -- Take a snapshot to populate data
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 -- Test vacuum_control_mode executes without error
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.vacuum_control_mode(
+    $$SELECT * FROM pgfr.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_control_mode should execute without error'
@@ -201,7 +201,7 @@ SELECT lives_ok(
 -- Test vacuum_control_mode returns expected columns
 SELECT ok(
     (SELECT mode IS NOT NULL
-     FROM flight_recorder.vacuum_control_mode(
+     FROM pgfr.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
      )),
     'vacuum_control_mode should return mode column'
@@ -210,7 +210,7 @@ SELECT ok(
 -- Test vacuum_control_mode returns 'normal' for healthy tables
 SELECT ok(
     (SELECT mode IN ('normal', 'catch_up', 'safety')
-     FROM flight_recorder.vacuum_control_mode(
+     FROM pgfr.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
      )),
     'vacuum_control_mode should return valid mode value'
@@ -219,7 +219,7 @@ SELECT ok(
 -- Test vacuum_control_mode returns reason
 SELECT ok(
     (SELECT reason IS NOT NULL
-     FROM flight_recorder.vacuum_control_mode(
+     FROM pgfr.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
      )),
     'vacuum_control_mode should return reason column'
@@ -228,7 +228,7 @@ SELECT ok(
 -- Test vacuum_control_mode returns entered_at
 SELECT ok(
     (SELECT entered_at IS NOT NULL
-     FROM flight_recorder.vacuum_control_mode(
+     FROM pgfr.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
      )),
     'vacuum_control_mode should return entered_at column'
@@ -236,7 +236,7 @@ SELECT ok(
 
 -- Test vacuum_control_mode returns evidence
 SELECT lives_ok(
-    $$SELECT evidence FROM flight_recorder.vacuum_control_mode(
+    $$SELECT evidence FROM pgfr.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_control_mode should return evidence column'
@@ -246,7 +246,7 @@ SELECT lives_ok(
 -- but catch_up/safety could occur depending on system state during test)
 SELECT ok(
     (SELECT mode IN ('normal', 'catch_up', 'safety')
-     FROM flight_recorder.vacuum_control_mode(
+     FROM pgfr.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
      )),
     'vacuum_control_mode should return valid mode for typical table'
@@ -255,20 +255,20 @@ SELECT ok(
 -- Test mode detection with non-existent OID
 SELECT ok(
     (SELECT mode IS NULL
-     FROM flight_recorder.vacuum_control_mode(0::oid)
+     FROM pgfr.vacuum_control_mode(0::oid)
     ) IS NOT FALSE,
     'vacuum_control_mode should handle non-existent OID gracefully'
 );
 
 -- Test mode persists in vacuum_control_state
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.vacuum_control_state LIMIT 1$$,
+    $$SELECT * FROM pgfr.vacuum_control_state LIMIT 1$$,
     'vacuum_control_state table should be queryable'
 );
 
 -- Test safety mode detection (XID age check)
 SELECT lives_ok(
-    $$SELECT mode, reason FROM flight_recorder.vacuum_control_mode(
+    $$SELECT mode, reason FROM pgfr.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     ) WHERE mode = 'safety' OR mode != 'safety'$$,
     'vacuum_control_mode safety check should not error'
@@ -276,18 +276,18 @@ SELECT lives_ok(
 
 -- Test catch_up mode detection
 SELECT lives_ok(
-    $$SELECT mode, reason FROM flight_recorder.vacuum_control_mode(
+    $$SELECT mode, reason FROM pgfr.vacuum_control_mode(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     ) WHERE mode = 'catch_up' OR mode != 'catch_up'$$,
     'vacuum_control_mode catch_up check should not error'
 );
 
--- Test mode with flight_recorder tables (should work)
+-- Test mode with pgfr tables (should work)
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.vacuum_control_mode(
-        'flight_recorder.snapshots'::regclass::oid
+    $$SELECT * FROM pgfr.vacuum_control_mode(
+        'pgfr.snapshots'::regclass::oid
     )$$,
-    'vacuum_control_mode should work on flight_recorder tables'
+    'vacuum_control_mode should work on pgfr tables'
 );
 
 -- =============================================================================
@@ -296,7 +296,7 @@ SELECT lives_ok(
 
 -- Test compute_recommended_scale_factor executes without error
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.compute_recommended_scale_factor(
+    $$SELECT * FROM pgfr.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'compute_recommended_scale_factor should execute without error'
@@ -304,7 +304,7 @@ SELECT lives_ok(
 
 -- Test compute_recommended_scale_factor returns current_scale_factor
 SELECT lives_ok(
-    $$SELECT current_scale_factor FROM flight_recorder.compute_recommended_scale_factor(
+    $$SELECT current_scale_factor FROM pgfr.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'compute_recommended_scale_factor should return current_scale_factor'
@@ -312,7 +312,7 @@ SELECT lives_ok(
 
 -- Test compute_recommended_scale_factor returns recommended_scale_factor
 SELECT lives_ok(
-    $$SELECT recommended_scale_factor FROM flight_recorder.compute_recommended_scale_factor(
+    $$SELECT recommended_scale_factor FROM pgfr.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'compute_recommended_scale_factor should return recommended_scale_factor'
@@ -320,7 +320,7 @@ SELECT lives_ok(
 
 -- Test compute_recommended_scale_factor returns change_pct
 SELECT lives_ok(
-    $$SELECT change_pct FROM flight_recorder.compute_recommended_scale_factor(
+    $$SELECT change_pct FROM pgfr.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'compute_recommended_scale_factor should return change_pct'
@@ -328,7 +328,7 @@ SELECT lives_ok(
 
 -- Test compute_recommended_scale_factor returns rationale
 SELECT lives_ok(
-    $$SELECT rationale FROM flight_recorder.compute_recommended_scale_factor(
+    $$SELECT rationale FROM pgfr.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'compute_recommended_scale_factor should return rationale'
@@ -337,7 +337,7 @@ SELECT lives_ok(
 -- Test scale factor respects minimum bound
 SELECT ok(
     (SELECT COALESCE(recommended_scale_factor, 0.001) >= 0.001
-     FROM flight_recorder.compute_recommended_scale_factor(
+     FROM pgfr.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )),
     'recommended_scale_factor should respect minimum bound (0.001)'
@@ -346,7 +346,7 @@ SELECT ok(
 -- Test scale factor respects maximum bound
 SELECT ok(
     (SELECT COALESCE(recommended_scale_factor, 0.2) <= 0.2
-     FROM flight_recorder.compute_recommended_scale_factor(
+     FROM pgfr.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )),
     'recommended_scale_factor should respect maximum bound (0.2)'
@@ -354,14 +354,14 @@ SELECT ok(
 
 -- Test scale factor with non-existent OID
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.compute_recommended_scale_factor(0::oid)$$,
+    $$SELECT * FROM pgfr.compute_recommended_scale_factor(0::oid)$$,
     'compute_recommended_scale_factor should handle non-existent OID gracefully'
 );
 
 -- Test change_pct calculation is reasonable
 SELECT ok(
     (SELECT COALESCE(change_pct, 0) >= -100
-     FROM flight_recorder.compute_recommended_scale_factor(
+     FROM pgfr.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )),
     'change_pct should be reasonable (>= -100)'
@@ -370,7 +370,7 @@ SELECT ok(
 -- Test that rationale provides meaningful information
 SELECT ok(
     (SELECT rationale IS NULL OR length(rationale) > 0
-     FROM flight_recorder.compute_recommended_scale_factor(
+     FROM pgfr.compute_recommended_scale_factor(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )),
     'rationale should be meaningful when provided'
@@ -382,7 +382,7 @@ SELECT ok(
 
 -- Test vacuum_diagnostic executes without error
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.vacuum_diagnostic(
+    $$SELECT * FROM pgfr.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_diagnostic should execute without error'
@@ -390,7 +390,7 @@ SELECT lives_ok(
 
 -- Test vacuum_diagnostic returns classification
 SELECT lives_ok(
-    $$SELECT classification FROM flight_recorder.vacuum_diagnostic(
+    $$SELECT classification FROM pgfr.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_diagnostic should return classification'
@@ -400,7 +400,7 @@ SELECT lives_ok(
 SELECT ok(
     (SELECT classification IN ('NOT_SCHEDULED', 'RUNNING_BUT_LOSING', 'BLOCKED', 'HEALTHY')
             OR classification IS NULL
-     FROM flight_recorder.vacuum_diagnostic(
+     FROM pgfr.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )),
     'vacuum_diagnostic classification should be valid'
@@ -408,7 +408,7 @@ SELECT ok(
 
 -- Test vacuum_diagnostic returns evidence
 SELECT lives_ok(
-    $$SELECT evidence FROM flight_recorder.vacuum_diagnostic(
+    $$SELECT evidence FROM pgfr.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_diagnostic should return evidence'
@@ -416,7 +416,7 @@ SELECT lives_ok(
 
 -- Test vacuum_diagnostic returns confidence
 SELECT lives_ok(
-    $$SELECT confidence FROM flight_recorder.vacuum_diagnostic(
+    $$SELECT confidence FROM pgfr.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_diagnostic should return confidence'
@@ -424,7 +424,7 @@ SELECT lives_ok(
 
 -- Test vacuum_diagnostic returns likely_cause
 SELECT lives_ok(
-    $$SELECT likely_cause FROM flight_recorder.vacuum_diagnostic(
+    $$SELECT likely_cause FROM pgfr.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_diagnostic should return likely_cause'
@@ -432,7 +432,7 @@ SELECT lives_ok(
 
 -- Test vacuum_diagnostic returns mitigation
 SELECT lives_ok(
-    $$SELECT mitigation FROM flight_recorder.vacuum_diagnostic(
+    $$SELECT mitigation FROM pgfr.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_diagnostic should return mitigation'
@@ -440,7 +440,7 @@ SELECT lives_ok(
 
 -- Test vacuum_diagnostic returns mitigation_sql
 SELECT lives_ok(
-    $$SELECT mitigation_sql FROM flight_recorder.vacuum_diagnostic(
+    $$SELECT mitigation_sql FROM pgfr.vacuum_diagnostic(
         (SELECT relid FROM pg_stat_user_tables LIMIT 1)
     )$$,
     'vacuum_diagnostic should return mitigation_sql'
@@ -452,20 +452,20 @@ SELECT lives_ok(
 
 -- Test vacuum_control_report executes without error
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.vacuum_control_report(now() - interval '1 hour', now())$$,
+    $$SELECT * FROM pgfr.vacuum_control_report(now() - interval '1 hour', now())$$,
     'vacuum_control_report should execute without error'
 );
 
 -- Test vacuum_control_report returns should_recommend flag
 SELECT lives_ok(
-    $$SELECT should_recommend FROM flight_recorder.vacuum_control_report(now() - interval '1 hour', now()) LIMIT 1$$,
+    $$SELECT should_recommend FROM pgfr.vacuum_control_report(now() - interval '1 hour', now()) LIMIT 1$$,
     'vacuum_control_report should return should_recommend flag'
 );
 
 -- Test vacuum_control_report respects hysteresis threshold
 SELECT lives_ok(
     $$SELECT should_recommend, change_pct
-      FROM flight_recorder.vacuum_control_report(now() - interval '1 hour', now())
+      FROM pgfr.vacuum_control_report(now() - interval '1 hour', now())
       LIMIT 5$$,
     'vacuum_control_report should include hysteresis info'
 );
@@ -473,14 +473,14 @@ SELECT lives_ok(
 -- Test vacuum_control_report respects rate limiting
 SELECT lives_ok(
     $$SELECT should_recommend, last_recommendation_at
-      FROM flight_recorder.vacuum_control_report(now() - interval '1 hour', now())
+      FROM pgfr.vacuum_control_report(now() - interval '1 hour', now())
       LIMIT 5$$,
     'vacuum_control_report should include rate limit info'
 );
 
 -- Test vacuum_control_report includes alter_table_sql
 SELECT lives_ok(
-    $$SELECT alter_table_sql FROM flight_recorder.vacuum_control_report(now() - interval '1 hour', now()) LIMIT 1$$,
+    $$SELECT alter_table_sql FROM pgfr.vacuum_control_report(now() - interval '1 hour', now()) LIMIT 1$$,
     'vacuum_control_report should return alter_table_sql'
 );
 
@@ -489,7 +489,7 @@ SELECT ok(
     (SELECT alter_table_sql IS NULL
             OR alter_table_sql LIKE 'ALTER TABLE%'
             OR alter_table_sql = ''
-     FROM flight_recorder.vacuum_control_report(now() - interval '1 hour', now())
+     FROM pgfr.vacuum_control_report(now() - interval '1 hour', now())
      LIMIT 1),
     'alter_table_sql should be valid ALTER TABLE statement or NULL'
 );
@@ -500,30 +500,30 @@ SELECT ok(
 
 -- Test anomaly_report includes vacuum control anomalies (structure exists)
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder_reporting.anomaly_report(now() - interval '1 hour', now())
+    $$SELECT * FROM pgfr_analyze.anomaly_report(now() - interval '1 hour', now())
       WHERE anomaly_type LIKE 'VACUUM_CONTROL%'$$,
     'anomaly_report should be queryable for VACUUM_CONTROL anomalies'
 );
 
 -- Test report function still works
 SELECT lives_ok(
-    $$SELECT flight_recorder_reporting.report('1 hour')$$,
+    $$SELECT pgfr_analyze.report('1 hour')$$,
     'report function should still work after vacuum control additions'
 );
 
 -- Test report includes vacuum control section (by checking length increased)
 SELECT ok(
-    (SELECT length(flight_recorder_reporting.report('1 hour')) > 0),
+    (SELECT length(pgfr_analyze.report('1 hour')) > 0),
     'report should return content'
 );
 
 -- Test snapshot populates new columns
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 SELECT lives_ok(
     $$SELECT reltuples, vacuum_running, last_vacuum_duration_ms
-      FROM flight_recorder.table_snapshots
-      WHERE snapshot_id = (SELECT max(id) FROM flight_recorder.snapshots)
+      FROM pgfr.table_snapshots
+      WHERE snapshot_id = (SELECT max(id) FROM pgfr.snapshots)
       LIMIT 1$$,
     'snapshot should populate new table_snapshots columns'
 );
@@ -531,7 +531,7 @@ SELECT lives_ok(
 -- Test vacuum_control_state is populated after snapshot
 SELECT lives_ok(
     $$SELECT operating_mode, mode_entered_at, updated_at
-      FROM flight_recorder.vacuum_control_state
+      FROM pgfr.vacuum_control_state
       LIMIT 1$$,
     'vacuum_control_state should be populated after snapshot'
 );
@@ -541,7 +541,7 @@ SELECT lives_ok(
     $$SELECT schemaname, relname, operating_mode, diagnostic_classification,
              current_scale_factor, recommended_scale_factor, change_pct,
              should_recommend, alter_table_sql
-      FROM flight_recorder.vacuum_control_report(now() - interval '1 hour', now())
+      FROM pgfr.vacuum_control_report(now() - interval '1 hour', now())
       LIMIT 1$$,
     'vacuum_control_report should return all expected columns'
 );
@@ -552,34 +552,34 @@ SELECT lives_ok(
 
 -- Test with non-existent OID - vacuum_control_mode
 SELECT is(
-    (SELECT mode FROM flight_recorder.vacuum_control_mode(0::oid)),
+    (SELECT mode FROM pgfr.vacuum_control_mode(0::oid)),
     NULL::text,
     'vacuum_control_mode should return NULL mode for non-existent OID'
 );
 
 -- Test with non-existent OID - compute_recommended_scale_factor
 SELECT is(
-    (SELECT recommended_scale_factor FROM flight_recorder.compute_recommended_scale_factor(0::oid)),
+    (SELECT recommended_scale_factor FROM pgfr.compute_recommended_scale_factor(0::oid)),
     NULL::numeric,
     'compute_recommended_scale_factor should return NULL for non-existent OID'
 );
 
 -- Test with non-existent OID - vacuum_diagnostic
 SELECT is(
-    (SELECT classification FROM flight_recorder.vacuum_diagnostic(0::oid)),
+    (SELECT classification FROM pgfr.vacuum_diagnostic(0::oid)),
     NULL::text,
     'vacuum_diagnostic should return NULL classification for non-existent OID'
 );
 
 -- Test with empty time range
 SELECT lives_ok(
-    $$SELECT * FROM flight_recorder.vacuum_control_report(now(), now() - interval '1 hour')$$,
+    $$SELECT * FROM pgfr.vacuum_control_report(now(), now() - interval '1 hour')$$,
     'vacuum_control_report should handle reversed time range gracefully'
 );
 
 -- Test dead_tuple_trend with non-existent OID
 SELECT is(
-    flight_recorder.dead_tuple_trend(0::oid, '1 hour'::interval),
+    pgfr.dead_tuple_trend(0::oid, '1 hour'::interval),
     NULL::numeric,
     'dead_tuple_trend should return NULL for non-existent OID'
 );

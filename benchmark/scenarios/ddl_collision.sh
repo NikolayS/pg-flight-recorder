@@ -90,7 +90,7 @@ while [ "$(date +%s)" -lt "$END_TIME" ]; do
             -- Check for flight recorder activity
             SELECT string_agg(
                 CASE
-                    WHEN query ILIKE '%flight_recorder%' THEN 'flight_recorder:' || pid::text
+                    WHEN query ILIKE '%pgfr%' THEN 'pgfr:' || pid::text
                     ELSE 'other:' || pid::text
                 END, ', ')
             INTO v_blockers
@@ -100,7 +100,7 @@ while [ "$(date +%s)" -lt "$END_TIME" ]; do
             AND (query ILIKE '%pg_stat_activity%'
                  OR query ILIKE '%pg_locks%'
                  OR query ILIKE '%pg_class%'
-                 OR query ILIKE '%flight_recorder%');
+                 OR query ILIKE '%pgfr%');
 
             v_start := clock_timestamp();
 

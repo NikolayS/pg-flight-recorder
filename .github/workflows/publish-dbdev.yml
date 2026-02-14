@@ -43,11 +43,11 @@ jobs:
       - name: Prepare core extension files
         run: |
           VER="${{ steps.version.outputs.version }}"
-          cp install.sql "pg_flight_recorder--${VER}.sql"
-          sed -i "s/^default_version = .*/default_version = '${VER}'/" pg_flight_recorder.control
+          cp install.sql "__record/pgfr_record--${VER}.sql"
+          sed -i "s/^default_version = .*/default_version = '${VER}'/" _record/pgfr_record.control
 
           # Safety: verify dbdev size limit
-          SIZE=$(wc -c < "pg_flight_recorder--${VER}.sql")
+          SIZE=$(wc -c < "__record/pgfr_record--${VER}.sql")
           echo "Core package size: ${SIZE} chars"
           if [ "$SIZE" -gt 250000 ]; then
             echo "ERROR: install.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
@@ -57,28 +57,28 @@ jobs:
       - name: Prepare reporting extension files
         run: |
           VER="${{ steps.version.outputs.version }}"
-          cp reporting.sql "reporting/pg_flight_recorder_reporting--${VER}.sql"
-          sed -i "s/^default_version = .*/default_version = '${VER}'/" reporting/pg_flight_recorder_reporting.control
+          cp analyze.sql "__analyze/pgfr_analyze--${VER}.sql"
+          sed -i "s/^default_version = .*/default_version = '${VER}'/" _analyze/pgfr_analyze.control
 
           # Safety: verify dbdev size limit
-          SIZE=$(wc -c < "reporting/pg_flight_recorder_reporting--${VER}.sql")
+          SIZE=$(wc -c < "__analyze/pgfr_analyze--${VER}.sql")
           echo "Reporting package size: ${SIZE} chars"
           if [ "$SIZE" -gt 250000 ]; then
-            echo "ERROR: reporting.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
+            echo "ERROR: analyze.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
             exit 1
           fi
 
       - name: Prepare control extension files
         run: |
           VER="${{ steps.version.outputs.version }}"
-          cp autovacuum_control.sql "autovacuum_control/pg_flight_recorder_control--${VER}.sql"
-          sed -i "s/^default_version = .*/default_version = '${VER}'/" autovacuum_control/pg_flight_recorder_control.control
+          cp control.sql "__control/pgfr_control--${VER}.sql"
+          sed -i "s/^default_version = .*/default_version = '${VER}'/" _control/pgfr_control.control
 
           # Safety: verify dbdev size limit
-          SIZE=$(wc -c < "autovacuum_control/pg_flight_recorder_control--${VER}.sql")
+          SIZE=$(wc -c < "__control/pgfr_control--${VER}.sql")
           echo "Control package size: ${SIZE} chars"
           if [ "$SIZE" -gt 250000 ]; then
-            echo "ERROR: autovacuum_control.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
+            echo "ERROR: control.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
             exit 1
           fi
 
@@ -97,10 +97,10 @@ jobs:
           printf '[registries.dbdev]\ntoken = "%s"\n' "$DBDEV_TOKEN" > ~/.dbdev/credentials.toml
 
       - name: Publish core package
-        run: dbdev publish
+        run: cd _record && dbdev publish
 
       - name: Publish reporting package
-        run: cd reporting && dbdev publish
+        run: cd _analyze && dbdev publish
 
       - name: Publish control package
-        run: cd autovacuum_control && dbdev publish
+        run: cd _control && dbdev publish

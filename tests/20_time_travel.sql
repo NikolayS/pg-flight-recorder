@@ -1,5 +1,5 @@
 -- =============================================================================
--- pg_flight_recorder pgTAP Tests - Time-Travel Debugging
+-- pgfr_record pgTAP Tests - Time-Travel Debugging
 -- =============================================================================
 -- Tests: _interpolate_metric, what_happened_at, incident_timeline
 -- Test count: 45
@@ -9,32 +9,32 @@ BEGIN;
 SELECT plan(45);
 
 -- Disable checkpoint detection during tests to prevent snapshot skipping
-UPDATE flight_recorder.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
+UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
 -- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE flight_recorder.config SET value = 'false' WHERE key = 'adaptive_sampling';
+UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
 
 -- Disable collection jitter to speed up tests
-UPDATE flight_recorder.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
+UPDATE pgfr.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
 
 -- =============================================================================
 -- 1. FUNCTION EXISTENCE (3 tests)
 -- =============================================================================
 
 SELECT has_function(
-    'flight_recorder', '_interpolate_metric',
+    'pgfr', '_interpolate_metric',
     ARRAY['numeric', 'timestamptz', 'numeric', 'timestamptz', 'timestamptz'],
     '_interpolate_metric function should exist'
 );
 
 SELECT has_function(
-    'flight_recorder_reporting', 'what_happened_at',
+    'pgfr_analyze', 'what_happened_at',
     ARRAY['timestamptz', 'interval'],
     'what_happened_at function should exist'
 );
 
 SELECT has_function(
-    'flight_recorder_reporting', 'incident_timeline',
+    'pgfr_analyze', 'incident_timeline',
     ARRAY['timestamptz', 'timestamptz'],
     'incident_timeline function should exist'
 );
@@ -45,7 +45,7 @@ SELECT has_function(
 
 -- Test exact midpoint interpolation
 SELECT is(
-    flight_recorder._interpolate_metric(
+    pgfr._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:05:00'::timestamptz
@@ -56,7 +56,7 @@ SELECT is(
 
 -- Test quarter point interpolation
 SELECT is(
-    flight_recorder._interpolate_metric(
+    pgfr._interpolate_metric(
         0::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         100::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:02:30'::timestamptz
@@ -67,7 +67,7 @@ SELECT is(
 
 -- Test three-quarter point interpolation
 SELECT is(
-    flight_recorder._interpolate_metric(
+    pgfr._interpolate_metric(
         0::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         100::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:07:30'::timestamptz
@@ -78,7 +78,7 @@ SELECT is(
 
 -- Test at start time (should return before value)
 SELECT is(
-    flight_recorder._interpolate_metric(
+    pgfr._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:00:00'::timestamptz
@@ -89,7 +89,7 @@ SELECT is(
 
 -- Test at end time (should return after value)
 SELECT is(
-    flight_recorder._interpolate_metric(
+    pgfr._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:10:00'::timestamptz
@@ -100,7 +100,7 @@ SELECT is(
 
 -- Test before start time (clamped to start)
 SELECT is(
-    flight_recorder._interpolate_metric(
+    pgfr._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 09:55:00'::timestamptz
@@ -111,7 +111,7 @@ SELECT is(
 
 -- Test after end time (clamped to end)
 SELECT is(
-    flight_recorder._interpolate_metric(
+    pgfr._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:15:00'::timestamptz
@@ -122,7 +122,7 @@ SELECT is(
 
 -- Test with same timestamps (should return before value)
 SELECT is(
-    flight_recorder._interpolate_metric(
+    pgfr._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         '2024-01-01 10:00:00'::timestamptz
@@ -133,7 +133,7 @@ SELECT is(
 
 -- Test with NULL value_before
 SELECT is(
-    flight_recorder._interpolate_metric(
+    pgfr._interpolate_metric(
         NULL::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:05:00'::timestamptz
@@ -144,7 +144,7 @@ SELECT is(
 
 -- Test with NULL value_after
 SELECT is(
-    flight_recorder._interpolate_metric(
+    pgfr._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         NULL::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:05:00'::timestamptz
@@ -155,7 +155,7 @@ SELECT is(
 
 -- Test with NULL time_before
 SELECT is(
-    flight_recorder._interpolate_metric(
+    pgfr._interpolate_metric(
         10::NUMERIC, NULL::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:05:00'::timestamptz
@@ -166,7 +166,7 @@ SELECT is(
 
 -- Test with NULL target_time
 SELECT is(
-    flight_recorder._interpolate_metric(
+    pgfr._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         NULL::timestamptz
@@ -177,7 +177,7 @@ SELECT is(
 
 -- Test negative value interpolation
 SELECT is(
-    flight_recorder._interpolate_metric(
+    pgfr._interpolate_metric(
         -10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         10::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:05:00'::timestamptz
@@ -188,7 +188,7 @@ SELECT is(
 
 -- Test decreasing values
 SELECT is(
-    flight_recorder._interpolate_metric(
+    pgfr._interpolate_metric(
         100::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         0::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:05:00'::timestamptz
@@ -199,7 +199,7 @@ SELECT is(
 
 -- Test with fractional values
 SELECT ok(
-    ABS(flight_recorder._interpolate_metric(
+    ABS(pgfr._interpolate_metric(
         1.5::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         3.5::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:05:00'::timestamptz
@@ -214,84 +214,84 @@ SELECT ok(
 -- Ensure function returns expected columns
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT requested_time FROM flight_recorder_reporting.what_happened_at(now())
+        SELECT requested_time FROM pgfr_analyze.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return requested_time column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT sample_before FROM flight_recorder_reporting.what_happened_at(now())
+        SELECT sample_before FROM pgfr_analyze.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return sample_before column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT sample_after FROM flight_recorder_reporting.what_happened_at(now())
+        SELECT sample_after FROM pgfr_analyze.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return sample_after column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT snapshot_before FROM flight_recorder_reporting.what_happened_at(now())
+        SELECT snapshot_before FROM pgfr_analyze.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return snapshot_before column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT snapshot_after FROM flight_recorder_reporting.what_happened_at(now())
+        SELECT snapshot_after FROM pgfr_analyze.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return snapshot_after column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT est_connections_active FROM flight_recorder_reporting.what_happened_at(now())
+        SELECT est_connections_active FROM pgfr_analyze.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return est_connections_active column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT events FROM flight_recorder_reporting.what_happened_at(now())
+        SELECT events FROM pgfr_analyze.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return events column as JSONB'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT confidence FROM flight_recorder_reporting.what_happened_at(now())
+        SELECT confidence FROM pgfr_analyze.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return confidence column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT confidence_score FROM flight_recorder_reporting.what_happened_at(now())
+        SELECT confidence_score FROM pgfr_analyze.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return confidence_score column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT data_quality_notes FROM flight_recorder_reporting.what_happened_at(now())
+        SELECT data_quality_notes FROM pgfr_analyze.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return data_quality_notes column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT recommendations FROM flight_recorder_reporting.what_happened_at(now())
+        SELECT recommendations FROM pgfr_analyze.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return recommendations column'
 );
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT top_wait_events FROM flight_recorder_reporting.what_happened_at(now())
+        SELECT top_wait_events FROM pgfr_analyze.what_happened_at(now())
     ) sub) >= 0,
     'what_happened_at should return top_wait_events column'
 );
@@ -302,46 +302,46 @@ SELECT ok(
 
 -- Test that requested_time matches input
 SELECT is(
-    (SELECT requested_time FROM flight_recorder_reporting.what_happened_at('2024-01-01 10:00:00'::timestamptz)),
+    (SELECT requested_time FROM pgfr_analyze.what_happened_at('2024-01-01 10:00:00'::timestamptz)),
     '2024-01-01 10:00:00'::timestamptz,
     'what_happened_at should return the requested timestamp in requested_time'
 );
 
 -- Test that confidence_score is between 0 and 1
 SELECT ok(
-    (SELECT confidence_score FROM flight_recorder_reporting.what_happened_at(now()))
+    (SELECT confidence_score FROM pgfr_analyze.what_happened_at(now()))
         BETWEEN 0 AND 1,
     'what_happened_at confidence_score should be between 0 and 1'
 );
 
 -- Test that confidence level is one of expected values
 SELECT ok(
-    (SELECT confidence FROM flight_recorder_reporting.what_happened_at(now()))
+    (SELECT confidence FROM pgfr_analyze.what_happened_at(now()))
         IN ('high', 'medium', 'low', 'very_low'),
     'what_happened_at confidence should be high, medium, low, or very_low'
 );
 
 -- Test that events is valid JSONB array
 SELECT ok(
-    (SELECT jsonb_typeof(events) FROM flight_recorder_reporting.what_happened_at(now())) = 'array',
+    (SELECT jsonb_typeof(events) FROM pgfr_analyze.what_happened_at(now())) = 'array',
     'what_happened_at events should be a JSONB array'
 );
 
 -- Test that data_quality_notes is an array
 SELECT ok(
-    (SELECT data_quality_notes IS NOT NULL FROM flight_recorder_reporting.what_happened_at(now())),
+    (SELECT data_quality_notes IS NOT NULL FROM pgfr_analyze.what_happened_at(now())),
     'what_happened_at data_quality_notes should not be NULL'
 );
 
 -- Test that recommendations is an array
 SELECT ok(
-    (SELECT recommendations IS NOT NULL FROM flight_recorder_reporting.what_happened_at(now())),
+    (SELECT recommendations IS NOT NULL FROM pgfr_analyze.what_happened_at(now())),
     'what_happened_at recommendations should not be NULL'
 );
 
 -- Test custom context window
 SELECT ok(
-    (SELECT COUNT(*) FROM flight_recorder_reporting.what_happened_at(now(), '10 minutes'::interval)) = 1,
+    (SELECT COUNT(*) FROM pgfr_analyze.what_happened_at(now(), '10 minutes'::interval)) = 1,
     'what_happened_at should accept custom context_window parameter'
 );
 
@@ -352,7 +352,7 @@ SELECT ok(
 -- Ensure function returns expected columns
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT event_time FROM flight_recorder_reporting.incident_timeline(
+        SELECT event_time FROM pgfr_analyze.incident_timeline(
             now() - interval '1 hour', now()
         ) LIMIT 0
     ) sub) >= 0,
@@ -361,7 +361,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT event_type FROM flight_recorder_reporting.incident_timeline(
+        SELECT event_type FROM pgfr_analyze.incident_timeline(
             now() - interval '1 hour', now()
         ) LIMIT 0
     ) sub) >= 0,
@@ -370,7 +370,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT description FROM flight_recorder_reporting.incident_timeline(
+        SELECT description FROM pgfr_analyze.incident_timeline(
             now() - interval '1 hour', now()
         ) LIMIT 0
     ) sub) >= 0,
@@ -379,7 +379,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT COUNT(*) FROM (
-        SELECT details FROM flight_recorder_reporting.incident_timeline(
+        SELECT details FROM pgfr_analyze.incident_timeline(
             now() - interval '1 hour', now()
         ) LIMIT 0
     ) sub) >= 0,
@@ -392,10 +392,10 @@ SELECT ok(
 
 -- Test that incident_timeline returns results in chronological order
 -- (Create test data by ensuring snapshots exist)
-SELECT flight_recorder.snapshot();
+SELECT pgfr.snapshot();
 
 SELECT ok(
-    (SELECT COUNT(*) >= 0 FROM flight_recorder_reporting.incident_timeline(
+    (SELECT COUNT(*) >= 0 FROM pgfr_analyze.incident_timeline(
         now() - interval '1 hour', now()
     )),
     'incident_timeline should execute without error for recent time range'
@@ -404,7 +404,7 @@ SELECT ok(
 -- Test that all returned events are within the specified range
 SELECT ok(
     NOT EXISTS (
-        SELECT 1 FROM flight_recorder_reporting.incident_timeline(
+        SELECT 1 FROM pgfr_analyze.incident_timeline(
             now() - interval '1 hour', now()
         )
         WHERE event_time < now() - interval '1 hour'
@@ -416,7 +416,7 @@ SELECT ok(
 -- Test that event_type is one of expected values
 SELECT ok(
     NOT EXISTS (
-        SELECT 1 FROM flight_recorder_reporting.incident_timeline(
+        SELECT 1 FROM pgfr_analyze.incident_timeline(
             now() - interval '1 hour', now()
         )
         WHERE event_type NOT IN (
@@ -431,7 +431,7 @@ SELECT ok(
 -- Test that details is valid JSONB
 SELECT ok(
     NOT EXISTS (
-        SELECT 1 FROM flight_recorder_reporting.incident_timeline(
+        SELECT 1 FROM pgfr_analyze.incident_timeline(
             now() - interval '1 hour', now()
         )
         WHERE jsonb_typeof(details) != 'object'
