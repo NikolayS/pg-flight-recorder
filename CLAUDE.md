@@ -15,14 +15,17 @@ Each subdirectory contains:
 - `install.sql` — extension SQL
 - `uninstall.sql` — `DROP SCHEMA ... CASCADE`
 - `extension.control` — dbdev metadata (renamed to `pgfr_*.control` at publish time)
+- `docker-compose.yml` — extension-specific volume mounts (merged with root via `-f`)
 - `tests/` — pgTAP test files
 - `README.md`
 
 Other key files:
 
 - `test.sh` — runs all tests on PG 15/16/17 via Docker
-- `docker-compose.yml` — test infrastructure
+- `docker-compose.yml` — base test infrastructure (services, build, env, healthcheck, data volumes)
 - `migrations/` — historical migration scripts (excluded from renames)
+
+Docker Compose files are merged at invocation time: `test.sh` passes `-f docker-compose.yml -f _record/docker-compose.yml -f _control/docker-compose.yml -f _analyze/docker-compose.yml`. Volume paths in extension compose files are relative to the project root (Docker Compose resolves all `-f` file paths relative to the first file's directory).
 
 ## Code Search
 
