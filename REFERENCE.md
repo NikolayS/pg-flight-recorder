@@ -12,6 +12,9 @@ A PostgreSQL monitoring extension that continuously samples database state for i
 -- Install core (tables, collection, scheduling)
 \i _record/install.sql
 
+-- Install vacuum control (optional)
+\i _control/install.sql
+
 -- Install reporting & analysis (optional)
 \i _analyze/install.sql
 
@@ -71,12 +74,13 @@ SELECT * FROM pgfr.get_current_profile();
 
 ## Functions
 
-Functions are split across two files:
+Functions are split across three extensions:
 
-- **`_record/install.sql`** (core): Collection, control, ring buffer management, profiles, views
+- **`_record/install.sql`** (core): Collection, ring buffer management, profiles, views
 - **`_analyze/install.sql`** (optional): Analysis, anomaly detection, capacity planning, configuration analysis
+- **`_control/install.sql`** (optional): Vacuum diagnostics, scale factor tuning, bloat estimation
 
-### Analysis (_analyze/install.sql)
+### Analysis (pgfr_analyze)
 
 | Function | Purpose |
 |----------|---------|
@@ -91,7 +95,7 @@ Functions are split across two files:
 | `what_happened_at(timestamp)` | Point-in-time analysis |
 | `incident_timeline(start, end)` | Event timeline for incidents |
 
-### Anomaly Detection (_analyze/install.sql)
+### Anomaly Detection (pgfr_analyze)
 
 | Function | Purpose |
 |----------|---------|
@@ -100,18 +104,14 @@ Functions are split across two files:
 | `blast_radius(queryid)` | Analyze query impact |
 | `blast_radius_report(interval)` | Report on high-impact queries |
 
-### Capacity Planning (_analyze/install.sql)
+### Capacity Planning (pgfr_analyze)
 
 | Function | Purpose |
 |----------|---------|
 | `capacity_summary(interval)` | Resource utilization summary |
 | `quarterly_review()` | Comprehensive capacity review |
-| `dead_tuple_growth_rate(oid, interval)` | Dead tuple accumulation rate |
-| `time_to_budget_exhaustion(oid, budget)` | Estimate autovacuum timing |
-| `oid_consumption_rate(interval)` | OID usage rate |
-| `time_to_oid_exhaustion()` | Estimate OID exhaustion |
 
-### Configuration Analysis (_analyze/install.sql)
+### Configuration Analysis (pgfr_analyze)
 
 | Function | Purpose |
 |----------|---------|
@@ -121,7 +121,23 @@ Functions are split across two files:
 | `db_role_config_changes(start, end)` | Database/role config changes |
 | `db_role_config_summary()` | Current db/role overrides |
 
-### Control (_record/install.sql)
+### Vacuum Control (pgfr_control)
+
+| Function | Purpose |
+|----------|---------|
+| `vacuum_control_mode(oid)` | Determine operating mode (normal/catch_up/safety) |
+| `compute_recommended_scale_factor(oid)` | Recommend autovacuum scale factor |
+| `vacuum_diagnostic(oid)` | Classify vacuum failure mode |
+| `vacuum_control_report(start, end)` | Vacuum control recommendations |
+| `dead_tuple_growth_rate(oid, interval)` | Dead tuple accumulation rate |
+| `dead_tuple_trend(oid, interval)` | Dead tuple trend via linear regression |
+| `time_to_budget_exhaustion(oid, budget)` | Estimate autovacuum timing |
+| `estimate_table_bloat(oid)` | Estimate table bloat without pgstattuple |
+| `bloat_report(interval)` | Bloat report with trends |
+| `oid_consumption_rate(interval)` | OID usage rate |
+| `time_to_oid_exhaustion()` | Estimate OID exhaustion |
+
+### Control (pgfr)
 
 | Function | Purpose |
 |----------|---------|
@@ -132,7 +148,7 @@ Functions are split across two files:
 | `set_mode(mode)` | Set collection mode (normal/light/emergency/kill) |
 | `get_mode()` | Get current mode |
 
-### Ring Buffer Management (_record/install.sql)
+### Ring Buffer Management (pgfr)
 
 | Function | Purpose |
 |----------|---------|
@@ -141,7 +157,7 @@ Functions are split across two files:
 | `configure_ring_autovacuum(enabled)` | Toggle autovacuum on ring tables |
 | `validate_ring_configuration()` | Check ring buffer config |
 
-### Profile Management (_record/install.sql)
+### Profile Management (pgfr)
 
 | Function | Purpose |
 |----------|---------|
@@ -152,7 +168,7 @@ Functions are split across two files:
 | `get_optimization_profiles()` | Ring buffer optimization presets |
 | `apply_optimization_profile(name)` | Apply ring buffer optimization |
 
-### Export (_record/install.sql)
+### Export (pgfr)
 
 | Function | Purpose |
 |----------|---------|
@@ -218,6 +234,10 @@ Functions are split across two files:
 - `config` - Flight Recorder configuration
 - `collection_stats` - Collection job metrics
 - `relation_names` - OID to relation name mappings (for offline analysis)
+
+### Vacuum Control (pgfr_control schema)
+
+- `vacuum_control_state` - Tracks vacuum operating mode and recommendation state per table
 
 ### Deprecated Columns
 
@@ -348,6 +368,22 @@ SELECT * FROM pgfr_analyze.quarterly_review();
 SELECT * FROM pgfr_analyze.capacity_dashboard;
 ```
 
+### Vacuum Control
+
+```sql
+-- Check vacuum mode for a table
+SELECT * FROM pgfr_control.vacuum_control_mode('my_table'::regclass);
+
+-- Get vacuum diagnostic
+SELECT * FROM pgfr_control.vacuum_diagnostic('my_table'::regclass);
+
+-- Full vacuum control report
+SELECT * FROM pgfr_control.vacuum_control_report(now() - '1 hour', now());
+
+-- Bloat report
+SELECT * FROM pgfr_control.bloat_report('24 hours');
+```
+
 ## Upgrading
 
 Re-running `_record/install.sql` is safe — it uses `CREATE OR REPLACE` and `IF NOT EXISTS`, so it updates functions and views while preserving all data.
@@ -361,6 +397,9 @@ psql --single-transaction -f _record/install.sql
 ```bash
 # Remove everything (stops jobs, drops all schemas and data)
 psql --single-transaction -f _record/uninstall.sql
+
+# Remove only control functions (keeps core + data)
+psql --single-transaction -f _control/uninstall.sql
 
 # Remove only reporting functions (keeps core + data)
 psql --single-transaction -f _analyze/uninstall.sql
