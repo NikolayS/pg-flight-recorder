@@ -157,12 +157,6 @@ jobs:
           files: |
             release-assets/*.tar.gz
             release-assets/*.zip
-            _record/install.sql
-            _analyze/install.sql
-            _control/install.sql
-            _record/uninstall.sql
-            _analyze/uninstall.sql
-            _control/uninstall.sql
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
