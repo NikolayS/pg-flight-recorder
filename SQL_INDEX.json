@@ -1,0 +1,2358 @@
+[
+  {
+    "file": "_analyze/install.sql",
+    "tables": [],
+    "functions": [
+      {
+        "name": "pgfr_analyze.modification_rate",
+        "line": 22,
+        "returns": "numeric"
+      },
+      {
+        "name": "pgfr_analyze.hot_update_ratio",
+        "line": 76,
+        "returns": "numeric"
+      },
+      {
+        "name": "pgfr_analyze.anomaly_report",
+        "line": 105,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.summary_report",
+        "line": 477,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.detect_query_storms",
+        "line": 595,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze._diagnose_regression_causes",
+        "line": 720,
+        "returns": "text"
+      },
+      {
+        "name": "pgfr_analyze.detect_regressions",
+        "line": 793,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.performance_report",
+        "line": 955,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.check_alerts",
+        "line": 1107,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.report",
+        "line": 1197,
+        "returns": "text"
+      },
+      {
+        "name": "pgfr_analyze.report",
+        "line": 1197,
+        "returns": "text"
+      },
+      {
+        "name": "pgfr_analyze.preflight_check",
+        "line": 1607,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.preflight_check_with_summary",
+        "line": 1728,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.quarterly_review",
+        "line": 1772,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.quarterly_review_with_summary",
+        "line": 1975,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.capacity_summary",
+        "line": 2010,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.capacity_report",
+        "line": 2381,
+        "returns": "text"
+      },
+      {
+        "name": "pgfr_analyze.table_compare",
+        "line": 2614,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.table_hotspots",
+        "line": 2711,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.unused_indexes",
+        "line": 2808,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.index_efficiency",
+        "line": 2867,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.config_changes",
+        "line": 2935,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.config_at",
+        "line": 2982,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.config_health_check",
+        "line": 3008,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.db_role_config_at",
+        "line": 3088,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.db_role_config_changes",
+        "line": 3127,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.db_role_config_summary",
+        "line": 3182,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.what_happened_at",
+        "line": 3234,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.incident_timeline",
+        "line": 3674,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.blast_radius",
+        "line": 3878,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_analyze.blast_radius_report",
+        "line": 4382,
+        "returns": "text"
+      }
+    ],
+    "views": [
+      {
+        "name": "pgfr_analyze.capacity_dashboard",
+        "line": 2482
+      }
+    ],
+    "types": []
+  },
+  {
+    "file": "_control/install.sql",
+    "tables": [
+      {
+        "name": "pgfr_control.vacuum_control_state",
+        "line": 27,
+        "columns": [
+          {
+            "name": "relid",
+            "type": "oid",
+            "line": 28
+          },
+          {
+            "name": "operating_mode",
+            "type": "text",
+            "line": 29
+          },
+          {
+            "name": "mode_entered_at",
+            "type": "timestamptz",
+            "line": 30
+          },
+          {
+            "name": "last_recommendation_at",
+            "type": "timestamptz",
+            "line": 31
+          },
+          {
+            "name": "last_recommended_scale_factor",
+            "type": "numeric",
+            "line": 32
+          },
+          {
+            "name": "consecutive_budget_exceeded",
+            "type": "int4",
+            "line": 33
+          },
+          {
+            "name": "updated_at",
+            "type": "timestamptz",
+            "line": 34
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "pgfr_control.dead_tuple_growth_rate",
+        "line": 44,
+        "returns": "numeric"
+      },
+      {
+        "name": "pgfr_control.time_to_budget_exhaustion",
+        "line": 95,
+        "returns": "interval"
+      },
+      {
+        "name": "pgfr_control._get_table_autovacuum_settings",
+        "line": 147,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_control.dead_tuple_trend",
+        "line": 202,
+        "returns": "numeric"
+      },
+      {
+        "name": "pgfr_control.vacuum_control_mode",
+        "line": 235,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_control.compute_recommended_scale_factor",
+        "line": 354,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_control.vacuum_diagnostic",
+        "line": 458,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_control.vacuum_control_report",
+        "line": 588,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_control.dead_tuple_growth_rate",
+        "line": 44,
+        "returns": "numeric"
+      },
+      {
+        "name": "pgfr_control.table_size_growth_rate",
+        "line": 780,
+        "returns": "numeric"
+      },
+      {
+        "name": "pgfr_control.estimate_table_bloat",
+        "line": 833,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_control.bloat_report",
+        "line": 934,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr_control.time_to_budget_exhaustion",
+        "line": 95,
+        "returns": "interval"
+      },
+      {
+        "name": "pgfr_control.oid_consumption_rate",
+        "line": 1065,
+        "returns": "numeric"
+      },
+      {
+        "name": "pgfr_control.time_to_oid_exhaustion",
+        "line": 1111,
+        "returns": "interval"
+      }
+    ],
+    "views": [],
+    "types": []
+  },
+  {
+    "file": "_record/install.sql",
+    "tables": [
+      {
+        "name": "pgfr.snapshots",
+        "line": 62,
+        "columns": [
+          {
+            "name": "id",
+            "type": "serial",
+            "line": 63
+          },
+          {
+            "name": "captured_at",
+            "type": "timestamptz",
+            "line": 64
+          },
+          {
+            "name": "pg_version",
+            "type": "int4",
+            "line": 65
+          },
+          {
+            "name": "wal_records",
+            "type": "int8",
+            "line": 66
+          },
+          {
+            "name": "wal_fpi",
+            "type": "int8",
+            "line": 67
+          },
+          {
+            "name": "wal_bytes",
+            "type": "int8",
+            "line": 68
+          },
+          {
+            "name": "wal_write_time",
+            "type": "float8",
+            "line": 69
+          },
+          {
+            "name": "wal_sync_time",
+            "type": "float8",
+            "line": 70
+          },
+          {
+            "name": "checkpoint_lsn",
+            "type": "pg_lsn",
+            "line": 71
+          },
+          {
+            "name": "checkpoint_time",
+            "type": "timestamptz",
+            "line": 72
+          },
+          {
+            "name": "ckpt_timed",
+            "type": "int8",
+            "line": 73
+          },
+          {
+            "name": "ckpt_requested",
+            "type": "int8",
+            "line": 74
+          },
+          {
+            "name": "ckpt_write_time",
+            "type": "float8",
+            "line": 75
+          },
+          {
+            "name": "ckpt_sync_time",
+            "type": "float8",
+            "line": 76
+          },
+          {
+            "name": "ckpt_buffers",
+            "type": "int8",
+            "line": 77
+          },
+          {
+            "name": "bgw_buffers_clean",
+            "type": "int8",
+            "line": 78
+          },
+          {
+            "name": "bgw_maxwritten_clean",
+            "type": "int8",
+            "line": 79
+          },
+          {
+            "name": "bgw_buffers_alloc",
+            "type": "int8",
+            "line": 80
+          },
+          {
+            "name": "bgw_buffers_backend",
+            "type": "int8",
+            "line": 81
+          },
+          {
+            "name": "bgw_buffers_backend_fsync",
+            "type": "int8",
+            "line": 82
+          },
+          {
+            "name": "autovacuum_workers",
+            "type": "int4",
+            "line": 83
+          },
+          {
+            "name": "slots_count",
+            "type": "int4",
+            "line": 84
+          },
+          {
+            "name": "slots_max_retained_wal",
+            "type": "int8",
+            "line": 85
+          },
+          {
+            "name": "io_checkpointer_reads",
+            "type": "int8",
+            "line": 86
+          },
+          {
+            "name": "io_checkpointer_read_time",
+            "type": "float8",
+            "line": 87
+          },
+          {
+            "name": "io_checkpointer_writes",
+            "type": "int8",
+            "line": 88
+          },
+          {
+            "name": "io_checkpointer_write_time",
+            "type": "float8",
+            "line": 89
+          },
+          {
+            "name": "io_checkpointer_fsyncs",
+            "type": "int8",
+            "line": 90
+          },
+          {
+            "name": "io_checkpointer_fsync_time",
+            "type": "float8",
+            "line": 91
+          },
+          {
+            "name": "io_autovacuum_reads",
+            "type": "int8",
+            "line": 92
+          },
+          {
+            "name": "io_autovacuum_read_time",
+            "type": "float8",
+            "line": 93
+          },
+          {
+            "name": "io_autovacuum_writes",
+            "type": "int8",
+            "line": 94
+          },
+          {
+            "name": "io_autovacuum_write_time",
+            "type": "float8",
+            "line": 95
+          },
+          {
+            "name": "io_client_reads",
+            "type": "int8",
+            "line": 96
+          },
+          {
+            "name": "io_client_read_time",
+            "type": "float8",
+            "line": 97
+          },
+          {
+            "name": "io_client_writes",
+            "type": "int8",
+            "line": 98
+          },
+          {
+            "name": "io_client_write_time",
+            "type": "float8",
+            "line": 99
+          },
+          {
+            "name": "io_bgwriter_reads",
+            "type": "int8",
+            "line": 100
+          },
+          {
+            "name": "io_bgwriter_read_time",
+            "type": "float8",
+            "line": 101
+          },
+          {
+            "name": "io_bgwriter_writes",
+            "type": "int8",
+            "line": 102
+          },
+          {
+            "name": "io_bgwriter_write_time",
+            "type": "float8",
+            "line": 103
+          },
+          {
+            "name": "temp_files",
+            "type": "int8",
+            "line": 104
+          },
+          {
+            "name": "temp_bytes",
+            "type": "int8",
+            "line": 105
+          },
+          {
+            "name": "xact_commit",
+            "type": "int8",
+            "line": 106
+          },
+          {
+            "name": "xact_rollback",
+            "type": "int8",
+            "line": 107
+          },
+          {
+            "name": "blks_read",
+            "type": "int8",
+            "line": 108
+          },
+          {
+            "name": "blks_hit",
+            "type": "int8",
+            "line": 109
+          },
+          {
+            "name": "connections_active",
+            "type": "int4",
+            "line": 110
+          },
+          {
+            "name": "connections_total",
+            "type": "int4",
+            "line": 111
+          },
+          {
+            "name": "connections_max",
+            "type": "int4",
+            "line": 112
+          },
+          {
+            "name": "db_size_bytes",
+            "type": "int8",
+            "line": 113
+          },
+          {
+            "name": "datfrozenxid_age",
+            "type": "int4",
+            "line": 114
+          },
+          {
+            "name": "archived_count",
+            "type": "int8",
+            "line": 115
+          },
+          {
+            "name": "last_archived_wal",
+            "type": "text",
+            "line": 116
+          },
+          {
+            "name": "last_archived_time",
+            "type": "timestamptz",
+            "line": 117
+          },
+          {
+            "name": "failed_count",
+            "type": "int8",
+            "line": 118
+          },
+          {
+            "name": "last_failed_wal",
+            "type": "text",
+            "line": 119
+          },
+          {
+            "name": "last_failed_time",
+            "type": "timestamptz",
+            "line": 120
+          },
+          {
+            "name": "archiver_stats_reset",
+            "type": "timestamptz",
+            "line": 121
+          },
+          {
+            "name": "confl_tablespace",
+            "type": "int8",
+            "line": 122
+          },
+          {
+            "name": "confl_lock",
+            "type": "int8",
+            "line": 123
+          },
+          {
+            "name": "confl_snapshot",
+            "type": "int8",
+            "line": 124
+          },
+          {
+            "name": "confl_bufferpin",
+            "type": "int8",
+            "line": 125
+          },
+          {
+            "name": "confl_deadlock",
+            "type": "int8",
+            "line": 126
+          },
+          {
+            "name": "confl_active_logicalslot",
+            "type": "int8",
+            "line": 127
+          },
+          {
+            "name": "max_catalog_oid",
+            "type": "int8",
+            "line": 128
+          },
+          {
+            "name": "large_object_count",
+            "type": "int8",
+            "line": 129
+          }
+        ]
+      },
+      {
+        "name": "pgfr.replication_snapshots",
+        "line": 136,
+        "columns": [
+          {
+            "name": "snapshot_id",
+            "type": "int4",
+            "line": 137
+          },
+          {
+            "name": "pid",
+            "type": "int4",
+            "line": 138
+          },
+          {
+            "name": "client_addr",
+            "type": "inet",
+            "line": 139
+          },
+          {
+            "name": "application_name",
+            "type": "text",
+            "line": 140
+          },
+          {
+            "name": "state",
+            "type": "text",
+            "line": 141
+          },
+          {
+            "name": "sync_state",
+            "type": "text",
+            "line": 142
+          },
+          {
+            "name": "sent_lsn",
+            "type": "pg_lsn",
+            "line": 143
+          },
+          {
+            "name": "write_lsn",
+            "type": "pg_lsn",
+            "line": 144
+          },
+          {
+            "name": "flush_lsn",
+            "type": "pg_lsn",
+            "line": 145
+          },
+          {
+            "name": "replay_lsn",
+            "type": "pg_lsn",
+            "line": 146
+          },
+          {
+            "name": "write_lag",
+            "type": "interval",
+            "line": 147
+          },
+          {
+            "name": "flush_lag",
+            "type": "interval",
+            "line": 148
+          },
+          {
+            "name": "replay_lag",
+            "type": "interval",
+            "line": 149
+          }
+        ]
+      },
+      {
+        "name": "pgfr.vacuum_progress_snapshots",
+        "line": 156,
+        "columns": [
+          {
+            "name": "snapshot_id",
+            "type": "int4",
+            "line": 157
+          },
+          {
+            "name": "pid",
+            "type": "int4",
+            "line": 158
+          },
+          {
+            "name": "datid",
+            "type": "oid",
+            "line": 159
+          },
+          {
+            "name": "datname",
+            "type": "text",
+            "line": 160
+          },
+          {
+            "name": "relid",
+            "type": "oid",
+            "line": 161
+          },
+          {
+            "name": "relname",
+            "type": "text",
+            "line": 162
+          },
+          {
+            "name": "phase",
+            "type": "text",
+            "line": 163
+          },
+          {
+            "name": "heap_blks_total",
+            "type": "int8",
+            "line": 164
+          },
+          {
+            "name": "heap_blks_scanned",
+            "type": "int8",
+            "line": 165
+          },
+          {
+            "name": "heap_blks_vacuumed",
+            "type": "int8",
+            "line": 166
+          },
+          {
+            "name": "index_vacuum_count",
+            "type": "int8",
+            "line": 167
+          },
+          {
+            "name": "max_dead_tuples",
+            "type": "int8",
+            "line": 168
+          },
+          {
+            "name": "num_dead_tuples",
+            "type": "int8",
+            "line": 169
+          }
+        ]
+      },
+      {
+        "name": "pgfr.statement_snapshots",
+        "line": 177,
+        "columns": [
+          {
+            "name": "snapshot_id",
+            "type": "int4",
+            "line": 178
+          },
+          {
+            "name": "queryid",
+            "type": "int8",
+            "line": 179
+          },
+          {
+            "name": "userid",
+            "type": "oid",
+            "line": 180
+          },
+          {
+            "name": "dbid",
+            "type": "oid",
+            "line": 181
+          },
+          {
+            "name": "query_preview",
+            "type": "text",
+            "line": 182
+          },
+          {
+            "name": "calls",
+            "type": "int8",
+            "line": 183
+          },
+          {
+            "name": "total_exec_time",
+            "type": "float8",
+            "line": 184
+          },
+          {
+            "name": "min_exec_time",
+            "type": "float8",
+            "line": 185
+          },
+          {
+            "name": "max_exec_time",
+            "type": "float8",
+            "line": 186
+          },
+          {
+            "name": "mean_exec_time",
+            "type": "float8",
+            "line": 187
+          },
+          {
+            "name": "rows",
+            "type": "int8",
+            "line": 188
+          },
+          {
+            "name": "shared_blks_hit",
+            "type": "int8",
+            "line": 189
+          },
+          {
+            "name": "shared_blks_read",
+            "type": "int8",
+            "line": 190
+          },
+          {
+            "name": "shared_blks_dirtied",
+            "type": "int8",
+            "line": 191
+          },
+          {
+            "name": "shared_blks_written",
+            "type": "int8",
+            "line": 192
+          },
+          {
+            "name": "temp_blks_read",
+            "type": "int8",
+            "line": 193
+          },
+          {
+            "name": "temp_blks_written",
+            "type": "int8",
+            "line": 194
+          },
+          {
+            "name": "blk_read_time",
+            "type": "float8",
+            "line": 195
+          },
+          {
+            "name": "blk_write_time",
+            "type": "float8",
+            "line": 196
+          },
+          {
+            "name": "wal_records",
+            "type": "int8",
+            "line": 197
+          },
+          {
+            "name": "wal_bytes",
+            "type": "numeric",
+            "line": 198
+          }
+        ]
+      },
+      {
+        "name": "pgfr.samples_ring",
+        "line": 203,
+        "columns": [
+          {
+            "name": "slot_id",
+            "type": "int4",
+            "line": 204
+          },
+          {
+            "name": "captured_at",
+            "type": "timestamptz",
+            "line": 205
+          },
+          {
+            "name": "epoch_seconds",
+            "type": "int8",
+            "line": 206
+          }
+        ]
+      },
+      {
+        "name": "pgfr.wait_samples_ring",
+        "line": 210,
+        "columns": [
+          {
+            "name": "slot_id",
+            "type": "int4",
+            "line": 211
+          },
+          {
+            "name": "row_num",
+            "type": "int4",
+            "line": 212
+          },
+          {
+            "name": "backend_type",
+            "type": "text",
+            "line": 213
+          },
+          {
+            "name": "wait_event_type",
+            "type": "text",
+            "line": 214
+          },
+          {
+            "name": "wait_event",
+            "type": "text",
+            "line": 215
+          },
+          {
+            "name": "state",
+            "type": "text",
+            "line": 216
+          },
+          {
+            "name": "count",
+            "type": "int4",
+            "line": 217
+          }
+        ]
+      },
+      {
+        "name": "pgfr.activity_samples_ring",
+        "line": 222,
+        "columns": [
+          {
+            "name": "slot_id",
+            "type": "int4",
+            "line": 223
+          },
+          {
+            "name": "row_num",
+            "type": "int4",
+            "line": 224
+          },
+          {
+            "name": "pid",
+            "type": "int4",
+            "line": 225
+          },
+          {
+            "name": "usename",
+            "type": "text",
+            "line": 226
+          },
+          {
+            "name": "application_name",
+            "type": "text",
+            "line": 227
+          },
+          {
+            "name": "client_addr",
+            "type": "inet",
+            "line": 228
+          },
+          {
+            "name": "backend_type",
+            "type": "text",
+            "line": 229
+          },
+          {
+            "name": "state",
+            "type": "text",
+            "line": 230
+          },
+          {
+            "name": "wait_event_type",
+            "type": "text",
+            "line": 231
+          },
+          {
+            "name": "wait_event",
+            "type": "text",
+            "line": 232
+          },
+          {
+            "name": "backend_start",
+            "type": "timestamptz",
+            "line": 233
+          },
+          {
+            "name": "xact_start",
+            "type": "timestamptz",
+            "line": 234
+          },
+          {
+            "name": "query_start",
+            "type": "timestamptz",
+            "line": 235
+          },
+          {
+            "name": "state_change",
+            "type": "timestamptz",
+            "line": 236
+          },
+          {
+            "name": "query_preview",
+            "type": "text",
+            "line": 237
+          }
+        ]
+      },
+      {
+        "name": "pgfr.lock_samples_ring",
+        "line": 242,
+        "columns": [
+          {
+            "name": "slot_id",
+            "type": "int4",
+            "line": 243
+          },
+          {
+            "name": "row_num",
+            "type": "int4",
+            "line": 244
+          },
+          {
+            "name": "blocked_pid",
+            "type": "int4",
+            "line": 245
+          },
+          {
+            "name": "blocked_user",
+            "type": "text",
+            "line": 246
+          },
+          {
+            "name": "blocked_app",
+            "type": "text",
+            "line": 247
+          },
+          {
+            "name": "blocked_query_preview",
+            "type": "text",
+            "line": 248
+          },
+          {
+            "name": "blocked_duration",
+            "type": "interval",
+            "line": 249
+          },
+          {
+            "name": "blocking_pid",
+            "type": "int4",
+            "line": 250
+          },
+          {
+            "name": "blocking_user",
+            "type": "text",
+            "line": 251
+          },
+          {
+            "name": "blocking_app",
+            "type": "text",
+            "line": 252
+          },
+          {
+            "name": "blocking_query_preview",
+            "type": "text",
+            "line": 253
+          },
+          {
+            "name": "lock_type",
+            "type": "text",
+            "line": 254
+          },
+          {
+            "name": "locked_relation_oid",
+            "type": "oid",
+            "line": 255
+          }
+        ]
+      },
+      {
+        "name": "pgfr.wait_event_aggregates",
+        "line": 285,
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigserial",
+            "line": 286
+          },
+          {
+            "name": "start_time",
+            "type": "timestamptz",
+            "line": 287
+          },
+          {
+            "name": "end_time",
+            "type": "timestamptz",
+            "line": 288
+          },
+          {
+            "name": "backend_type",
+            "type": "text",
+            "line": 289
+          },
+          {
+            "name": "wait_event_type",
+            "type": "text",
+            "line": 290
+          },
+          {
+            "name": "wait_event",
+            "type": "text",
+            "line": 291
+          },
+          {
+            "name": "state",
+            "type": "text",
+            "line": 292
+          },
+          {
+            "name": "sample_count",
+            "type": "int4",
+            "line": 293
+          },
+          {
+            "name": "total_waiters",
+            "type": "int8",
+            "line": 294
+          },
+          {
+            "name": "avg_waiters",
+            "type": "numeric",
+            "line": 295
+          },
+          {
+            "name": "max_waiters",
+            "type": "int4",
+            "line": 296
+          },
+          {
+            "name": "pct_of_samples",
+            "type": "numeric",
+            "line": 297
+          }
+        ]
+      },
+      {
+        "name": "pgfr.lock_aggregates",
+        "line": 309,
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigserial",
+            "line": 310
+          },
+          {
+            "name": "start_time",
+            "type": "timestamptz",
+            "line": 311
+          },
+          {
+            "name": "end_time",
+            "type": "timestamptz",
+            "line": 312
+          },
+          {
+            "name": "blocked_user",
+            "type": "text",
+            "line": 313
+          },
+          {
+            "name": "blocking_user",
+            "type": "text",
+            "line": 314
+          },
+          {
+            "name": "lock_type",
+            "type": "text",
+            "line": 315
+          },
+          {
+            "name": "locked_relation_oid",
+            "type": "oid",
+            "line": 316
+          },
+          {
+            "name": "occurrence_count",
+            "type": "int4",
+            "line": 317
+          },
+          {
+            "name": "max_duration",
+            "type": "interval",
+            "line": 318
+          },
+          {
+            "name": "avg_duration",
+            "type": "interval",
+            "line": 319
+          },
+          {
+            "name": "sample_query",
+            "type": "text",
+            "line": 320
+          }
+        ]
+      },
+      {
+        "name": "pgfr.activity_aggregates",
+        "line": 330,
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigserial",
+            "line": 331
+          },
+          {
+            "name": "start_time",
+            "type": "timestamptz",
+            "line": 332
+          },
+          {
+            "name": "end_time",
+            "type": "timestamptz",
+            "line": 333
+          },
+          {
+            "name": "query_preview",
+            "type": "text",
+            "line": 334
+          },
+          {
+            "name": "occurrence_count",
+            "type": "int4",
+            "line": 335
+          },
+          {
+            "name": "max_duration",
+            "type": "interval",
+            "line": 336
+          },
+          {
+            "name": "avg_duration",
+            "type": "interval",
+            "line": 337
+          }
+        ]
+      },
+      {
+        "name": "pgfr.activity_samples_archive",
+        "line": 347,
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigserial",
+            "line": 348
+          },
+          {
+            "name": "sample_id",
+            "type": "int8",
+            "line": 349
+          },
+          {
+            "name": "captured_at",
+            "type": "timestamptz",
+            "line": 350
+          },
+          {
+            "name": "pid",
+            "type": "int4",
+            "line": 351
+          },
+          {
+            "name": "usename",
+            "type": "text",
+            "line": 352
+          },
+          {
+            "name": "application_name",
+            "type": "text",
+            "line": 353
+          },
+          {
+            "name": "client_addr",
+            "type": "inet",
+            "line": 354
+          },
+          {
+            "name": "backend_type",
+            "type": "text",
+            "line": 355
+          },
+          {
+            "name": "state",
+            "type": "text",
+            "line": 356
+          },
+          {
+            "name": "wait_event_type",
+            "type": "text",
+            "line": 357
+          },
+          {
+            "name": "wait_event",
+            "type": "text",
+            "line": 358
+          },
+          {
+            "name": "backend_start",
+            "type": "timestamptz",
+            "line": 359
+          },
+          {
+            "name": "xact_start",
+            "type": "timestamptz",
+            "line": 360
+          },
+          {
+            "name": "query_start",
+            "type": "timestamptz",
+            "line": 361
+          },
+          {
+            "name": "state_change",
+            "type": "timestamptz",
+            "line": 362
+          },
+          {
+            "name": "query_preview",
+            "type": "text",
+            "line": 363
+          }
+        ]
+      },
+      {
+        "name": "pgfr.lock_samples_archive",
+        "line": 377,
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigserial",
+            "line": 378
+          },
+          {
+            "name": "sample_id",
+            "type": "int8",
+            "line": 379
+          },
+          {
+            "name": "captured_at",
+            "type": "timestamptz",
+            "line": 380
+          },
+          {
+            "name": "blocked_pid",
+            "type": "int4",
+            "line": 381
+          },
+          {
+            "name": "blocked_user",
+            "type": "text",
+            "line": 382
+          },
+          {
+            "name": "blocked_app",
+            "type": "text",
+            "line": 383
+          },
+          {
+            "name": "blocked_query_preview",
+            "type": "text",
+            "line": 384
+          },
+          {
+            "name": "blocked_duration",
+            "type": "interval",
+            "line": 385
+          },
+          {
+            "name": "blocking_pid",
+            "type": "int4",
+            "line": 386
+          },
+          {
+            "name": "blocking_user",
+            "type": "text",
+            "line": 387
+          },
+          {
+            "name": "blocking_app",
+            "type": "text",
+            "line": 388
+          },
+          {
+            "name": "blocking_query_preview",
+            "type": "text",
+            "line": 389
+          },
+          {
+            "name": "lock_type",
+            "type": "text",
+            "line": 390
+          },
+          {
+            "name": "locked_relation_oid",
+            "type": "oid",
+            "line": 391
+          }
+        ]
+      },
+      {
+        "name": "pgfr.wait_samples_archive",
+        "line": 407,
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigserial",
+            "line": 408
+          },
+          {
+            "name": "sample_id",
+            "type": "int8",
+            "line": 409
+          },
+          {
+            "name": "captured_at",
+            "type": "timestamptz",
+            "line": 410
+          },
+          {
+            "name": "backend_type",
+            "type": "text",
+            "line": 411
+          },
+          {
+            "name": "wait_event_type",
+            "type": "text",
+            "line": 412
+          },
+          {
+            "name": "wait_event",
+            "type": "text",
+            "line": 413
+          },
+          {
+            "name": "state",
+            "type": "text",
+            "line": 414
+          },
+          {
+            "name": "count",
+            "type": "int4",
+            "line": 415
+          }
+        ]
+      },
+      {
+        "name": "pgfr.table_snapshots",
+        "line": 429,
+        "columns": [
+          {
+            "name": "snapshot_id",
+            "type": "int4",
+            "line": 430
+          },
+          {
+            "name": "schemaname",
+            "type": "text",
+            "line": 431
+          },
+          {
+            "name": "relname",
+            "type": "text",
+            "line": 432
+          },
+          {
+            "name": "relid",
+            "type": "oid",
+            "line": 433
+          },
+          {
+            "name": "seq_scan",
+            "type": "int8",
+            "line": 434
+          },
+          {
+            "name": "seq_tup_read",
+            "type": "int8",
+            "line": 435
+          },
+          {
+            "name": "idx_scan",
+            "type": "int8",
+            "line": 436
+          },
+          {
+            "name": "idx_tup_fetch",
+            "type": "int8",
+            "line": 437
+          },
+          {
+            "name": "n_tup_ins",
+            "type": "int8",
+            "line": 438
+          },
+          {
+            "name": "n_tup_upd",
+            "type": "int8",
+            "line": 439
+          },
+          {
+            "name": "n_tup_del",
+            "type": "int8",
+            "line": 440
+          },
+          {
+            "name": "n_tup_hot_upd",
+            "type": "int8",
+            "line": 441
+          },
+          {
+            "name": "n_live_tup",
+            "type": "int8",
+            "line": 442
+          },
+          {
+            "name": "n_dead_tup",
+            "type": "int8",
+            "line": 443
+          },
+          {
+            "name": "n_mod_since_analyze",
+            "type": "int8",
+            "line": 444
+          },
+          {
+            "name": "vacuum_count",
+            "type": "int8",
+            "line": 445
+          },
+          {
+            "name": "autovacuum_count",
+            "type": "int8",
+            "line": 446
+          },
+          {
+            "name": "analyze_count",
+            "type": "int8",
+            "line": 447
+          },
+          {
+            "name": "autoanalyze_count",
+            "type": "int8",
+            "line": 448
+          },
+          {
+            "name": "last_vacuum",
+            "type": "timestamptz",
+            "line": 449
+          },
+          {
+            "name": "last_autovacuum",
+            "type": "timestamptz",
+            "line": 450
+          },
+          {
+            "name": "last_analyze",
+            "type": "timestamptz",
+            "line": 451
+          },
+          {
+            "name": "last_autoanalyze",
+            "type": "timestamptz",
+            "line": 452
+          },
+          {
+            "name": "relfrozenxid_age",
+            "type": "int4",
+            "line": 453
+          },
+          {
+            "name": "reltuples",
+            "type": "int8",
+            "line": 454
+          },
+          {
+            "name": "vacuum_running",
+            "type": "bool",
+            "line": 455
+          },
+          {
+            "name": "last_vacuum_duration_ms",
+            "type": "int8",
+            "line": 456
+          },
+          {
+            "name": "table_size_bytes",
+            "type": "int8",
+            "line": 458
+          },
+          {
+            "name": "total_size_bytes",
+            "type": "int8",
+            "line": 459
+          },
+          {
+            "name": "indexes_size_bytes",
+            "type": "int8",
+            "line": 460
+          }
+        ]
+      },
+      {
+        "name": "pgfr.index_snapshots",
+        "line": 473,
+        "columns": [
+          {
+            "name": "snapshot_id",
+            "type": "int4",
+            "line": 474
+          },
+          {
+            "name": "schemaname",
+            "type": "text",
+            "line": 475
+          },
+          {
+            "name": "relname",
+            "type": "text",
+            "line": 476
+          },
+          {
+            "name": "indexrelname",
+            "type": "text",
+            "line": 477
+          },
+          {
+            "name": "relid",
+            "type": "oid",
+            "line": 478
+          },
+          {
+            "name": "indexrelid",
+            "type": "oid",
+            "line": 479
+          },
+          {
+            "name": "idx_scan",
+            "type": "int8",
+            "line": 480
+          },
+          {
+            "name": "idx_tup_read",
+            "type": "int8",
+            "line": 481
+          },
+          {
+            "name": "idx_tup_fetch",
+            "type": "int8",
+            "line": 482
+          },
+          {
+            "name": "index_size_bytes",
+            "type": "int8",
+            "line": 483
+          }
+        ]
+      },
+      {
+        "name": "pgfr.config_snapshots",
+        "line": 496,
+        "columns": [
+          {
+            "name": "snapshot_id",
+            "type": "int4",
+            "line": 497
+          },
+          {
+            "name": "name",
+            "type": "text",
+            "line": 498
+          },
+          {
+            "name": "setting",
+            "type": "text",
+            "line": 499
+          },
+          {
+            "name": "unit",
+            "type": "text",
+            "line": 500
+          },
+          {
+            "name": "source",
+            "type": "text",
+            "line": 501
+          },
+          {
+            "name": "sourcefile",
+            "type": "text",
+            "line": 502
+          }
+        ]
+      },
+      {
+        "name": "pgfr.relation_names",
+        "line": 513,
+        "columns": [
+          {
+            "name": "oid",
+            "type": "oid",
+            "line": 514
+          },
+          {
+            "name": "nspname",
+            "type": "text",
+            "line": 515
+          },
+          {
+            "name": "relname",
+            "type": "text",
+            "line": 516
+          }
+        ]
+      },
+      {
+        "name": "pgfr.db_role_config_snapshots",
+        "line": 526,
+        "columns": [
+          {
+            "name": "snapshot_id",
+            "type": "int4",
+            "line": 527
+          },
+          {
+            "name": "database_name",
+            "type": "text",
+            "line": 528
+          },
+          {
+            "name": "role_name",
+            "type": "text",
+            "line": 529
+          },
+          {
+            "name": "parameter_name",
+            "type": "text",
+            "line": 530
+          },
+          {
+            "name": "parameter_value",
+            "type": "text",
+            "line": 531
+          }
+        ]
+      },
+      {
+        "name": "pgfr.config",
+        "line": 685,
+        "columns": [
+          {
+            "name": "key",
+            "type": "text",
+            "line": 686
+          },
+          {
+            "name": "value",
+            "type": "text",
+            "line": 687
+          },
+          {
+            "name": "updated_at",
+            "type": "timestamptz",
+            "line": 688
+          }
+        ]
+      },
+      {
+        "name": "pgfr.collection_stats",
+        "line": 946,
+        "columns": [
+          {
+            "name": "id",
+            "type": "serial",
+            "line": 947
+          },
+          {
+            "name": "collection_type",
+            "type": "text",
+            "line": 948
+          },
+          {
+            "name": "started_at",
+            "type": "timestamptz",
+            "line": 949
+          },
+          {
+            "name": "completed_at",
+            "type": "timestamptz",
+            "line": 950
+          },
+          {
+            "name": "duration_ms",
+            "type": "int4",
+            "line": 951
+          },
+          {
+            "name": "success",
+            "type": "bool",
+            "line": 952
+          },
+          {
+            "name": "error_message",
+            "type": "text",
+            "line": 953
+          },
+          {
+            "name": "skipped",
+            "type": "bool",
+            "line": 954
+          },
+          {
+            "name": "skipped_reason",
+            "type": "text",
+            "line": 955
+          },
+          {
+            "name": "sections_total",
+            "type": "int4",
+            "line": 956
+          },
+          {
+            "name": "sections_succeeded",
+            "type": "int4",
+            "line": 957
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "pgfr._pretty_bytes",
+        "line": 540,
+        "returns": "text"
+      },
+      {
+        "name": "pgfr._interpolate_metric",
+        "line": 557,
+        "returns": "numeric"
+      },
+      {
+        "name": "pgfr._populate_relation_names",
+        "line": 611,
+        "returns": "int4"
+      },
+      {
+        "name": "pgfr._safe_relname",
+        "line": 637,
+        "returns": "text"
+      },
+      {
+        "name": "pgfr._get_setting_from_snapshots",
+        "line": 652,
+        "returns": "text"
+      },
+      {
+        "name": "pgfr._pg_version",
+        "line": 676,
+        "returns": "int4"
+      },
+      {
+        "name": "pgfr._profile_settings",
+        "line": 693,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr._check_circuit_breaker",
+        "line": 964,
+        "returns": "bool"
+      },
+      {
+        "name": "pgfr._record_collection_start",
+        "line": 1009,
+        "returns": "int4"
+      },
+      {
+        "name": "pgfr._record_collection_end",
+        "line": 1022,
+        "returns": "void"
+      },
+      {
+        "name": "pgfr._record_collection_skip",
+        "line": 1038,
+        "returns": "void"
+      },
+      {
+        "name": "pgfr._record_section_success",
+        "line": 1051,
+        "returns": "void"
+      },
+      {
+        "name": "pgfr._get_config",
+        "line": 1061,
+        "returns": "text"
+      },
+      {
+        "name": "pgfr._get_ring_buffer_slots",
+        "line": 1072,
+        "returns": "int4"
+      },
+      {
+        "name": "pgfr._set_section_timeout",
+        "line": 1082,
+        "returns": "void"
+      },
+      {
+        "name": "pgfr._check_and_adjust_mode",
+        "line": 1098,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.validate_config",
+        "line": 1182,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.validate_ring_configuration",
+        "line": 1287,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr._has_pg_stat_statements",
+        "line": 1391,
+        "returns": "bool"
+      },
+      {
+        "name": "pgfr._check_statements_health",
+        "line": 1401,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr._check_schema_size",
+        "line": 1453,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr._check_catalog_ddl_locks",
+        "line": 1635,
+        "returns": "bool"
+      },
+      {
+        "name": "pgfr._should_skip_collection",
+        "line": 1666,
+        "returns": "text"
+      },
+      {
+        "name": "pgfr.sample",
+        "line": 1735,
+        "returns": "timestamptz"
+      },
+      {
+        "name": "pgfr.flush_ring_to_aggregates",
+        "line": 2251,
+        "returns": "void"
+      },
+      {
+        "name": "pgfr.archive_ring_samples",
+        "line": 2336,
+        "returns": "void"
+      },
+      {
+        "name": "pgfr.cleanup_aggregates",
+        "line": 2474,
+        "returns": "void"
+      },
+      {
+        "name": "pgfr._collect_table_stats",
+        "line": 2525,
+        "returns": "void"
+      },
+      {
+        "name": "pgfr._collect_index_stats",
+        "line": 2709,
+        "returns": "void"
+      },
+      {
+        "name": "pgfr._collect_config_snapshot",
+        "line": 2747,
+        "returns": "void"
+      },
+      {
+        "name": "pgfr._collect_db_role_config_snapshot",
+        "line": 2877,
+        "returns": "void"
+      },
+      {
+        "name": "pgfr.snapshot",
+        "line": 2970,
+        "returns": "timestamptz"
+      },
+      {
+        "name": "pgfr.compare",
+        "line": 3731,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr._get_ring_retention_interval",
+        "line": 3839,
+        "returns": "interval"
+      },
+      {
+        "name": "pgfr.recent_waits_current",
+        "line": 3928,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.recent_activity_current",
+        "line": 3953,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.recent_locks_current",
+        "line": 3988,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.wait_summary",
+        "line": 4098,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.statement_compare",
+        "line": 4140,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.activity_at",
+        "line": 4254,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.set_mode",
+        "line": 4368,
+        "returns": "text"
+      },
+      {
+        "name": "pgfr.get_mode",
+        "line": 4440,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.list_profiles",
+        "line": 4463,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.get_optimization_profiles",
+        "line": 4503,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.apply_optimization_profile",
+        "line": 4544,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.explain_profile",
+        "line": 4625,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.apply_profile",
+        "line": 4653,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.get_current_profile",
+        "line": 4707,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.cleanup",
+        "line": 4760,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.ring_buffer_health",
+        "line": 4832,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.disable",
+        "line": 4887,
+        "returns": "text"
+      },
+      {
+        "name": "pgfr.configure_ring_autovacuum",
+        "line": 4929,
+        "returns": "text"
+      },
+      {
+        "name": "pgfr.rebuild_ring_buffers",
+        "line": 4955,
+        "returns": "text"
+      },
+      {
+        "name": "pgfr.enable",
+        "line": 5042,
+        "returns": "text"
+      },
+      {
+        "name": "pgfr.health_check",
+        "line": 5201,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.export_for_upgrade",
+        "line": 5386,
+        "returns": "record"
+      },
+      {
+        "name": "pgfr.config_recommendations",
+        "line": 5469,
+        "returns": "record"
+      }
+    ],
+    "views": [
+      {
+        "name": "pgfr.deltas",
+        "line": 3680
+      },
+      {
+        "name": "pgfr.recent_waits",
+        "line": 3848
+      },
+      {
+        "name": "pgfr.recent_activity",
+        "line": 3861
+      },
+      {
+        "name": "pgfr.recent_locks",
+        "line": 3884
+      },
+      {
+        "name": "pgfr.recent_idle_in_transaction",
+        "line": 3906
+      },
+      {
+        "name": "pgfr.recent_replication",
+        "line": 4023
+      },
+      {
+        "name": "pgfr.recent_vacuum_progress",
+        "line": 4046
+      },
+      {
+        "name": "pgfr.archiver_status",
+        "line": 4074
+      }
+    ],
+    "types": []
+  },
+  {
+    "file": "_record/tests/07_pathology_generators.sql",
+    "tables": [
+      {
+        "name": "test_lock_contention",
+        "line": 34,
+        "columns": [
+          {
+            "name": "id",
+            "type": "int4",
+            "line": 35
+          },
+          {
+            "name": "value",
+            "type": "int4",
+            "line": 36
+          }
+        ]
+      },
+      {
+        "name": "test_memory_pressure",
+        "line": 115,
+        "columns": [
+          {
+            "name": "id",
+            "type": "int4",
+            "line": 116
+          },
+          {
+            "name": "data",
+            "type": "text",
+            "line": 117
+          }
+        ]
+      },
+      {
+        "name": "test_cpu_intensive",
+        "line": 240,
+        "columns": [
+          {
+            "name": "id",
+            "type": "int4",
+            "line": 241
+          },
+          {
+            "name": "value",
+            "type": "numeric",
+            "line": 242
+          }
+        ]
+      },
+      {
+        "name": "test_slow_realtime",
+        "line": 321,
+        "columns": [
+          {
+            "name": "id",
+            "type": "int4",
+            "line": 322
+          },
+          {
+            "name": "data",
+            "type": "text",
+            "line": 323
+          }
+        ]
+      },
+      {
+        "name": "test_slow_queries",
+        "line": 390,
+        "columns": [
+          {
+            "name": "id",
+            "type": "int4",
+            "line": 391
+          },
+          {
+            "name": "category",
+            "type": "int4",
+            "line": 392
+          },
+          {
+            "name": "data",
+            "type": "text",
+            "line": 393
+          },
+          {
+            "name": "created_at",
+            "type": "timestamp",
+            "line": 394
+          }
+        ]
+      },
+      {
+        "name": "test_historical",
+        "line": 628,
+        "columns": [
+          {
+            "name": "id",
+            "type": "int4",
+            "line": 629
+          },
+          {
+            "name": "data",
+            "type": "text",
+            "line": 630
+          }
+        ]
+      },
+      {
+        "name": "test_disk_io",
+        "line": 711,
+        "columns": [
+          {
+            "name": "id",
+            "type": "int4",
+            "line": 712
+          },
+          {
+            "name": "padding",
+            "type": "text",
+            "line": 713
+          }
+        ]
+      }
+    ],
+    "functions": [],
+    "views": [],
+    "types": []
+  },
+  {
+    "file": "_record/tests/08_pathology_value_checks.sql",
+    "tables": [
+      {
+        "name": "vc_memory_test",
+        "line": 25,
+        "columns": [
+          {
+            "name": "id",
+            "type": "int4",
+            "line": 25
+          },
+          {
+            "name": "data",
+            "type": "text",
+            "line": 25
+          }
+        ]
+      },
+      {
+        "name": "vc_cpu_test",
+        "line": 91,
+        "columns": [
+          {
+            "name": "id",
+            "type": "int4",
+            "line": 91
+          },
+          {
+            "name": "value",
+            "type": "numeric",
+            "line": 91
+          }
+        ]
+      }
+    ],
+    "functions": [],
+    "views": [],
+    "types": []
+  }
+]
