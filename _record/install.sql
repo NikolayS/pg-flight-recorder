@@ -28,32 +28,6 @@ EXCEPTION
         NULL;
 END $$;
 
--- =============================================================================
--- TABLE OF CONTENTS (Line numbers approximate - search for section headers)
--- =============================================================================
--- SCHEMA & TABLES
---   - snapshots table .......................... CREATE TABLE IF NOT EXISTS pgfr.snapshots
---   - replication_snapshots .................... CREATE TABLE IF NOT EXISTS pgfr.replication_snapshots
---   - vacuum_progress_snapshots ................ CREATE TABLE IF NOT EXISTS pgfr.vacuum_progress_snapshots
---   - statement_snapshots ...................... CREATE TABLE IF NOT EXISTS pgfr.statement_snapshots
---   - ring buffer tables ....................... samples_ring, wait_samples_ring, etc.
---   - table_snapshots .......................... CREATE TABLE IF NOT EXISTS pgfr.table_snapshots
---
--- CONFIGURATION
---   - config table ............................. CREATE TABLE IF NOT EXISTS pgfr.config
---
--- VACUUM CONTROL MODE STUB
---
--- COLLECTION FUNCTIONS
---   - _collect_table_stats ..................... pgfr._collect_table_stats
---   - snapshot ................................. pgfr.snapshot
---
--- ANALYSIS FUNCTIONS
---   - compare .................................. pgfr.compare
---   - anomaly_report ........................... pgfr.anomaly_report
---   - report ................................... pgfr.report
--- =============================================================================
-
 CREATE SCHEMA IF NOT EXISTS pgfr;
 
 -- Stores periodic snapshots of PostgreSQL system performance metrics
