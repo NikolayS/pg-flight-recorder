@@ -46,17 +46,17 @@ pg_dump -d your_database -n pgfr --data-only | gzip > pgfr_data.sql.gz
 
 ```bash
 # Remove everything (destructive)
-psql --single-transaction -f uninstall.sql
+psql --single-transaction -f _record/uninstall.sql
 ```
 
 ```bash
 # Remove only control functions (keeps core + data)
-psql --single-transaction -f uninstall_control.sql
+psql --single-transaction -f _control/uninstall.sql
 ```
 
 ```bash
 # Remove only reporting functions (keeps core + data)
-psql --single-transaction -f uninstall_analyze.sql
+psql --single-transaction -f _analyze/uninstall.sql
 ```
 
 ## Reference

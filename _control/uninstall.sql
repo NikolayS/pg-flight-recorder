@@ -4,7 +4,7 @@
 -- Removes all functions installed by _control/install.sql and restores the
 -- vacuum_control_mode stub so _collect_table_stats keeps working.
 --
--- Usage: psql --single-transaction -f uninstall_control.sql
+-- Usage: psql --single-transaction -f _control/uninstall.sql
 -- =============================================================================
 
 -- Drop pgfr_analyze schema functions

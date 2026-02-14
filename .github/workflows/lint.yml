@@ -52,14 +52,14 @@ jobs:
 
       - name: Validate SQL syntax (uninstall.sql)
         run: |
-          echo "Checking uninstall.sql for syntax errors..."
+          echo "Checking _record/uninstall.sql for syntax errors..."
 
-          if grep -n "SYNTAX ERROR" uninstall.sql; then
-            echo "Found syntax errors in uninstall.sql"
+          if grep -n "SYNTAX ERROR" _record/uninstall.sql; then
+            echo "Found syntax errors in _record/uninstall.sql"
             exit 1
           fi
 
-          echo "✓ uninstall.sql syntax validation passed"
+          echo "✓ _record/uninstall.sql syntax validation passed"
 
   markdown-lint:
     name: Markdown Lint

@@ -4,10 +4,10 @@
 -- Removes the reporting schema and all reporting functions/views.
 -- Core tables and collection functions in pgfr schema are preserved.
 --
--- Run with: psql --single-transaction -f uninstall_analyze.sql
+-- Run with: psql --single-transaction -f _analyze/uninstall.sql
 --
 -- To completely remove everything including data:
---   psql --single-transaction -f uninstall.sql
+--   psql --single-transaction -f _record/uninstall.sql
 -- =============================================================================
 
 DROP SCHEMA IF EXISTS pgfr_analyze CASCADE;

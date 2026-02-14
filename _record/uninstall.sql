@@ -4,9 +4,9 @@
 -- WARNING: This removes ALL data including historical snapshots!
 -- Use this only when you want to completely remove pgfr.
 --
--- To remove only reporting functions: psql --single-transaction -f uninstall_analyze.sql
+-- To remove only reporting functions: psql --single-transaction -f _analyze/uninstall.sql
 --
--- Run with: psql --single-transaction -f uninstall.sql
+-- Run with: psql --single-transaction -f _record/uninstall.sql
 -- =============================================================================
 
 -- Remove all cron jobs and clean up job history
