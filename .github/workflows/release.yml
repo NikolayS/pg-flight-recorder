@@ -137,21 +137,14 @@ jobs:
       - name: Create release assets
         run: |
           mkdir -p release-assets
-          cp _record/install.sql release-assets/
-          cp _analyze/install.sql release-assets/analyze.sql
-          cp _record/uninstall.sql release-assets/
-          cp _analyze/uninstall.sql release-assets/
-          cp README.md release-assets/
-          cp REFERENCE.md release-assets/
-          [ -f CHANGELOG.md ] && cp CHANGELOG.md release-assets/
 
           # Create tarball
           tar -czf release-assets/pgfr_record-${{ steps.version.outputs.version }}.tar.gz \
-            _record/install.sql _analyze/install.sql _record/uninstall.sql _analyze/uninstall.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
+            _record/install.sql _analyze/install.sql _control/install.sql _record/uninstall.sql _analyze/uninstall.sql _control/uninstall.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
 
           # Create zip
           zip -q release-assets/pgfr_record-${{ steps.version.outputs.version }}.zip \
-            _record/install.sql _analyze/install.sql _record/uninstall.sql _analyze/uninstall.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
+            _record/install.sql _analyze/install.sql _control/install.sql _record/uninstall.sql _analyze/uninstall.sql _control/uninstall.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -166,8 +159,10 @@ jobs:
             release-assets/*.zip
             _record/install.sql
             _analyze/install.sql
+            _control/install.sql
             _record/uninstall.sql
             _analyze/uninstall.sql
+            _control/uninstall.sql
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
