@@ -4,3 +4,6 @@ benchmark2/results/*
 
 # Claude Code local settings (user-specific)
 .claude/settings.local.json
+
+# Supabase CLI local state
+supabase/
