@@ -1,419 +1,781 @@
-# pgfr_record Reference
+# pg-flight-recorder Reference
 
 [![GitHub release](https://img.shields.io/github/v/release/dventimisupabase/pg-flight-recorder)](https://github.com/dventimisupabase/pg-flight-recorder/releases/latest)
 [![Test Suite](https://github.com/dventimisupabase/pg-flight-recorder/actions/workflows/test.yml/badge.svg)](https://github.com/dventimisupabase/pg-flight-recorder/actions/workflows/test.yml)
 [![Lint](https://github.com/dventimisupabase/pg-flight-recorder/actions/workflows/lint.yml/badge.svg)](https://github.com/dventimisupabase/pg-flight-recorder/actions/workflows/lint.yml)
 
-A PostgreSQL monitoring extension that continuously samples database state for incident analysis and capacity planning.
+Complete reference for [pg-flight-recorder](README.md). For installation and getting started, see the [README](README.md). For per-extension overviews, see [pgfr_record](_record/README.md), [pgfr_analyze](_analyze/README.md), and [pgfr_control](_control/README.md).
 
-## Quick Start
+## Functions: pgfr (core)
+
+### Control
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr.enable()` | `text` | Start collection jobs via pg_cron |
+| `pgfr.disable()` | `text` | Stop collection jobs |
+| `pgfr.health_check()` | `record` | System health status with diagnostics |
+| `pgfr.set_mode(mode text)` | `text` | Set collection mode: `normal`, `light`, `emergency`, `kill` |
+| `pgfr.get_mode()` | `record` | Get current collection mode |
+| `pgfr.validate_config()` | `record` | Validate all configuration settings |
+| `pgfr.config_recommendations()` | `record` | Get configuration recommendations based on system state |
+
+### Collection
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr.snapshot()` | `timestamptz` | Durable snapshot: WAL, checkpoints, I/O, tables, indexes, statements, replication, config |
+| `pgfr.sample()` | `timestamptz` | Sampled activity: wait events, active sessions, locks into ring buffers |
+| `pgfr.flush_ring_to_aggregates()` | `void` | Flush ring buffer data to durable aggregate tables (every 5 min) |
+| `pgfr.archive_ring_samples()` | `void` | Archive raw ring buffer samples to durable archive tables (every 15 min) |
+| `pgfr.cleanup()` | `record` | Remove expired data based on retention settings |
+| `pgfr.cleanup_aggregates()` | `void` | Remove old aggregate and archive data |
+
+### Comparison and analysis
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr.compare(id1 int, id2 int)` | `record` | Compare two snapshots side-by-side with deltas |
+| `pgfr.wait_summary(start timestamptz, end timestamptz)` | `record` | Wait event breakdown over a time range |
+| `pgfr.statement_compare(start timestamptz, end timestamptz)` | `record` | Query performance changes between two points |
+| `pgfr.activity_at(ts timestamptz)` | `record` | Activity snapshot closest to a timestamp |
+| `pgfr.recent_waits_current()` | `record` | Current wait event data from ring buffer |
+| `pgfr.recent_activity_current()` | `record` | Current activity data from ring buffer |
+| `pgfr.recent_locks_current()` | `record` | Current lock data from ring buffer |
+
+### Profile management
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr.list_profiles()` | `record` | List available configuration profiles |
+| `pgfr.explain_profile(name text)` | `record` | Preview what a profile would change |
+| `pgfr.apply_profile(name text)` | `record` | Apply a configuration profile |
+| `pgfr.get_current_profile()` | `record` | Identify which profile matches current settings |
+| `pgfr.get_optimization_profiles()` | `record` | List ring buffer optimization presets |
+| `pgfr.apply_optimization_profile(name text)` | `record` | Apply a ring buffer optimization preset |
+
+### Ring buffer management
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr.ring_buffer_health()` | `record` | Ring buffer fill status and diagnostics |
+| `pgfr.rebuild_ring_buffers(slots int)` | `text` | Resize ring buffers (72-2880 slots). **Clears ring data**; archives and aggregates preserved |
+| `pgfr.configure_ring_autovacuum(enabled bool)` | `text` | Toggle autovacuum on ring buffer tables |
+| `pgfr.validate_ring_configuration()` | `record` | Validate ring buffer retention, batching, CPU, and memory |
+
+### Export
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr.export_for_upgrade()` | `record` | Prepare data for export with OID-to-name resolution |
+| `pgfr._populate_relation_names()` | `int` | Populate OID-to-name lookup table for offline analysis |
+| `pgfr._safe_relname(oid)` | `text` | Resolve OID to schema-qualified name using `relation_names` |
+| `pgfr._get_setting_from_snapshots(name text, default_val text)` | `text` | Get a setting value from captured `config_snapshots` |
+
+## Functions: pgfr_analyze
+
+### Reporting
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr_analyze.report(interval)` | `text` | Comprehensive diagnostic report for a time window |
+| `pgfr_analyze.report(start timestamptz, end timestamptz)` | `text` | Diagnostic report for a specific time range |
+| `pgfr_analyze.summary_report(start timestamptz, end timestamptz)` | `record` | Summary statistics |
+| `pgfr_analyze.performance_report(start timestamptz, end timestamptz)` | `record` | Performance-focused report |
+| `pgfr_analyze.anomaly_report(start timestamptz, end timestamptz)` | `record` | Anomaly analysis: checkpoints, buffer pressure, temp spills, locks, XID risk |
+| `pgfr_analyze.check_alerts()` | `record` | Check active alert conditions |
+
+### Forensics
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr_analyze.what_happened_at(ts timestamptz)` | `record` | Point-in-time analysis: snapshots, waits, activity, locks around a timestamp |
+| `pgfr_analyze.incident_timeline(start timestamptz, end timestamptz)` | `record` | Reconstructed event timeline for an incident window |
+| `pgfr_analyze.blast_radius(queryid bigint)` | `record` | Impact analysis for a specific query: I/O, CPU, lock, temp file effects |
+| `pgfr_analyze.blast_radius_report(interval)` | `text` | Text report on high-impact queries |
+
+### Performance analysis
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr_analyze.detect_query_storms(interval, threshold numeric)` | `record` | Find queries with abnormal execution counts. Classifies: RETRY_STORM, CACHE_MISS, SPIKE, NORMAL. Severity: LOW, MEDIUM, HIGH, CRITICAL |
+| `pgfr_analyze.detect_regressions(interval, threshold numeric)` | `record` | Find performance regressions via buffer metrics or timing. Severity: LOW (<200%), MEDIUM (<500%), HIGH (<1000%), CRITICAL (>1000%) |
+| `pgfr_analyze.table_hotspots(start timestamptz, end timestamptz)` | `record` | Tables with highest activity (scans, modifications, dead tuples) |
+| `pgfr_analyze.table_compare(start timestamptz, end timestamptz, top_n int)` | `record` | Table stats changes over a time range |
+| `pgfr_analyze.index_efficiency(start timestamptz, end timestamptz, top_n int)` | `record` | Index usage analysis: scan counts, tuple fetches, sizes |
+| `pgfr_analyze.unused_indexes(interval)` | `record` | Indexes with zero scans over a time window |
+| `pgfr_analyze.modification_rate(relid oid, window interval)` | `numeric` | Row modification rate (modifications/second) for a table |
+| `pgfr_analyze.hot_update_ratio(relid oid)` | `numeric` | HOT update percentage (0-100) from latest snapshot |
+
+### Capacity planning
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr_analyze.capacity_summary(interval)` | `record` | Resource utilization summary: connections, disk, WAL, transactions |
+| `pgfr_analyze.capacity_report(interval)` | `text` | Text capacity report |
+| `pgfr_analyze.quarterly_review()` | `record` | Comprehensive capacity review with growth trends |
+| `pgfr_analyze.quarterly_review_with_summary()` | `record` | Quarterly review with text summary |
+
+### Configuration tracking
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr_analyze.config_changes(start timestamptz, end timestamptz)` | `record` | PostgreSQL configuration changes between two points |
+| `pgfr_analyze.config_at(ts timestamptz, name text)` | `record` | Configuration state at a point in time |
+| `pgfr_analyze.config_health_check()` | `record` | Configuration recommendations based on current settings |
+| `pgfr_analyze.db_role_config_at(ts timestamptz, db text, role text, param text)` | `record` | Database/role config at a point in time |
+| `pgfr_analyze.db_role_config_changes(start timestamptz, end timestamptz)` | `record` | Database/role configuration changes |
+| `pgfr_analyze.db_role_config_summary()` | `record` | Current database/role overrides |
+
+### Pre-flight
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr_analyze.preflight_check()` | `record` | Pre-installation validation checks |
+| `pgfr_analyze.preflight_check_with_summary()` | `record` | Validation with text summary |
+
+## Functions: pgfr_control
+
+### Vacuum control
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr_control.vacuum_control_mode(relid oid)` | `record` | Determine operating mode: `normal`, `catch_up`, `safety` based on XID age and dead tuple trends |
+| `pgfr_control.compute_recommended_scale_factor(relid oid)` | `record` | Compute recommended `autovacuum_vacuum_scale_factor` from actual dead tuple accumulation |
+| `pgfr_control.vacuum_diagnostic(relid oid)` | `record` | Classify vacuum health: `NOT_SCHEDULED`, `RUNNING_BUT_LOSING`, `BLOCKED`, `HEALTHY` with guidance |
+| `pgfr_control.vacuum_control_report(start timestamptz, end timestamptz)` | `record` | Recommendations for all monitored tables with hysteresis and rate limiting |
+
+### Dead tuple analysis
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr_control.dead_tuple_growth_rate(relid oid, window interval)` | `numeric` | Dead tuple accumulation rate (tuples/second) |
+| `pgfr_control.dead_tuple_trend(relid oid, window interval)` | `numeric` | Dead tuple trend via linear regression (tuples/second) |
+| `pgfr_control.time_to_budget_exhaustion(relid oid, budget bigint)` | `interval` | Estimated time until dead tuple budget is reached |
+
+### Bloat estimation
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr_control.estimate_table_bloat(relid oid)` | `record` | Estimate table bloat without pgstattuple. Pass NULL for all tables |
+| `pgfr_control.bloat_report(window interval)` | `record` | Bloat report with size trends and recommendations |
+| `pgfr_control.table_size_growth_rate(relid oid, window interval)` | `numeric` | Table size growth rate (bytes/second) |
+
+### OID monitoring
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `pgfr_control.oid_consumption_rate(window interval)` | `numeric` | OID consumption rate (OIDs/second) |
+| `pgfr_control.time_to_oid_exhaustion()` | `interval` | Estimated time until OID exhaustion (based on last hour) |
+
+## Views
+
+### pgfr (core)
+
+| View | Source | Description |
+|------|--------|-------------|
+| `pgfr.deltas` | Snapshots | Snapshot-over-snapshot changes for all metrics |
+| `pgfr.recent_waits` | Ring buffer + archives | Wait events (last 6-10h from ring, 7d from archives) |
+| `pgfr.recent_activity` | Ring buffer + archives | Active sessions with wait events and query previews |
+| `pgfr.recent_locks` | Ring buffer + archives | Lock contention: blocked/blocking pairs |
+| `pgfr.recent_idle_in_transaction` | Ring buffer + archives | Sessions idle in transaction with duration |
+| `pgfr.recent_replication` | Snapshots | Replication status: lag, LSN positions |
+| `pgfr.recent_vacuum_progress` | Snapshots | Vacuum operations in progress with % scanned/vacuumed |
+| `pgfr.archiver_status` | Snapshots | WAL archiver status with delta calculations |
+
+### pgfr_analyze
+
+| View | Source | Description |
+|------|--------|-------------|
+| `pgfr_analyze.capacity_dashboard` | Snapshots | Resource utilization overview: connections, disk, WAL, transactions |
+
+## Tables
+
+### Ring buffers (UNLOGGED, auto-overwrite)
+
+**`pgfr.samples_ring`** -- Slot tracker (configurable slots, default 120, range 72-2880)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `slot_id` | int | Ring buffer slot index |
+| `captured_at` | timestamptz | When this slot was last written |
+| `epoch_seconds` | bigint | Epoch timestamp for fast comparisons |
+
+**`pgfr.wait_samples_ring`** -- Wait event samples (slots x 100 rows)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `slot_id` | int | Ring buffer slot index |
+| `row_num` | int | Row within slot (1-100) |
+| `backend_type` | text | Backend type (client backend, autovacuum worker, etc.) |
+| `wait_event_type` | text | Wait event category (IO, Lock, LWLock, etc.) |
+| `wait_event` | text | Specific wait event |
+| `state` | text | Backend state (active, idle, etc.) |
+| `count` | int | Number of backends in this state |
+
+**`pgfr.activity_samples_ring`** -- Active session samples (slots x 25 rows)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `slot_id` | int | Ring buffer slot index |
+| `row_num` | int | Row within slot (1-25) |
+| `pid` | int | Backend process ID |
+| `usename` | text | User name |
+| `application_name` | text | Application name |
+| `client_addr` | inet | Client IP address |
+| `backend_type` | text | Backend type |
+| `state` | text | Backend state |
+| `wait_event_type` | text | Wait event category |
+| `wait_event` | text | Specific wait event |
+| `backend_start` | timestamptz | When backend started |
+| `xact_start` | timestamptz | When current transaction started |
+| `query_start` | timestamptz | When current query started |
+| `state_change` | timestamptz | When state last changed |
+| `query_preview` | text | Truncated query text |
+
+**`pgfr.lock_samples_ring`** -- Lock contention samples (slots x 100 rows)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `slot_id` | int | Ring buffer slot index |
+| `row_num` | int | Row within slot (1-100) |
+| `blocked_pid` | int | PID of blocked backend |
+| `blocked_user` | text | User of blocked backend |
+| `blocked_app` | text | Application name of blocked backend |
+| `blocked_query_preview` | text | Truncated query of blocked backend |
+| `blocked_duration` | interval | How long the backend has been blocked |
+| `blocking_pid` | int | PID of blocking backend |
+| `blocking_user` | text | User of blocking backend |
+| `blocking_app` | text | Application name of blocking backend |
+| `blocking_query_preview` | text | Truncated query of blocking backend |
+| `lock_type` | text | Lock type (relation, transactionid, etc.) |
+| `locked_relation_oid` | oid | OID of locked relation |
+
+### Archives (durable, 7-day default retention)
+
+Archives preserve raw ring buffer samples at full resolution for forensic analysis. Archived every 15 minutes by default.
+
+- **`pgfr.wait_samples_archive`** -- Same columns as `wait_samples_ring` plus `id` (bigserial), `sample_id`, `captured_at`
+- **`pgfr.activity_samples_archive`** -- Same columns as `activity_samples_ring` plus `id` (bigserial), `sample_id`, `captured_at`
+- **`pgfr.lock_samples_archive`** -- Same columns as `lock_samples_ring` plus `id` (bigserial), `sample_id`, `captured_at`
+
+### Aggregates (durable, 7-day default retention)
+
+Aggregates summarize ring buffer data into 5-minute windows.
+
+**`pgfr.wait_event_aggregates`**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigserial | Row ID |
+| `start_time` | timestamptz | Window start |
+| `end_time` | timestamptz | Window end |
+| `backend_type` | text | Backend type |
+| `wait_event_type` | text | Wait event category |
+| `wait_event` | text | Specific wait event |
+| `state` | text | Backend state |
+| `sample_count` | int | Samples in window |
+| `total_waiters` | bigint | Total waiters across samples |
+| `avg_waiters` | numeric | Average waiters per sample |
+| `max_waiters` | int | Peak waiters in window |
+| `pct_of_samples` | numeric | Percentage of samples with this event |
+
+**`pgfr.lock_aggregates`**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigserial | Row ID |
+| `start_time` | timestamptz | Window start |
+| `end_time` | timestamptz | Window end |
+| `blocked_user` | text | Blocked user |
+| `blocking_user` | text | Blocking user |
+| `lock_type` | text | Lock type |
+| `locked_relation_oid` | oid | Locked relation OID |
+| `occurrence_count` | int | Occurrences in window |
+| `max_duration` | interval | Longest block duration |
+| `avg_duration` | interval | Average block duration |
+| `sample_query` | text | Sample blocked query |
+
+**`pgfr.activity_aggregates`**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigserial | Row ID |
+| `start_time` | timestamptz | Window start |
+| `end_time` | timestamptz | Window end |
+| `query_preview` | text | Truncated query |
+| `occurrence_count` | int | Occurrences in window |
+| `max_duration` | interval | Longest query duration |
+| `avg_duration` | interval | Average query duration |
+
+### Snapshots (durable, 30-day default retention)
+
+**`pgfr.snapshots`** -- System-level statistics (WAL, checkpoints, I/O, connections, conflicts)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | serial | Snapshot ID |
+| `captured_at` | timestamptz | Capture timestamp |
+| `pg_version` | int | PostgreSQL major version |
+| `wal_records` | bigint | Cumulative WAL records |
+| `wal_fpi` | bigint | Cumulative full-page images |
+| `wal_bytes` | bigint | Cumulative WAL bytes |
+| `wal_write_time` | float8 | Cumulative WAL write time (ms) |
+| `wal_sync_time` | float8 | Cumulative WAL sync time (ms) |
+| `checkpoint_lsn` | pg_lsn | Last checkpoint LSN |
+| `checkpoint_time` | timestamptz | Last checkpoint time |
+| `ckpt_timed` | bigint | Timed checkpoints |
+| `ckpt_requested` | bigint | Requested checkpoints |
+| `ckpt_write_time` | float8 | Checkpoint write time (ms) |
+| `ckpt_sync_time` | float8 | Checkpoint sync time (ms) |
+| `ckpt_buffers` | bigint | Checkpoint buffers written |
+| `bgw_buffers_clean` | bigint | Background writer buffers cleaned |
+| `bgw_maxwritten_clean` | bigint | Background writer max-written stops |
+| `bgw_buffers_alloc` | bigint | Buffers allocated |
+| `bgw_buffers_backend` | bigint | Buffers written by backends |
+| `bgw_buffers_backend_fsync` | bigint | Backend fsync calls |
+| `autovacuum_workers` | int | Active autovacuum workers |
+| `slots_count` | int | Replication slot count |
+| `slots_max_retained_wal` | bigint | Max WAL retained by slots (bytes) |
+| `io_*` | various | I/O stats by backend type: checkpointer, autovacuum, client, bgwriter (reads, writes, times, fsyncs) |
+| `temp_files` | bigint | Temp files created |
+| `temp_bytes` | bigint | Temp bytes written |
+| `xact_commit` | bigint | Committed transactions |
+| `xact_rollback` | bigint | Rolled back transactions |
+| `blks_read` | bigint | Blocks read from disk |
+| `blks_hit` | bigint | Blocks hit in buffer cache |
+| `connections_active` | int | Active connections |
+| `connections_total` | int | Total connections |
+| `connections_max` | int | `max_connections` setting |
+| `db_size_bytes` | bigint | Database size |
+| `datfrozenxid_age` | int | Database frozen XID age |
+| `archived_count` | bigint | WAL files archived |
+| `last_archived_wal` | text | Last archived WAL file |
+| `last_archived_time` | timestamptz | Last archive time |
+| `failed_count` | bigint | Failed archive attempts |
+| `last_failed_wal` | text | Last failed WAL file |
+| `last_failed_time` | timestamptz | Last failure time |
+| `archiver_stats_reset` | timestamptz | Archiver stats reset time |
+| `confl_tablespace` | bigint | Tablespace conflicts (replicas) |
+| `confl_lock` | bigint | Lock conflicts (replicas) |
+| `confl_snapshot` | bigint | Snapshot conflicts (replicas) |
+| `confl_bufferpin` | bigint | Buffer pin conflicts (replicas) |
+| `confl_deadlock` | bigint | Deadlock conflicts (replicas) |
+| `confl_active_logicalslot` | bigint | Logical slot conflicts (replicas) |
+| `max_catalog_oid` | bigint | Highest catalog OID |
+| `large_object_count` | bigint | Number of large objects |
+
+**`pgfr.statement_snapshots`** -- Per-query statistics from pg_stat_statements
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `snapshot_id` | int | FK to snapshots |
+| `queryid` | bigint | Query identifier |
+| `userid` | oid | User OID |
+| `dbid` | oid | Database OID |
+| `query_preview` | text | Truncated query text |
+| `calls` | bigint | Cumulative call count |
+| `total_exec_time` | float8 | Cumulative execution time (ms) |
+| `min_exec_time` | float8 | Minimum execution time (ms) |
+| `max_exec_time` | float8 | Maximum execution time (ms) |
+| `mean_exec_time` | float8 | Mean execution time (ms) |
+| `rows` | bigint | Cumulative rows returned |
+| `shared_blks_hit` | bigint | Shared buffer hits |
+| `shared_blks_read` | bigint | Shared blocks read |
+| `shared_blks_dirtied` | bigint | Shared blocks dirtied |
+| `shared_blks_written` | bigint | Shared blocks written |
+| `temp_blks_read` | bigint | Temp blocks read |
+| `temp_blks_written` | bigint | Temp blocks written |
+| `blk_read_time` | float8 | Block read time (ms) |
+| `blk_write_time` | float8 | Block write time (ms) |
+| `wal_records` | bigint | WAL records generated |
+| `wal_bytes` | numeric | WAL bytes generated |
+
+**`pgfr.table_snapshots`** -- Per-table statistics
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `snapshot_id` | int | FK to snapshots |
+| `schemaname` | text | **Deprecated** -- use `relid::regclass` |
+| `relname` | text | **Deprecated** -- use `relid::regclass` |
+| `relid` | oid | Table OID |
+| `seq_scan` | bigint | Sequential scans |
+| `seq_tup_read` | bigint | Tuples read by seq scans |
+| `idx_scan` | bigint | Index scans |
+| `idx_tup_fetch` | bigint | Tuples fetched by index scans |
+| `n_tup_ins` | bigint | Tuples inserted |
+| `n_tup_upd` | bigint | Tuples updated |
+| `n_tup_del` | bigint | Tuples deleted |
+| `n_tup_hot_upd` | bigint | HOT updates |
+| `n_live_tup` | bigint | Live tuples |
+| `n_dead_tup` | bigint | Dead tuples |
+| `n_mod_since_analyze` | bigint | Modifications since last analyze |
+| `vacuum_count` | bigint | Manual vacuum count |
+| `autovacuum_count` | bigint | Autovacuum count |
+| `analyze_count` | bigint | Manual analyze count |
+| `autoanalyze_count` | bigint | Autoanalyze count |
+| `last_vacuum` | timestamptz | Last manual vacuum |
+| `last_autovacuum` | timestamptz | Last autovacuum |
+| `last_analyze` | timestamptz | Last manual analyze |
+| `last_autoanalyze` | timestamptz | Last autoanalyze |
+| `relfrozenxid_age` | int | Table frozen XID age |
+| `reltuples` | bigint | Estimated live rows (from `pg_class`) |
+| `vacuum_running` | bool | Whether vacuum is currently running |
+| `last_vacuum_duration_ms` | bigint | Duration of last vacuum (ms) |
+| `table_size_bytes` | bigint | Table size excluding indexes |
+| `total_size_bytes` | bigint | Table + index size |
+| `indexes_size_bytes` | bigint | Index size |
+
+**`pgfr.index_snapshots`** -- Per-index statistics
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `snapshot_id` | int | FK to snapshots |
+| `schemaname` | text | **Deprecated** -- use `relid::regclass` |
+| `relname` | text | **Deprecated** -- use `relid::regclass` |
+| `indexrelname` | text | **Deprecated** -- use `indexrelid::regclass` |
+| `relid` | oid | Table OID |
+| `indexrelid` | oid | Index OID |
+| `idx_scan` | bigint | Index scans |
+| `idx_tup_read` | bigint | Index tuples read |
+| `idx_tup_fetch` | bigint | Index tuples fetched |
+| `index_size_bytes` | bigint | Index size (bytes) |
+
+**`pgfr.config_snapshots`** -- PostgreSQL configuration
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `snapshot_id` | int | FK to snapshots |
+| `name` | text | Setting name |
+| `setting` | text | Setting value |
+| `unit` | text | Setting unit |
+| `source` | text | Setting source (e.g., `configuration file`) |
+| `sourcefile` | text | Config file path |
+
+**`pgfr.db_role_config_snapshots`** -- Database/role configuration overrides
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `snapshot_id` | int | FK to snapshots |
+| `database_name` | text | Database name (empty for global) |
+| `role_name` | text | Role name (empty for database-level) |
+| `parameter_name` | text | Parameter name |
+| `parameter_value` | text | Parameter value |
+
+**`pgfr.replication_snapshots`** -- Replication state
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `snapshot_id` | int | FK to snapshots |
+| `pid` | int | WAL sender PID |
+| `client_addr` | inet | Replica address |
+| `application_name` | text | Application name |
+| `state` | text | Replication state |
+| `sync_state` | text | Sync mode |
+| `sent_lsn` | pg_lsn | Last LSN sent |
+| `write_lsn` | pg_lsn | Last LSN written by replica |
+| `flush_lsn` | pg_lsn | Last LSN flushed by replica |
+| `replay_lsn` | pg_lsn | Last LSN replayed by replica |
+| `write_lag` | interval | Write lag |
+| `flush_lag` | interval | Flush lag |
+| `replay_lag` | interval | Replay lag |
+
+**`pgfr.vacuum_progress_snapshots`** -- Vacuum progress
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `snapshot_id` | int | FK to snapshots |
+| `pid` | int | Vacuum worker PID |
+| `datid` | oid | Database OID |
+| `datname` | text | Database name |
+| `relid` | oid | Table OID |
+| `relname` | text | Table name |
+| `phase` | text | Vacuum phase |
+| `heap_blks_total` | bigint | Total heap blocks |
+| `heap_blks_scanned` | bigint | Heap blocks scanned |
+| `heap_blks_vacuumed` | bigint | Heap blocks vacuumed |
+| `index_vacuum_count` | bigint | Index vacuum passes |
+| `max_dead_tuples` | bigint | Max dead tuples per pass |
+| `num_dead_tuples` | bigint | Current dead tuples found |
+
+### Internal
+
+**`pgfr.config`** -- Flight Recorder configuration (key-value store)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `key` | text | Setting name (PK) |
+| `value` | text | Setting value |
+| `updated_at` | timestamptz | Last modified |
+
+**`pgfr.collection_stats`** -- Collection job metrics
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | serial | Row ID |
+| `collection_type` | text | `snapshot` or `sample` |
+| `started_at` | timestamptz | Job start time |
+| `completed_at` | timestamptz | Job end time |
+| `duration_ms` | int | Duration in milliseconds |
+| `success` | bool | Whether collection succeeded |
+| `error_message` | text | Error message if failed |
+| `skipped` | bool | Whether collection was skipped |
+| `skipped_reason` | text | Reason for skip (load shedding, idle, etc.) |
+| `sections_total` | int | Total sections attempted |
+| `sections_succeeded` | int | Sections that succeeded |
+
+**`pgfr.relation_names`** -- OID to relation name mappings (populated at export time)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `oid` | oid | Relation OID (PK) |
+| `nspname` | text | Schema name |
+| `relname` | text | Relation name |
+
+### pgfr_control
+
+**`pgfr_control.vacuum_control_state`** -- Vacuum operating mode per table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `relid` | oid | Table OID (PK) |
+| `operating_mode` | text | Current mode: `normal`, `catch_up`, `safety` |
+| `mode_entered_at` | timestamptz | When current mode was entered |
+| `last_recommendation_at` | timestamptz | Last scale factor recommendation time |
+| `last_recommended_scale_factor` | numeric | Last recommended scale factor |
+| `consecutive_budget_exceeded` | int | Consecutive budget exceeded count |
+| `updated_at` | timestamptz | Last update time |
+
+### Deprecated columns
+
+The following columns are **deprecated** and will be NULL in new data:
+
+| Table | Deprecated Columns | Use Instead |
+|-------|--------------------|--------------------------------------------|
+| `table_snapshots` | `schemaname`, `relname` | `relid::regclass` or `relation_names` lookup |
+| `index_snapshots` | `schemaname`, `relname`, `indexrelname` | `relid::regclass`, `indexrelid::regclass` |
+
+This eliminates `pg_catalog` joins during collection, avoiding even `AccessShareLock`. Existing data with names is preserved.
+
+## Configuration settings
+
+Settings are stored in `pgfr.config`. Profiles set groups of related settings. Update individual settings with:
 
 ```sql
--- Install core (tables, collection, scheduling)
-\i _record/install.sql
-
--- Install vacuum control (optional)
-\i _control/install.sql
-
--- Install reporting & analysis (optional)
-\i _analyze/install.sql
-
--- Enable collection
-SELECT pgfr.enable();
-
--- Check health
-SELECT * FROM pgfr.health_check();
-
--- Generate diagnostic report
-SELECT pgfr_analyze.report('1 hour');
+UPDATE pgfr.config SET value = '300' WHERE key = 'sample_interval_seconds';
 ```
 
-## Requirements
+### Core settings
 
-- PostgreSQL 15, 16, or 17
-- `pg_cron` extension
-- Superuser privileges for installation
-- Optional: `pg_stat_statements` for query analysis
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `schema_version` | `2.25` | Schema version (do not modify) |
+| `mode` | `normal` | Collection mode: `normal`, `light`, `emergency`, `kill` |
+| `enabled` | `true` | Whether collection is enabled |
 
-## Architecture
+### Collection intervals and retention
 
-Flight Recorder collects two types of data:
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `sample_interval_seconds` | `180` | Seconds between ring buffer samples |
+| `ring_buffer_slots` | `120` | Ring buffer slot count (72-2880) |
+| `retention_snapshots_days` | `30` | Snapshot retention (days) |
+| `retention_samples_days` | `7` | Archive/aggregate retention (days) |
+| `retention_statements_days` | `30` | Statement snapshot retention (days) |
+| `retention_collection_stats_days` | `30` | Collection stats retention (days) |
+| `aggregate_retention_days` | `7` | Aggregate retention (days) |
+| `archive_samples_enabled` | `true` | Enable raw sample archiving |
+| `archive_sample_frequency_minutes` | `15` | How often to archive ring buffer samples |
+| `archive_retention_days` | `7` | Archive retention (days) |
+| `archive_activity_samples` | `true` | Archive activity samples |
+| `archive_lock_samples` | `true` | Archive lock samples |
+| `archive_wait_samples` | `true` | Archive wait samples |
 
-| System               | What it captures                       | Frequency | Retention                        |
-|----------------------|----------------------------------------|-----------|----------------------------------|
-| **Sampled Activity** | Wait events, sessions, locks           | 3 min     | Ring buffer: 6-10h, Archives: 7d |
-| **Snapshots**        | WAL, checkpoints, I/O, tables, indexes | 5 min     | 30 days                          |
+### Safety thresholds
 
-Data flows through ring buffers (hot, UNLOGGED) to archives and aggregates (cold, durable).
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `circuit_breaker_threshold_ms` | `1000` | Max collection duration before circuit breaker trips |
+| `circuit_breaker_window_minutes` | `15` | Window for circuit breaker evaluation |
+| `load_shedding_active_pct` | `70` | Connection % threshold for load shedding |
+| `adaptive_sampling_idle_threshold` | `5` | Minimum active connections to consider system non-idle |
+| `lock_timeout_ms` | `100` | Lock timeout for collection queries |
+| `lock_timeout_strategy` | `fail_fast` | Lock timeout strategy |
+| `collection_jitter_max_seconds` | `10` | Maximum jitter added to collection timing |
+| `auto_mode_trips_threshold` | `1` | Circuit breaker trips before automatic mode switch |
+| `section_timeout_ms` | `250` | Per-section timeout within collection |
+| `statement_timeout_ms` | `1000` | Statement timeout for collection queries |
+| `work_mem_kb` | `2048` | `work_mem` for collection queries (KB) |
 
-## Configuration Profiles
+### Pre-flight checks
 
-Profiles are pre-configured settings for different environments.
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `check_ddl_before_collection` | `true` | Check for DDL locks before collecting |
+| `check_replica_lag` | `true` | Check replica lag before collecting |
+| `replica_lag_threshold` | `10 seconds` | Max replica lag before skipping collection |
+| `check_checkpoint_backup` | `true` | Check for active checkpoints/backups |
+| `check_pss_conflicts` | `true` | Check for pg_stat_statements conflicts |
 
-| Profile            | Sample Interval | Use Case                               |
-|--------------------|-----------------|----------------------------------------|
-| `default`          | 180s            | General purpose monitoring             |
-| `production_safe`  | 300s            | Production with maximum safety margins |
-| `development`      | 180s            | Staging and development                |
-| `troubleshooting`  | 60s             | Active incident response               |
-| `minimal_overhead` | 300s            | Resource-constrained systems           |
+### Schema size limits
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `schema_size_check_enabled` | `true` | Enable schema size monitoring |
+| `schema_size_use_percentage` | `true` | Use percentage-based limits |
+| `schema_size_percentage` | `5.0` | Max schema size as % of database |
+| `schema_size_min_mb` | `1000` | Minimum size threshold (MB) |
+| `schema_size_max_mb` | `10000` | Maximum size threshold (MB) |
+| `schema_size_warning_mb` | `5000` | Warning threshold (MB) |
+| `schema_size_critical_mb` | `10000` | Critical threshold (MB) |
+
+### Statement collection
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `statements_enabled` | `auto` | Enable pg_stat_statements collection: `auto`, `true`, `false` |
+| `statements_top_n` | `20` | Number of top queries to collect per snapshot |
+| `statements_ranking_metric` | `buffers` | Metric for ranking queries: `buffers` or `time` |
+| `statements_interval_minutes` | `15` | Minutes between statement collections |
+| `statements_min_calls` | `1` | Minimum call count to include a query |
+
+### Table and index collection
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `table_stats_mode` | `top_n` | Table collection mode |
+| `table_stats_activity_threshold` | `0` | Minimum activity to include a table |
+| `table_stats_top_n` | `50` | Number of top tables to collect |
+| `index_stats_enabled` | `true` | Enable index stats collection |
+| `config_snapshots_enabled` | `true` | Enable config snapshots |
+| `db_role_config_snapshots_enabled` | `true` | Enable db/role config snapshots |
+| `collect_database_size` | `true` | Collect database size |
+| `collect_connection_metrics` | `true` | Collect connection counts |
+
+### Load shedding thresholds
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `skip_locks_threshold` | `50` | Skip lock collection if > N blocked backends |
+| `skip_activity_conn_threshold` | `100` | Skip activity collection if > N active connections |
+| `load_throttle_xact_threshold` | `1000` | Skip if > N transactions/second |
+| `load_throttle_blk_threshold` | `10000` | Skip if > N blocks/second |
+
+### Anomaly detection
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `storm_threshold_multiplier` | `3.0` | Baseline multiplier for query storm detection |
+| `storm_lookback_interval` | `1 hour` | Recent window for storm comparison |
+| `storm_baseline_days` | `7` | Historical baseline for storm detection |
+| `storm_severity_low_max` | `5.0` | Max multiplier for LOW severity |
+| `storm_severity_medium_max` | `10.0` | Max multiplier for MEDIUM severity |
+| `storm_severity_high_max` | `50.0` | Max multiplier for HIGH severity |
+| `regression_threshold_pct` | `50.0` | Min % change for regression detection |
+| `regression_lookback_interval` | `1 hour` | Recent window for regression comparison |
+| `regression_baseline_days` | `7` | Historical baseline for regression detection |
+| `regression_severity_low_max` | `200.0` | Max % for LOW severity |
+| `regression_severity_medium_max` | `500.0` | Max % for MEDIUM severity |
+| `regression_severity_high_max` | `1000.0` | Max % for HIGH severity |
+| `regression_detection_metric` | `buffers` | Metric for regression detection: `buffers` or `time` |
+
+### Vacuum control
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `vacuum_control_enabled` | `true` | Enable vacuum control state tracking |
+| `vacuum_control_dead_tuple_budget_pct` | `5` | Dead tuple budget as % of live tuples |
+| `vacuum_control_min_scale_factor` | `0.001` | Minimum recommended scale factor |
+| `vacuum_control_max_scale_factor` | `0.2` | Maximum recommended scale factor |
+| `vacuum_control_hysteresis_pct` | `25` | Hysteresis band for scale factor changes (%) |
+| `vacuum_control_rate_limit_minutes` | `60` | Minimum minutes between recommendation changes |
+| `vacuum_control_catchup_budget_hours` | `4` | Target hours to clear dead tuple backlog in catch_up mode |
+
+### Alerts and capacity
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `alert_enabled` | `false` | Enable alert checking |
+| `alert_circuit_breaker_count` | `5` | Circuit breaker trips before alert |
+| `alert_schema_size_mb` | `8000` | Schema size alert threshold (MB) |
+| `capacity_planning_enabled` | `true` | Enable capacity planning |
+| `capacity_thresholds_warning_pct` | `60` | Capacity warning threshold (%) |
+| `capacity_thresholds_critical_pct` | `80` | Capacity critical threshold (%) |
+
+## Configuration profiles
+
+Profiles configure groups of related settings for different environments. Key differences between profiles:
+
+| Setting | default | production_safe | development | troubleshooting | minimal_overhead |
+|---------|---------|-----------------|-------------|-----------------|------------------|
+| `sample_interval_seconds` | 180 | 300 | 180 | 60 | 300 |
+| `adaptive_sampling` | true | true | false | false | true |
+| `load_shedding_active_pct` | 70 | 60 | 70 | disabled | 50 |
+| `circuit_breaker_threshold_ms` | 1000 | 800 | 1000 | 2000 | 500 |
+| `enable_locks` | true | false | true | true | false |
+| `enable_progress` | true | false | true | true | false |
+| `retention_snapshots_days` | 30 | 30 | 7 | 7 | 7 |
+| `retention_samples_days` | 7 | 7 | 3 | 7 | 3 |
+| `section_timeout_ms` | 250 | 200 | 250 | 500 | 100 |
+| `statement_timeout_ms` | 1000 | 800 | 1000 | 2000 | 500 |
+| `work_mem_kb` | 2048 | 1024 | 2048 | 4096 | 1024 |
+| `statements_interval_minutes` | 15 | 30 | 15 | 5 | 30 |
+| `statements_min_calls` | 1 | 5 | 1 | 1 | 10 |
+| `table_stats_top_n` | 50 | 30 | 50 | 100 | 20 |
+| `table_stats_enabled` | true | true | true | true | false |
+| `index_stats_enabled` | true | true | true | true | false |
+| `auto_mode_connections_threshold` | 60 | 50 | 60 | 80 | 40 |
+| `collection_jitter_enabled` | true | true | true | false | false |
 
 ```sql
--- List profiles
+-- List all profiles and their settings
 SELECT * FROM pgfr.list_profiles();
 
--- Preview changes before applying
+-- Preview what a profile would change
 SELECT * FROM pgfr.explain_profile('production_safe');
 
 -- Apply a profile
 SELECT * FROM pgfr.apply_profile('production_safe');
 
--- Check current profile
+-- Check which profile matches current settings
 SELECT * FROM pgfr.get_current_profile();
 ```
 
-## Functions
+## Safety features
 
-Functions are split across three extensions:
+### Collection modes
 
-- **`_record/install.sql`** (core): Collection, ring buffer management, profiles, views
-- **`_analyze/install.sql`** (optional): Analysis, anomaly detection, capacity planning, configuration analysis
-- **`_control/install.sql`** (optional): Vacuum diagnostics, scale factor tuning, bloat estimation
-
-### Analysis (pgfr_analyze)
-
-| Function                        | Purpose                         |
-|---------------------------------|---------------------------------|
-| `report(interval)`              | Comprehensive diagnostic report |
-| `anomaly_report(start, end)`    | Detailed anomaly analysis       |
-| `wait_summary(start, end)`      | Wait event breakdown            |
-| `statement_compare(start, end)` | Query performance changes       |
-| `table_hotspots(start, end)`    | Tables with high activity       |
-| `table_compare(start, end)`     | Table stats changes             |
-| `index_efficiency(start, end)`  | Index usage analysis            |
-| `unused_indexes(interval)`      | Indexes with no scans           |
-| `what_happened_at(timestamp)`   | Point-in-time analysis          |
-| `incident_timeline(start, end)` | Event timeline for incidents    |
-
-### Anomaly Detection (pgfr_analyze)
-
-| Function                        | Purpose                       |
-|---------------------------------|-------------------------------|
-| `detect_query_storms(interval)` | Find abnormal query patterns  |
-| `detect_regressions(interval)`  | Find performance regressions  |
-| `blast_radius(queryid)`         | Analyze query impact          |
-| `blast_radius_report(interval)` | Report on high-impact queries |
-
-### Capacity Planning (pgfr_analyze)
-
-| Function                     | Purpose                       |
-|------------------------------|-------------------------------|
-| `capacity_summary(interval)` | Resource utilization summary  |
-| `quarterly_review()`         | Comprehensive capacity review |
-
-### Configuration Analysis (pgfr_analyze)
-
-| Function                             | Purpose                       |
-|--------------------------------------|-------------------------------|
-| `config_changes(start, end)`         | PostgreSQL config changes     |
-| `config_at(timestamp)`               | Config at a point in time     |
-| `config_health_check()`              | Configuration recommendations |
-| `db_role_config_changes(start, end)` | Database/role config changes  |
-| `db_role_config_summary()`           | Current db/role overrides     |
-
-### Vacuum Control (pgfr_control)
-
-| Function                                 | Purpose                                           |
-|------------------------------------------|---------------------------------------------------|
-| `vacuum_control_mode(oid)`               | Determine operating mode (normal/catch_up/safety) |
-| `compute_recommended_scale_factor(oid)`  | Recommend autovacuum scale factor                 |
-| `vacuum_diagnostic(oid)`                 | Classify vacuum failure mode                      |
-| `vacuum_control_report(start, end)`      | Vacuum control recommendations                    |
-| `dead_tuple_growth_rate(oid, interval)`  | Dead tuple accumulation rate                      |
-| `dead_tuple_trend(oid, interval)`        | Dead tuple trend via linear regression            |
-| `time_to_budget_exhaustion(oid, budget)` | Estimate autovacuum timing                        |
-| `estimate_table_bloat(oid)`              | Estimate table bloat without pgstattuple          |
-| `bloat_report(interval)`                 | Bloat report with trends                          |
-| `oid_consumption_rate(interval)`         | OID usage rate                                    |
-| `time_to_oid_exhaustion()`               | Estimate OID exhaustion                           |
-
-### Control (pgfr)
-
-| Function            | Purpose                                           |
-|---------------------|---------------------------------------------------|
-| `enable()`          | Start collection jobs                             |
-| `disable()`         | Stop collection jobs                              |
-| `health_check()`    | System health status                              |
-| `preflight_check()` | Pre-installation validation                       |
-| `set_mode(mode)`    | Set collection mode (normal/light/emergency/kill) |
-| `get_mode()`        | Get current mode                                  |
-
-### Ring Buffer Management (pgfr)
-
-| Function                             | Purpose                           |
-|--------------------------------------|-----------------------------------|
-| `ring_buffer_health()`               | Ring buffer status                |
-| `rebuild_ring_buffers(slots)`        | Resize ring buffers (clears data) |
-| `configure_ring_autovacuum(enabled)` | Toggle autovacuum on ring tables  |
-| `validate_ring_configuration()`      | Check ring buffer config          |
-
-### Profile Management (pgfr)
-
-| Function                           | Purpose                          |
-|------------------------------------|----------------------------------|
-| `list_profiles()`                  | Available profiles               |
-| `explain_profile(name)`            | Preview profile changes          |
-| `apply_profile(name)`              | Apply profile settings           |
-| `get_current_profile()`            | Current profile match            |
-| `get_optimization_profiles()`      | Ring buffer optimization presets |
-| `apply_optimization_profile(name)` | Apply ring buffer optimization   |
-
-### Export (pgfr)
-
-| Function                                     | Purpose                                          |
-|----------------------------------------------|--------------------------------------------------|
-| `_populate_relation_names()`                 | Populate OID-to-name lookup table for export     |
-| `_safe_relname(oid)`                         | Resolve OID to name using `relation_names` table |
-| `_get_setting_from_snapshots(name, default)` | Get setting from captured `config_snapshots`     |
-
-## Views
-
-### Real-time (from ring buffers)
-
-| View                         | Purpose                       |
-|------------------------------|-------------------------------|
-| `recent_waits`               | Wait events (last 6-10h)      |
-| `recent_activity`            | Active sessions               |
-| `recent_locks`               | Lock contention               |
-| `recent_idle_in_transaction` | Idle-in-transaction sessions  |
-| `recent_vacuum_progress`     | Vacuum operations in progress |
-| `recent_replication`         | Replication status            |
-
-### Derived
-
-| View                 | Purpose                        |
-|----------------------|--------------------------------|
-| `deltas`             | Snapshot-over-snapshot changes |
-| `capacity_dashboard` | Resource utilization overview  |
-| `archiver_status`    | WAL archiving status           |
-
-## Tables
-
-### Ring Buffers (UNLOGGED, auto-overwrite)
-
-- `samples_ring` - Slot tracker
-- `wait_samples_ring` - Wait event samples
-- `activity_samples_ring` - Session samples
-- `lock_samples_ring` - Lock samples
-
-### Archives (durable, 7-day retention)
-
-- `wait_samples_archive` - Preserved wait samples
-- `activity_samples_archive` - Preserved session samples
-- `lock_samples_archive` - Preserved lock samples
-
-### Aggregates (durable, 7-day retention)
-
-- `wait_event_aggregates` - Summarized wait events
-- `activity_aggregates` - Summarized activity
-- `lock_aggregates` - Summarized locks
-
-### Snapshots (durable, 30-day retention)
-
-- `snapshots` - System stats (WAL, checkpoints, I/O)
-- `statement_snapshots` - Query stats (from pg_stat_statements)
-- `table_snapshots` - Per-table stats (see note on deprecated columns)
-- `index_snapshots` - Per-index stats (see note on deprecated columns)
-- `config_snapshots` - PostgreSQL configuration
-- `db_role_config_snapshots` - Database/role config overrides
-- `replication_snapshots` - Replication state
-- `vacuum_progress_snapshots` - Vacuum progress
-
-### Internal
-
-- `config` - Flight Recorder configuration
-- `collection_stats` - Collection job metrics
-- `relation_names` - OID to relation name mappings (for offline analysis)
-
-### Vacuum Control (pgfr_control schema)
-
-- `vacuum_control_state` - Tracks vacuum operating mode and recommendation state per table
-
-### Deprecated Columns
-
-The following columns in `table_snapshots` and `index_snapshots` are **deprecated** and will be NULL in new data:
-
-| Table             | Deprecated Columns                      | Use Instead                                  |
-|-------------------|-----------------------------------------|----------------------------------------------|
-| `table_snapshots` | `schemaname`, `relname`                 | `relid::regclass` or `relation_names` lookup |
-| `index_snapshots` | `schemaname`, `relname`, `indexrelname` | `relid::regclass`, `indexrelid::regclass`    |
-
-This change eliminates joins to `pg_catalog` during collection, avoiding even `AccessShareLock`. Relation names are now derived on-the-fly when queried. Existing data with names is preserved.
-
-## Safety Features
-
-Flight Recorder includes multiple safety mechanisms to prevent impacting production workloads.
-
-### Collection Modes
-
-| Mode        | Behavior                                   |
-|-------------|--------------------------------------------|
-| `normal`    | Full collection                            |
-| `light`     | Reduced collection (skips locks, progress) |
-| `emergency` | Minimal collection                         |
-| `kill`      | All collection disabled                    |
-
-### Automatic Protections
-
-| Protection            | Description                                   |
-|-----------------------|-----------------------------------------------|
-| **Circuit Breaker**   | Auto-disables if collections exceed 1s        |
-| **Load Shedding**     | Skips collection when >70% connections active |
-| **Load Throttle**     | Skips during high I/O pressure                |
-| **Adaptive Sampling** | Skips when system is idle                     |
-| **DDL Lock Check**    | Avoids collection during schema changes       |
-| **Replica Lag Check** | Pauses on replicas with high lag              |
-
-### Manual Controls
+| Mode | Behavior |
+|------|----------|
+| `normal` | Full collection: snapshots, samples, locks, progress, statements |
+| `light` | Reduced: skips lock contention and vacuum progress collection |
+| `emergency` | Minimal: snapshots only, no ring buffer sampling |
+| `kill` | All collection disabled |
 
 ```sql
--- Emergency stop
-SELECT pgfr.set_mode('kill');
-
--- Resume normal operation
-SELECT pgfr.set_mode('normal');
-
--- Check current mode
-SELECT pgfr.get_mode();
+SELECT pgfr.set_mode('kill');      -- Emergency stop
+SELECT pgfr.set_mode('normal');    -- Resume
+SELECT * FROM pgfr.get_mode();     -- Check current mode
 ```
 
-## Key Configuration Settings
+### Automatic protections
 
-Settings are stored in `pgfr.config`. Profiles set groups of related settings.
+| Protection | Trigger | Behavior |
+|------------|---------|----------|
+| **Circuit Breaker** | Collection exceeds `circuit_breaker_threshold_ms` (default 1s) | Skips next collection. After `auto_mode_trips_threshold` trips in `circuit_breaker_window_minutes`, switches to lighter mode |
+| **Load Shedding** | Active connections exceed `load_shedding_active_pct` of `max_connections` | Skips entire collection cycle |
+| **Load Throttle** | Transaction rate exceeds `load_throttle_xact_threshold` or block rate exceeds `load_throttle_blk_threshold` | Skips collection |
+| **Adaptive Sampling** | Active connections below `adaptive_sampling_idle_threshold` | Skips collection (system is idle) |
+| **DDL Lock Check** | `AccessExclusiveLock` held on system catalogs | Skips collection to avoid lock contention |
+| **Replica Lag Check** | Replay lag exceeds `replica_lag_threshold` | Skips collection on replicas with high lag |
+| **Checkpoint/Backup Check** | Active checkpoint or backup detected | Skips collection to avoid I/O contention |
 
-| Setting                        | Default | Description                           |
-|--------------------------------|---------|---------------------------------------|
-| `sample_interval_seconds`      | 180     | Seconds between samples               |
-| `ring_buffer_slots`            | 120     | Number of ring buffer slots (72-2880) |
-| `retention_snapshots_days`     | 30      | Snapshot retention                    |
-| `retention_samples_days`       | 7       | Archive/aggregate retention           |
-| `circuit_breaker_threshold_ms` | 1000    | Max collection duration               |
-| `load_shedding_active_pct`     | 70      | Connection % threshold                |
+### Automatic mode switching
 
-```sql
--- View all settings
-SELECT * FROM pgfr.config ORDER BY key;
+When `auto_mode_enabled` is `true`, the system automatically degrades collection mode under sustained pressure:
 
--- Update a setting
-UPDATE pgfr.config SET value = '300' WHERE key = 'sample_interval_seconds';
-```
+1. `normal` -> `light`: After repeated circuit breaker trips
+2. `light` -> `emergency`: If pressure continues
+3. `emergency` -> `kill`: Last resort
 
-## Common Workflows
-
-### Daily Monitoring
-
-```sql
--- Quick health check
-SELECT * FROM pgfr.health_check();
-
--- Recent report
-SELECT pgfr_analyze.report('1 hour');
-```
-
-### Incident Response
-
-```sql
--- Switch to detailed collection
-SELECT * FROM pgfr.apply_profile('troubleshooting');
-
--- Analyze specific time window
-SELECT pgfr_analyze.report(
-    '2024-01-15 14:00'::timestamptz,
-    '2024-01-15 15:00'::timestamptz
-);
-
--- Point-in-time analysis
-SELECT * FROM pgfr_analyze.what_happened_at('2024-01-15 14:32');
-
--- Return to normal after incident
-SELECT * FROM pgfr.apply_profile('default');
-```
-
-### Performance Analysis
-
-```sql
--- Find slow queries
-SELECT * FROM pgfr_analyze.detect_regressions('1 day');
-
--- Find query storms
-SELECT * FROM pgfr_analyze.detect_query_storms('1 hour');
-
--- Table hotspots
-SELECT * FROM pgfr_analyze.table_hotspots(now() - '1 day', now());
-
--- Index efficiency
-SELECT * FROM pgfr_analyze.index_efficiency(now() - '1 day', now());
-```
-
-### Capacity Planning
-
-```sql
--- Resource summary
-SELECT * FROM pgfr_analyze.capacity_summary('7 days');
-
--- Full quarterly review
-SELECT * FROM pgfr_analyze.quarterly_review();
-
--- View capacity dashboard
-SELECT * FROM pgfr_analyze.capacity_dashboard;
-```
-
-### Vacuum Control
-
-```sql
--- Check vacuum mode for a table
-SELECT * FROM pgfr_control.vacuum_control_mode('my_table'::regclass);
-
--- Get vacuum diagnostic
-SELECT * FROM pgfr_control.vacuum_diagnostic('my_table'::regclass);
-
--- Full vacuum control report
-SELECT * FROM pgfr_control.vacuum_control_report(now() - '1 hour', now());
-
--- Bloat report
-SELECT * FROM pgfr_control.bloat_report('24 hours');
-```
-
-## Upgrading
-
-Re-running `_record/install.sql` is safe — it uses `CREATE OR REPLACE` and `IF NOT EXISTS`, so it updates functions and views while preserving all data.
-
-```bash
-psql --single-transaction -f _record/install.sql
-```
-
-## Uninstalling
-
-```bash
-# Remove everything (stops jobs, drops all schemas and data)
-psql --single-transaction -f _record/uninstall.sql
-
-# Remove only control functions (keeps core + data)
-psql --single-transaction -f _control/uninstall.sql
-
-# Remove only reporting functions (keeps core + data)
-psql --single-transaction -f _analyze/uninstall.sql
-```
-
-## Testing
-
-```bash
-# Run tests (requires Docker)
-./test.sh
-
-# Test specific PostgreSQL version
-./test.sh 17
-
-# Test all versions in parallel
-./test.sh parallel
-```
+Mode automatically recovers when pressure subsides.
