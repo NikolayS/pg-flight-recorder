@@ -20,7 +20,7 @@ See [BENCHMARKING.md](../BENCHMARKING.md) for full methodology.
 ### Prerequisites
 
 1. **PostgreSQL 15+** with pg_cron installed
-2. **pgfr_record** installed: `psql --single-transaction -f ../install.sql`
+2. **pgfr_record** installed: `psql --single-transaction -f ../_record/install.sql`
 3. **Python 3**: For statistical analysis
 4. **Standard libpq auth**: Set `PGHOST`, `PGUSER`, `PGDATABASE`, `PGPASSWORD` or use `.pgpass`
 

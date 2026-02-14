@@ -1,7 +1,7 @@
 -- =============================================================================
 -- pgfr_record: Uninstall Autovacuum Control Functions
 -- =============================================================================
--- Removes all functions installed by control.sql and restores the
+-- Removes all functions installed by _control/install.sql and restores the
 -- vacuum_control_mode stub so _collect_table_stats keeps working.
 --
 -- Usage: psql --single-transaction -f uninstall_control.sql
@@ -43,4 +43,4 @@ LANGUAGE sql STABLE AS $$
         now(),
         NULL::TEXT;
 $$;
-COMMENT ON FUNCTION pgfr.vacuum_control_mode(OID) IS 'Stub: returns normal mode. Install control.sql for full vacuum control.';
+COMMENT ON FUNCTION pgfr.vacuum_control_mode(OID) IS 'Stub: returns normal mode. Install _control/install.sql for full vacuum control.';

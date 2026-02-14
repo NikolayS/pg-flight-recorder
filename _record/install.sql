@@ -4399,8 +4399,8 @@ $$;
 -- =============================================================================
 -- Vacuum Control Mode Stub
 -- =============================================================================
--- Minimal stub so _collect_table_stats works without control.sql.
--- Install control.sql to get the full implementation.
+-- Minimal stub so _collect_table_stats works without _control/install.sql.
+-- Install _control/install.sql to get the full implementation.
 
 CREATE OR REPLACE FUNCTION pgfr.vacuum_control_mode(
     p_relid OID
@@ -4418,7 +4418,7 @@ LANGUAGE sql STABLE AS $$
         now(),
         NULL::TEXT;
 $$;
-COMMENT ON FUNCTION pgfr.vacuum_control_mode(OID) IS 'Stub: returns normal mode. Install control.sql for full vacuum control.';
+COMMENT ON FUNCTION pgfr.vacuum_control_mode(OID) IS 'Stub: returns normal mode. Install _control/install.sql for full vacuum control.';
 
 -- Switches flight recorder to specified mode (normal/light/emergency) with different overhead and retention trade-offs
 -- Validates mode and configures sampling interval and collector enablement accordingly
@@ -5628,10 +5628,10 @@ BEGIN
     RAISE NOTICE '  - pgfr.recent_replication (replication lag, last 2 hours)';
     RAISE NOTICE '';
     RAISE NOTICE 'For autovacuum control functions (vacuum diagnostics, scale factor tuning, bloat analysis):';
-    RAISE NOTICE '  psql --single-transaction -f control.sql';
+    RAISE NOTICE '  psql --single-transaction -f _control/install.sql';
     RAISE NOTICE '';
     RAISE NOTICE 'For analysis & reporting functions (anomaly detection, capacity planning, etc.):';
-    RAISE NOTICE '  psql --single-transaction -f analyze.sql';
+    RAISE NOTICE '  psql --single-transaction -f _analyze/install.sql';
     RAISE NOTICE '';
 END;
 $$;

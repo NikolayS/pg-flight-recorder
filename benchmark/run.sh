@@ -262,7 +262,7 @@ EOF
 
     # Check prerequisites
     if ! check_pgfr; then
-        error "Install flight recorder first: psql --single-transaction -f install.sql"
+        error "Install flight recorder first: psql --single-transaction -f _record/install.sql"
         exit 1
     fi
 

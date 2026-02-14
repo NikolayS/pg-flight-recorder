@@ -97,7 +97,7 @@ Run tests with:
 
 ## Code Style
 
-- Follow existing patterns in `install.sql`
+- Follow existing patterns in `_record/install.sql`
 - Use `pgfr.` schema prefix for all objects
 - Include COMMENT ON statements for new functions and tables
 
@@ -107,7 +107,7 @@ pgfr_record uses **additive-only schema changes**:
 
 - Add new nullable columns (never remove or rename existing ones)
 - Historical data with NULL in new columns is correct ("not collected then")
-- Re-running `install.sql` is the upgrade path (uses `CREATE OR REPLACE` / `IF NOT EXISTS`)
+- Re-running `_record/install.sql` is the upgrade path (uses `CREATE OR REPLACE` / `IF NOT EXISTS`)
 
 **Why not JSONB + versioning?**
 

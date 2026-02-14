@@ -25,12 +25,12 @@ jobs:
         run: |
           # Check for basic SQL syntax errors using psql --single-transaction with dry-run
           # This doesn't execute but validates syntax
-          echo "Checking install.sql for syntax errors..."
+          echo "Checking _record/install.sql for syntax errors..."
           psql --version
 
           # Basic syntax validation - check for common issues
-          if grep -n "SYNTAX ERROR" install.sql; then
-            echo "Found syntax errors in install.sql"
+          if grep -n "SYNTAX ERROR" _record/install.sql; then
+            echo "Found syntax errors in _record/install.sql"
             exit 1
           fi
 
@@ -44,11 +44,11 @@ jobs:
               if (in_string) { print "Unterminated $$ string found"; exit 1; }
               if (in_comment) { print "Unterminated /* comment found"; exit 1; }
             }
-          ' install.sql; then
+          ' _record/install.sql; then
             exit 1
           fi
 
-          echo "✓ install.sql syntax validation passed"
+          echo "✓ _record/install.sql syntax validation passed"
 
       - name: Validate SQL syntax (uninstall.sql)
         run: |

@@ -1,17 +1,17 @@
 -- =============================================================================
 -- pgfr_record: Reporting & Analysis Functions
 -- =============================================================================
--- Optional add-on for install.sql. Provides analysis, forensics, and reporting.
--- Requires: install.sql must be run first (creates tables and core functions).
+-- Optional add-on for _record/install.sql. Provides analysis, forensics, and reporting.
+-- Requires: _record/install.sql must be run first (creates tables and core functions).
 --
--- Install: psql --single-transaction -f analyze.sql
+-- Install: psql --single-transaction -f _analyze/install.sql
 -- =============================================================================
 
 -- Verify core is installed
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'schema_version') THEN
-        RAISE EXCEPTION 'Flight Recorder core not installed. Run install.sql first.';
+        RAISE EXCEPTION 'Flight Recorder core not installed. Run _record/install.sql first.';
     END IF;
 END $$;
 

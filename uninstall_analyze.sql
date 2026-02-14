@@ -26,6 +26,6 @@ BEGIN
     RAISE NOTICE '  - All scheduled cron jobs';
     RAISE NOTICE '  - Configuration settings';
     RAISE NOTICE '';
-    RAISE NOTICE 'To reinstall reporting: psql --single-transaction -f analyze.sql';
+    RAISE NOTICE 'To reinstall reporting: psql --single-transaction -f _analyze/install.sql';
     RAISE NOTICE '';
 END $$;

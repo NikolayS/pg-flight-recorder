@@ -38,7 +38,7 @@ FR_INSTALLED=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -qtA
 
 if [ "$FR_INSTALLED" != "t" ]; then
     echo "ERROR: pgfr not installed. Installing..."
-    psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" --single-transaction -f "${SCRIPT_DIR}/../install.sql"
+    psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" --single-transaction -f "${SCRIPT_DIR}/../_record/install.sql"
 fi
 
 # Configure flight recorder for the test

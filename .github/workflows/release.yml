@@ -137,8 +137,8 @@ jobs:
       - name: Create release assets
         run: |
           mkdir -p release-assets
-          cp install.sql release-assets/
-          cp analyze.sql release-assets/
+          cp _record/install.sql release-assets/
+          cp _analyze/install.sql release-assets/analyze.sql
           cp uninstall.sql release-assets/
           cp uninstall_analyze.sql release-assets/
           cp README.md release-assets/
@@ -147,11 +147,11 @@ jobs:
 
           # Create tarball
           tar -czf release-assets/pgfr_record-${{ steps.version.outputs.version }}.tar.gz \
-            install.sql analyze.sql uninstall.sql uninstall_analyze.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
+            _record/install.sql _analyze/install.sql uninstall.sql uninstall_analyze.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
 
           # Create zip
           zip -q release-assets/pgfr_record-${{ steps.version.outputs.version }}.zip \
-            install.sql analyze.sql uninstall.sql uninstall_analyze.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
+            _record/install.sql _analyze/install.sql uninstall.sql uninstall_analyze.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -164,8 +164,8 @@ jobs:
           files: |
             release-assets/*.tar.gz
             release-assets/*.zip
-            install.sql
-            analyze.sql
+            _record/install.sql
+            _analyze/install.sql
             uninstall.sql
             uninstall_analyze.sql
         env:
@@ -201,4 +201,4 @@ jobs:
           echo "📦 Download: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.version }}"
           echo ""
           echo "Installation:"
-          echo "  curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.version }}/install.sql | psql"
+          echo "  curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.version }}/_record/install.sql | psql"

@@ -10,10 +10,10 @@ A PostgreSQL monitoring extension that continuously samples database state for i
 
 ```sql
 -- Install core (tables, collection, scheduling)
-\i install.sql
+\i _record/install.sql
 
 -- Install reporting & analysis (optional)
-\i analyze.sql
+\i _analyze/install.sql
 
 -- Enable collection
 SELECT pgfr.enable();
@@ -73,10 +73,10 @@ SELECT * FROM pgfr.get_current_profile();
 
 Functions are split across two files:
 
-- **`install.sql`** (core): Collection, control, ring buffer management, profiles, views
-- **`analyze.sql`** (optional): Analysis, anomaly detection, capacity planning, configuration analysis
+- **`_record/install.sql`** (core): Collection, control, ring buffer management, profiles, views
+- **`_analyze/install.sql`** (optional): Analysis, anomaly detection, capacity planning, configuration analysis
 
-### Analysis (analyze.sql)
+### Analysis (_analyze/install.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -91,7 +91,7 @@ Functions are split across two files:
 | `what_happened_at(timestamp)` | Point-in-time analysis |
 | `incident_timeline(start, end)` | Event timeline for incidents |
 
-### Anomaly Detection (analyze.sql)
+### Anomaly Detection (_analyze/install.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -100,7 +100,7 @@ Functions are split across two files:
 | `blast_radius(queryid)` | Analyze query impact |
 | `blast_radius_report(interval)` | Report on high-impact queries |
 
-### Capacity Planning (analyze.sql)
+### Capacity Planning (_analyze/install.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -111,7 +111,7 @@ Functions are split across two files:
 | `oid_consumption_rate(interval)` | OID usage rate |
 | `time_to_oid_exhaustion()` | Estimate OID exhaustion |
 
-### Configuration Analysis (analyze.sql)
+### Configuration Analysis (_analyze/install.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -121,7 +121,7 @@ Functions are split across two files:
 | `db_role_config_changes(start, end)` | Database/role config changes |
 | `db_role_config_summary()` | Current db/role overrides |
 
-### Control (install.sql)
+### Control (_record/install.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -132,7 +132,7 @@ Functions are split across two files:
 | `set_mode(mode)` | Set collection mode (normal/light/emergency/kill) |
 | `get_mode()` | Get current mode |
 
-### Ring Buffer Management (install.sql)
+### Ring Buffer Management (_record/install.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -141,7 +141,7 @@ Functions are split across two files:
 | `configure_ring_autovacuum(enabled)` | Toggle autovacuum on ring tables |
 | `validate_ring_configuration()` | Check ring buffer config |
 
-### Profile Management (install.sql)
+### Profile Management (_record/install.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -152,7 +152,7 @@ Functions are split across two files:
 | `get_optimization_profiles()` | Ring buffer optimization presets |
 | `apply_optimization_profile(name)` | Apply ring buffer optimization |
 
-### Export (install.sql)
+### Export (_record/install.sql)
 
 | Function | Purpose |
 |----------|---------|
@@ -350,10 +350,10 @@ SELECT * FROM pgfr_analyze.capacity_dashboard;
 
 ## Upgrading
 
-Re-running `install.sql` is safe — it uses `CREATE OR REPLACE` and `IF NOT EXISTS`, so it updates functions and views while preserving all data.
+Re-running `_record/install.sql` is safe — it uses `CREATE OR REPLACE` and `IF NOT EXISTS`, so it updates functions and views while preserving all data.
 
 ```bash
-psql --single-transaction -f install.sql
+psql --single-transaction -f _record/install.sql
 ```
 
 ## Uninstalling

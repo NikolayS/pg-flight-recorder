@@ -15,9 +15,9 @@ services:
       - "5415:5432"
     volumes:
       - postgres15_data:/var/lib/postgresql/data
-      - ./install.sql:/install.sql:ro
-      - ./control.sql:/control.sql:ro
-      - ./analyze.sql:/analyze.sql:ro
+      - ./_record/install.sql:/install.sql:ro
+      - ./_control/install.sql:/control.sql:ro
+      - ./_analyze/install.sql:/analyze.sql:ro
       - ./tests:/tests:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -41,9 +41,9 @@ services:
       - "5416:5432"
     volumes:
       - postgres16_data:/var/lib/postgresql/data
-      - ./install.sql:/install.sql:ro
-      - ./control.sql:/control.sql:ro
-      - ./analyze.sql:/analyze.sql:ro
+      - ./_record/install.sql:/install.sql:ro
+      - ./_control/install.sql:/control.sql:ro
+      - ./_analyze/install.sql:/analyze.sql:ro
       - ./tests:/tests:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -67,9 +67,9 @@ services:
       - "5417:5432"
     volumes:
       - postgres17_data:/var/lib/postgresql/data
-      - ./install.sql:/install.sql:ro
-      - ./control.sql:/control.sql:ro
-      - ./analyze.sql:/analyze.sql:ro
+      - ./_record/install.sql:/install.sql:ro
+      - ./_control/install.sql:/control.sql:ro
+      - ./_analyze/install.sql:/analyze.sql:ro
       - ./tests:/tests:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]

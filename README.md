@@ -10,17 +10,17 @@ Download from [GitHub Releases](https://github.com/dventimisupabase/pg-flight-re
 
 ```bash
 # Core (tables, collection, scheduling)
-psql --single-transaction -f install.sql
+psql --single-transaction -f _record/install.sql
 ```
 
 ```bash
 # Control (optional — vacuum diagnostics, scale factor tuning, bloat analysis)
-psql --single-transaction -f control.sql
+psql --single-transaction -f _control/install.sql
 ```
 
 ```bash
 # Reporting & analysis (optional)
-psql --single-transaction -f analyze.sql
+psql --single-transaction -f _analyze/install.sql
 ```
 
 ## Export
