@@ -39,10 +39,10 @@ SELECT pgfr_analyze.report('1 hour');
 
 Flight Recorder collects two types of data:
 
-| System | What it captures | Frequency | Retention |
-|--------|------------------|-----------|-----------|
-| **Sampled Activity** | Wait events, sessions, locks | 3 min | Ring buffer: 6-10h, Archives: 7d |
-| **Snapshots** | WAL, checkpoints, I/O, tables, indexes | 5 min | 30 days |
+| System               | What it captures                       | Frequency | Retention                        |
+|----------------------|----------------------------------------|-----------|----------------------------------|
+| **Sampled Activity** | Wait events, sessions, locks           | 3 min     | Ring buffer: 6-10h, Archives: 7d |
+| **Snapshots**        | WAL, checkpoints, I/O, tables, indexes | 5 min     | 30 days                          |
 
 Data flows through ring buffers (hot, UNLOGGED) to archives and aggregates (cold, durable).
 
@@ -50,13 +50,13 @@ Data flows through ring buffers (hot, UNLOGGED) to archives and aggregates (cold
 
 Profiles are pre-configured settings for different environments.
 
-| Profile | Sample Interval | Use Case |
-|---------|-----------------|----------|
-| `default` | 180s | General purpose monitoring |
-| `production_safe` | 300s | Production with maximum safety margins |
-| `development` | 180s | Staging and development |
-| `troubleshooting` | 60s | Active incident response |
-| `minimal_overhead` | 300s | Resource-constrained systems |
+| Profile            | Sample Interval | Use Case                               |
+|--------------------|-----------------|----------------------------------------|
+| `default`          | 180s            | General purpose monitoring             |
+| `production_safe`  | 300s            | Production with maximum safety margins |
+| `development`      | 180s            | Staging and development                |
+| `troubleshooting`  | 60s             | Active incident response               |
+| `minimal_overhead` | 300s            | Resource-constrained systems           |
 
 ```sql
 -- List profiles
@@ -82,120 +82,120 @@ Functions are split across three extensions:
 
 ### Analysis (pgfr_analyze)
 
-| Function | Purpose |
-|----------|---------|
-| `report(interval)` | Comprehensive diagnostic report |
-| `anomaly_report(start, end)` | Detailed anomaly analysis |
-| `wait_summary(start, end)` | Wait event breakdown |
-| `statement_compare(start, end)` | Query performance changes |
-| `table_hotspots(start, end)` | Tables with high activity |
-| `table_compare(start, end)` | Table stats changes |
-| `index_efficiency(start, end)` | Index usage analysis |
-| `unused_indexes(interval)` | Indexes with no scans |
-| `what_happened_at(timestamp)` | Point-in-time analysis |
-| `incident_timeline(start, end)` | Event timeline for incidents |
+| Function                        | Purpose                         |
+|---------------------------------|---------------------------------|
+| `report(interval)`              | Comprehensive diagnostic report |
+| `anomaly_report(start, end)`    | Detailed anomaly analysis       |
+| `wait_summary(start, end)`      | Wait event breakdown            |
+| `statement_compare(start, end)` | Query performance changes       |
+| `table_hotspots(start, end)`    | Tables with high activity       |
+| `table_compare(start, end)`     | Table stats changes             |
+| `index_efficiency(start, end)`  | Index usage analysis            |
+| `unused_indexes(interval)`      | Indexes with no scans           |
+| `what_happened_at(timestamp)`   | Point-in-time analysis          |
+| `incident_timeline(start, end)` | Event timeline for incidents    |
 
 ### Anomaly Detection (pgfr_analyze)
 
-| Function | Purpose |
-|----------|---------|
-| `detect_query_storms(interval)` | Find abnormal query patterns |
-| `detect_regressions(interval)` | Find performance regressions |
-| `blast_radius(queryid)` | Analyze query impact |
+| Function                        | Purpose                       |
+|---------------------------------|-------------------------------|
+| `detect_query_storms(interval)` | Find abnormal query patterns  |
+| `detect_regressions(interval)`  | Find performance regressions  |
+| `blast_radius(queryid)`         | Analyze query impact          |
 | `blast_radius_report(interval)` | Report on high-impact queries |
 
 ### Capacity Planning (pgfr_analyze)
 
-| Function | Purpose |
-|----------|---------|
-| `capacity_summary(interval)` | Resource utilization summary |
-| `quarterly_review()` | Comprehensive capacity review |
+| Function                     | Purpose                       |
+|------------------------------|-------------------------------|
+| `capacity_summary(interval)` | Resource utilization summary  |
+| `quarterly_review()`         | Comprehensive capacity review |
 
 ### Configuration Analysis (pgfr_analyze)
 
-| Function | Purpose |
-|----------|---------|
-| `config_changes(start, end)` | PostgreSQL config changes |
-| `config_at(timestamp)` | Config at a point in time |
-| `config_health_check()` | Configuration recommendations |
-| `db_role_config_changes(start, end)` | Database/role config changes |
-| `db_role_config_summary()` | Current db/role overrides |
+| Function                             | Purpose                       |
+|--------------------------------------|-------------------------------|
+| `config_changes(start, end)`         | PostgreSQL config changes     |
+| `config_at(timestamp)`               | Config at a point in time     |
+| `config_health_check()`              | Configuration recommendations |
+| `db_role_config_changes(start, end)` | Database/role config changes  |
+| `db_role_config_summary()`           | Current db/role overrides     |
 
 ### Vacuum Control (pgfr_control)
 
-| Function | Purpose |
-|----------|---------|
-| `vacuum_control_mode(oid)` | Determine operating mode (normal/catch_up/safety) |
-| `compute_recommended_scale_factor(oid)` | Recommend autovacuum scale factor |
-| `vacuum_diagnostic(oid)` | Classify vacuum failure mode |
-| `vacuum_control_report(start, end)` | Vacuum control recommendations |
-| `dead_tuple_growth_rate(oid, interval)` | Dead tuple accumulation rate |
-| `dead_tuple_trend(oid, interval)` | Dead tuple trend via linear regression |
-| `time_to_budget_exhaustion(oid, budget)` | Estimate autovacuum timing |
-| `estimate_table_bloat(oid)` | Estimate table bloat without pgstattuple |
-| `bloat_report(interval)` | Bloat report with trends |
-| `oid_consumption_rate(interval)` | OID usage rate |
-| `time_to_oid_exhaustion()` | Estimate OID exhaustion |
+| Function                                 | Purpose                                           |
+|------------------------------------------|---------------------------------------------------|
+| `vacuum_control_mode(oid)`               | Determine operating mode (normal/catch_up/safety) |
+| `compute_recommended_scale_factor(oid)`  | Recommend autovacuum scale factor                 |
+| `vacuum_diagnostic(oid)`                 | Classify vacuum failure mode                      |
+| `vacuum_control_report(start, end)`      | Vacuum control recommendations                    |
+| `dead_tuple_growth_rate(oid, interval)`  | Dead tuple accumulation rate                      |
+| `dead_tuple_trend(oid, interval)`        | Dead tuple trend via linear regression            |
+| `time_to_budget_exhaustion(oid, budget)` | Estimate autovacuum timing                        |
+| `estimate_table_bloat(oid)`              | Estimate table bloat without pgstattuple          |
+| `bloat_report(interval)`                 | Bloat report with trends                          |
+| `oid_consumption_rate(interval)`         | OID usage rate                                    |
+| `time_to_oid_exhaustion()`               | Estimate OID exhaustion                           |
 
 ### Control (pgfr)
 
-| Function | Purpose |
-|----------|---------|
-| `enable()` | Start collection jobs |
-| `disable()` | Stop collection jobs |
-| `health_check()` | System health status |
-| `preflight_check()` | Pre-installation validation |
-| `set_mode(mode)` | Set collection mode (normal/light/emergency/kill) |
-| `get_mode()` | Get current mode |
+| Function            | Purpose                                           |
+|---------------------|---------------------------------------------------|
+| `enable()`          | Start collection jobs                             |
+| `disable()`         | Stop collection jobs                              |
+| `health_check()`    | System health status                              |
+| `preflight_check()` | Pre-installation validation                       |
+| `set_mode(mode)`    | Set collection mode (normal/light/emergency/kill) |
+| `get_mode()`        | Get current mode                                  |
 
 ### Ring Buffer Management (pgfr)
 
-| Function | Purpose |
-|----------|---------|
-| `ring_buffer_health()` | Ring buffer status |
-| `rebuild_ring_buffers(slots)` | Resize ring buffers (clears data) |
-| `configure_ring_autovacuum(enabled)` | Toggle autovacuum on ring tables |
-| `validate_ring_configuration()` | Check ring buffer config |
+| Function                             | Purpose                           |
+|--------------------------------------|-----------------------------------|
+| `ring_buffer_health()`               | Ring buffer status                |
+| `rebuild_ring_buffers(slots)`        | Resize ring buffers (clears data) |
+| `configure_ring_autovacuum(enabled)` | Toggle autovacuum on ring tables  |
+| `validate_ring_configuration()`      | Check ring buffer config          |
 
 ### Profile Management (pgfr)
 
-| Function | Purpose |
-|----------|---------|
-| `list_profiles()` | Available profiles |
-| `explain_profile(name)` | Preview profile changes |
-| `apply_profile(name)` | Apply profile settings |
-| `get_current_profile()` | Current profile match |
-| `get_optimization_profiles()` | Ring buffer optimization presets |
-| `apply_optimization_profile(name)` | Apply ring buffer optimization |
+| Function                           | Purpose                          |
+|------------------------------------|----------------------------------|
+| `list_profiles()`                  | Available profiles               |
+| `explain_profile(name)`            | Preview profile changes          |
+| `apply_profile(name)`              | Apply profile settings           |
+| `get_current_profile()`            | Current profile match            |
+| `get_optimization_profiles()`      | Ring buffer optimization presets |
+| `apply_optimization_profile(name)` | Apply ring buffer optimization   |
 
 ### Export (pgfr)
 
-| Function | Purpose |
-|----------|---------|
-| `_populate_relation_names()` | Populate OID-to-name lookup table for export |
-| `_safe_relname(oid)` | Resolve OID to name using `relation_names` table |
-| `_get_setting_from_snapshots(name, default)` | Get setting from captured `config_snapshots` |
+| Function                                     | Purpose                                          |
+|----------------------------------------------|--------------------------------------------------|
+| `_populate_relation_names()`                 | Populate OID-to-name lookup table for export     |
+| `_safe_relname(oid)`                         | Resolve OID to name using `relation_names` table |
+| `_get_setting_from_snapshots(name, default)` | Get setting from captured `config_snapshots`     |
 
 ## Views
 
 ### Real-time (from ring buffers)
 
-| View | Purpose |
-|------|---------|
-| `recent_waits` | Wait events (last 6-10h) |
-| `recent_activity` | Active sessions |
-| `recent_locks` | Lock contention |
-| `recent_idle_in_transaction` | Idle-in-transaction sessions |
-| `recent_vacuum_progress` | Vacuum operations in progress |
-| `recent_replication` | Replication status |
+| View                         | Purpose                       |
+|------------------------------|-------------------------------|
+| `recent_waits`               | Wait events (last 6-10h)      |
+| `recent_activity`            | Active sessions               |
+| `recent_locks`               | Lock contention               |
+| `recent_idle_in_transaction` | Idle-in-transaction sessions  |
+| `recent_vacuum_progress`     | Vacuum operations in progress |
+| `recent_replication`         | Replication status            |
 
 ### Derived
 
-| View | Purpose |
-|------|---------|
-| `deltas` | Snapshot-over-snapshot changes |
-| `capacity_dashboard` | Resource utilization overview |
-| `archiver_status` | WAL archiving status |
+| View                 | Purpose                        |
+|----------------------|--------------------------------|
+| `deltas`             | Snapshot-over-snapshot changes |
+| `capacity_dashboard` | Resource utilization overview  |
+| `archiver_status`    | WAL archiving status           |
 
 ## Tables
 
@@ -243,10 +243,10 @@ Functions are split across three extensions:
 
 The following columns in `table_snapshots` and `index_snapshots` are **deprecated** and will be NULL in new data:
 
-| Table | Deprecated Columns | Use Instead |
-|-------|-------------------|-------------|
-| `table_snapshots` | `schemaname`, `relname` | `relid::regclass` or `relation_names` lookup |
-| `index_snapshots` | `schemaname`, `relname`, `indexrelname` | `relid::regclass`, `indexrelid::regclass` |
+| Table             | Deprecated Columns                      | Use Instead                                  |
+|-------------------|-----------------------------------------|----------------------------------------------|
+| `table_snapshots` | `schemaname`, `relname`                 | `relid::regclass` or `relation_names` lookup |
+| `index_snapshots` | `schemaname`, `relname`, `indexrelname` | `relid::regclass`, `indexrelid::regclass`    |
 
 This change eliminates joins to `pg_catalog` during collection, avoiding even `AccessShareLock`. Relation names are now derived on-the-fly when queried. Existing data with names is preserved.
 
@@ -256,23 +256,23 @@ Flight Recorder includes multiple safety mechanisms to prevent impacting product
 
 ### Collection Modes
 
-| Mode | Behavior |
-|------|----------|
-| `normal` | Full collection |
-| `light` | Reduced collection (skips locks, progress) |
-| `emergency` | Minimal collection |
-| `kill` | All collection disabled |
+| Mode        | Behavior                                   |
+|-------------|--------------------------------------------|
+| `normal`    | Full collection                            |
+| `light`     | Reduced collection (skips locks, progress) |
+| `emergency` | Minimal collection                         |
+| `kill`      | All collection disabled                    |
 
 ### Automatic Protections
 
-| Protection | Description |
-|------------|-------------|
-| **Circuit Breaker** | Auto-disables if collections exceed 1s |
-| **Load Shedding** | Skips collection when >70% connections active |
-| **Load Throttle** | Skips during high I/O pressure |
-| **Adaptive Sampling** | Skips when system is idle |
-| **DDL Lock Check** | Avoids collection during schema changes |
-| **Replica Lag Check** | Pauses on replicas with high lag |
+| Protection            | Description                                   |
+|-----------------------|-----------------------------------------------|
+| **Circuit Breaker**   | Auto-disables if collections exceed 1s        |
+| **Load Shedding**     | Skips collection when >70% connections active |
+| **Load Throttle**     | Skips during high I/O pressure                |
+| **Adaptive Sampling** | Skips when system is idle                     |
+| **DDL Lock Check**    | Avoids collection during schema changes       |
+| **Replica Lag Check** | Pauses on replicas with high lag              |
 
 ### Manual Controls
 
@@ -291,14 +291,14 @@ SELECT pgfr.get_mode();
 
 Settings are stored in `pgfr.config`. Profiles set groups of related settings.
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `sample_interval_seconds` | 180 | Seconds between samples |
-| `ring_buffer_slots` | 120 | Number of ring buffer slots (72-2880) |
-| `retention_snapshots_days` | 30 | Snapshot retention |
-| `retention_samples_days` | 7 | Archive/aggregate retention |
-| `circuit_breaker_threshold_ms` | 1000 | Max collection duration |
-| `load_shedding_active_pct` | 70 | Connection % threshold |
+| Setting                        | Default | Description                           |
+|--------------------------------|---------|---------------------------------------|
+| `sample_interval_seconds`      | 180     | Seconds between samples               |
+| `ring_buffer_slots`            | 120     | Number of ring buffer slots (72-2880) |
+| `retention_snapshots_days`     | 30      | Snapshot retention                    |
+| `retention_samples_days`       | 7       | Archive/aggregate retention           |
+| `circuit_breaker_threshold_ms` | 1000    | Max collection duration               |
+| `load_shedding_active_pct`     | 70      | Connection % threshold                |
 
 ```sql
 -- View all settings
