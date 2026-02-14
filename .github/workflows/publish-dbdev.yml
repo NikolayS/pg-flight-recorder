@@ -44,7 +44,7 @@ jobs:
         run: |
           VER="${{ steps.version.outputs.version }}"
           cp _record/install.sql "_record/pgfr_record--${VER}.sql"
-          cp _record/extension.control _record/pgfr_record.control
+          mv _record/extension.control _record/pgfr_record.control
           sed -i "s/^default_version = .*/default_version = '${VER}'/" _record/pgfr_record.control
 
           # Safety: verify dbdev size limit
@@ -59,7 +59,7 @@ jobs:
         run: |
           VER="${{ steps.version.outputs.version }}"
           cp _analyze/install.sql "_analyze/pgfr_analyze--${VER}.sql"
-          cp _analyze/extension.control _analyze/pgfr_analyze.control
+          mv _analyze/extension.control _analyze/pgfr_analyze.control
           sed -i "s/^default_version = .*/default_version = '${VER}'/" _analyze/pgfr_analyze.control
 
           # Safety: verify dbdev size limit
@@ -74,7 +74,7 @@ jobs:
         run: |
           VER="${{ steps.version.outputs.version }}"
           cp _control/install.sql "_control/pgfr_control--${VER}.sql"
-          cp _control/extension.control _control/pgfr_control.control
+          mv _control/extension.control _control/pgfr_control.control
           sed -i "s/^default_version = .*/default_version = '${VER}'/" _control/pgfr_control.control
 
           # Safety: verify dbdev size limit
