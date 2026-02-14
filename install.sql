@@ -28,6 +28,34 @@ EXCEPTION
         NULL;
 END $$;
 
+-- =============================================================================
+-- TABLE OF CONTENTS (Line numbers approximate - search for section headers)
+-- =============================================================================
+-- SCHEMA & TABLES
+--   - snapshots table .......................... CREATE TABLE IF NOT EXISTS flight_recorder.snapshots
+--   - replication_snapshots .................... CREATE TABLE IF NOT EXISTS flight_recorder.replication_snapshots
+--   - vacuum_progress_snapshots ................ CREATE TABLE IF NOT EXISTS flight_recorder.vacuum_progress_snapshots
+--   - statement_snapshots ...................... CREATE TABLE IF NOT EXISTS flight_recorder.statement_snapshots
+--   - ring buffer tables ....................... samples_ring, wait_samples_ring, etc.
+--   - table_snapshots .......................... CREATE TABLE IF NOT EXISTS flight_recorder.table_snapshots
+--   - vacuum_control_state ..................... CREATE TABLE IF NOT EXISTS flight_recorder.vacuum_control_state (v2.8)
+--
+-- CONFIGURATION
+--   - config table ............................. CREATE TABLE IF NOT EXISTS flight_recorder.config
+--
+-- VACUUM CONTROL MODE STUB
+--   - vacuum_control_mode ...................... flight_recorder.vacuum_control_mode (stub)
+--
+-- COLLECTION FUNCTIONS
+--   - _collect_table_stats ..................... flight_recorder._collect_table_stats
+--   - snapshot ................................. flight_recorder.snapshot
+--
+-- ANALYSIS FUNCTIONS
+--   - compare .................................. flight_recorder.compare
+--   - anomaly_report ........................... flight_recorder.anomaly_report
+--   - report ................................... flight_recorder.report
+-- =============================================================================
+
 CREATE SCHEMA IF NOT EXISTS flight_recorder;
 
 -- Stores periodic snapshots of PostgreSQL system performance metrics
@@ -425,6 +453,9 @@ CREATE TABLE IF NOT EXISTS flight_recorder.table_snapshots (
     last_analyze        TIMESTAMPTZ,
     last_autoanalyze    TIMESTAMPTZ,
     relfrozenxid_age    INTEGER,
+    reltuples           BIGINT,
+    vacuum_running      BOOLEAN,
+    last_vacuum_duration_ms BIGINT,
     -- Size metrics for bloat detection (added in 2.23)
     table_size_bytes    BIGINT,          -- pg_relation_size: heap only
     total_size_bytes    BIGINT,          -- pg_total_relation_size: heap + indexes + TOAST
@@ -434,6 +465,21 @@ CREATE TABLE IF NOT EXISTS flight_recorder.table_snapshots (
 CREATE INDEX IF NOT EXISTS table_snapshots_relid_idx
     ON flight_recorder.table_snapshots(relid);
 COMMENT ON TABLE flight_recorder.table_snapshots IS 'Table-level statistics snapshots for hotspot tracking and bloat detection. Includes size metrics for extension-free bloat estimation.';
+
+
+-- Tracks vacuum operating mode and recommendation state per table
+-- Used by vacuum control system for closed-loop tuning recommendations
+-- Note: Only stores OID per project policy; join to pg_class for names
+CREATE TABLE IF NOT EXISTS flight_recorder.vacuum_control_state (
+    relid                           OID PRIMARY KEY,
+    operating_mode                  TEXT NOT NULL DEFAULT 'normal',
+    mode_entered_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_recommendation_at          TIMESTAMPTZ,
+    last_recommended_scale_factor   NUMERIC,
+    consecutive_budget_exceeded     INTEGER NOT NULL DEFAULT 0,
+    updated_at                      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE flight_recorder.vacuum_control_state IS 'Tracks vacuum operating mode (normal/catch_up/safety) and recommendation state per table for closed-loop vacuum control';
 
 
 -- Captures index-level statistics from pg_stat_user_indexes
@@ -878,7 +924,17 @@ INSERT INTO flight_recorder.config (key, value) VALUES
     ('collect_connection_metrics', 'true'),
     ('table_stats_mode', 'top_n'),
     ('table_stats_activity_threshold', '0'),
+    ('index_stats_enabled', 'true'),
+    ('config_snapshots_enabled', 'true'),
+    ('db_role_config_snapshots_enabled', 'true'),
     ('ring_buffer_slots', '120'),
+    ('vacuum_control_enabled', 'true'),
+    ('vacuum_control_dead_tuple_budget_pct', '5'),
+    ('vacuum_control_min_scale_factor', '0.001'),
+    ('vacuum_control_max_scale_factor', '0.2'),
+    ('vacuum_control_hysteresis_pct', '25'),
+    ('vacuum_control_rate_limit_minutes', '60'),
+    ('vacuum_control_catchup_budget_hours', '4'),
     ('storm_threshold_multiplier', '3.0'),
     ('storm_lookback_interval', '1 hour'),
     ('storm_baseline_days', '7'),
@@ -2525,7 +2581,7 @@ BEGIN
             n_live_tup, n_dead_tup, n_mod_since_analyze,
             vacuum_count, autovacuum_count, analyze_count, autoanalyze_count,
             last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,
-            relfrozenxid_age,
+            relfrozenxid_age, reltuples, vacuum_running,
             table_size_bytes, total_size_bytes, indexes_size_bytes
         )
         SELECT
@@ -2553,6 +2609,8 @@ BEGIN
             st.last_analyze,
             st.last_autoanalyze,
             age(c.relfrozenxid)::integer AS relfrozenxid_age,
+            c.reltuples::bigint AS reltuples,
+            EXISTS(SELECT 1 FROM pg_stat_progress_vacuum pv WHERE pv.relid = st.relid) AS vacuum_running,
             pg_relation_size(st.relid),
             pg_total_relation_size(st.relid),
             pg_indexes_size(st.relid)
@@ -2569,7 +2627,7 @@ BEGIN
             n_live_tup, n_dead_tup, n_mod_since_analyze,
             vacuum_count, autovacuum_count, analyze_count, autoanalyze_count,
             last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,
-            relfrozenxid_age,
+            relfrozenxid_age, reltuples, vacuum_running,
             table_size_bytes, total_size_bytes, indexes_size_bytes
         )
         SELECT
@@ -2597,6 +2655,8 @@ BEGIN
             st.last_analyze,
             st.last_autoanalyze,
             age(c.relfrozenxid)::integer AS relfrozenxid_age,
+            c.reltuples::bigint AS reltuples,
+            EXISTS(SELECT 1 FROM pg_stat_progress_vacuum pv WHERE pv.relid = st.relid) AS vacuum_running,
             pg_relation_size(st.relid),
             pg_total_relation_size(st.relid),
             pg_indexes_size(st.relid)
@@ -2615,7 +2675,7 @@ BEGIN
             n_live_tup, n_dead_tup, n_mod_since_analyze,
             vacuum_count, autovacuum_count, analyze_count, autoanalyze_count,
             last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,
-            relfrozenxid_age,
+            relfrozenxid_age, reltuples, vacuum_running,
             table_size_bytes, total_size_bytes, indexes_size_bytes
         )
         SELECT
@@ -2643,6 +2703,8 @@ BEGIN
             st.last_analyze,
             st.last_autoanalyze,
             age(c.relfrozenxid)::integer AS relfrozenxid_age,
+            c.reltuples::bigint AS reltuples,
+            EXISTS(SELECT 1 FROM pg_stat_progress_vacuum pv WHERE pv.relid = st.relid) AS vacuum_running,
             pg_relation_size(st.relid),
             pg_total_relation_size(st.relid),
             pg_indexes_size(st.relid)
@@ -2652,6 +2714,26 @@ BEGIN
                   COALESCE(st.n_tup_ins, 0) + COALESCE(st.n_tup_upd, 0) + COALESCE(st.n_tup_del, 0)) DESC
         LIMIT v_top_n;
     END IF;
+
+    -- Update vacuum_control_state for monitored tables using a lateral join
+    -- to properly handle the set-returning function
+    INSERT INTO flight_recorder.vacuum_control_state (relid, operating_mode, mode_entered_at, updated_at)
+    SELECT
+        ts.relid,
+        COALESCE(vcm.mode, 'normal'),
+        now(),
+        now()
+    FROM flight_recorder.table_snapshots ts
+    LEFT JOIN LATERAL flight_recorder.vacuum_control_mode(ts.relid) vcm ON true
+    WHERE ts.snapshot_id = p_snapshot_id
+    ON CONFLICT (relid) DO UPDATE SET
+        operating_mode = EXCLUDED.operating_mode,
+        mode_entered_at = CASE
+            WHEN flight_recorder.vacuum_control_state.operating_mode != EXCLUDED.operating_mode
+            THEN now()
+            ELSE flight_recorder.vacuum_control_state.mode_entered_at
+        END,
+        updated_at = now();
 END;
 $$;
 
@@ -4314,6 +4396,29 @@ LANGUAGE sql STABLE AS $$
     CROSS JOIN wait_array wa
 $$;
 
+-- =============================================================================
+-- Vacuum Control Mode Stub
+-- =============================================================================
+-- Minimal stub so _collect_table_stats works without autovacuum_control.sql.
+-- Install autovacuum_control.sql to get the full implementation.
+
+CREATE OR REPLACE FUNCTION flight_recorder.vacuum_control_mode(
+    p_relid OID
+)
+RETURNS TABLE(
+    mode        TEXT,
+    reason      TEXT,
+    entered_at  TIMESTAMPTZ,
+    evidence    TEXT
+)
+LANGUAGE sql STABLE AS $$
+    SELECT
+        'normal'::TEXT,
+        'Autovacuum control not installed'::TEXT,
+        now(),
+        NULL::TEXT;
+$$;
+COMMENT ON FUNCTION flight_recorder.vacuum_control_mode(OID) IS 'Stub: returns normal mode. Install autovacuum_control.sql for full vacuum control.';
 
 -- Switches flight recorder to specified mode (normal/light/emergency) with different overhead and retention trade-offs
 -- Validates mode and configures sampling interval and collector enablement accordingly
@@ -5521,6 +5626,9 @@ BEGIN
     RAISE NOTICE '  - flight_recorder.recent_activity   (active sessions, last 2 hours from ring buffer)';
     RAISE NOTICE '  - flight_recorder.recent_locks      (lock contention, last 2 hours from ring buffer)';
     RAISE NOTICE '  - flight_recorder.recent_replication (replication lag, last 2 hours)';
+    RAISE NOTICE '';
+    RAISE NOTICE 'For autovacuum control functions (vacuum diagnostics, scale factor tuning, bloat analysis):';
+    RAISE NOTICE '  psql --single-transaction -f autovacuum_control.sql';
     RAISE NOTICE '';
     RAISE NOTICE 'For analysis & reporting functions (anomaly detection, capacity planning, etc.):';
     RAISE NOTICE '  psql --single-transaction -f reporting.sql';
