@@ -68,6 +68,20 @@ jobs:
             exit 1
           fi
 
+      - name: Prepare autovacuum control extension files
+        run: |
+          VER="${{ steps.version.outputs.version }}"
+          cp autovacuum_control.sql "autovacuum_control/pg_flight_recorder_autovacuum_control--${VER}.sql"
+          sed -i "s/^default_version = .*/default_version = '${VER}'/" autovacuum_control/pg_flight_recorder_autovacuum_control.control
+
+          # Safety: verify dbdev size limit
+          SIZE=$(wc -c < "autovacuum_control/pg_flight_recorder_autovacuum_control--${VER}.sql")
+          echo "Autovacuum control package size: ${SIZE} chars"
+          if [ "$SIZE" -gt 250000 ]; then
+            echo "ERROR: autovacuum_control.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
+            exit 1
+          fi
+
       - name: Install dbdev CLI
         run: |
           DEB_URL=$(curl -fsSL https://api.github.com/repos/supabase/dbdev/releases/latest \
@@ -87,3 +101,6 @@ jobs:
 
       - name: Publish reporting package
         run: cd reporting && dbdev publish
+
+      - name: Publish autovacuum control package
+        run: cd autovacuum_control && dbdev publish
