@@ -18,7 +18,9 @@ services:
       - ./_record/install.sql:/install.sql:ro
       - ./_control/install.sql:/control.sql:ro
       - ./_analyze/install.sql:/analyze.sql:ro
-      - ./tests:/tests:ro
+      - ./_record/tests:/tests/record:ro
+      - ./_analyze/tests:/tests/analyze:ro
+      - ./_control/tests:/tests/control:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -44,7 +46,9 @@ services:
       - ./_record/install.sql:/install.sql:ro
       - ./_control/install.sql:/control.sql:ro
       - ./_analyze/install.sql:/analyze.sql:ro
-      - ./tests:/tests:ro
+      - ./_record/tests:/tests/record:ro
+      - ./_analyze/tests:/tests/analyze:ro
+      - ./_control/tests:/tests/control:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -70,7 +74,9 @@ services:
       - ./_record/install.sql:/install.sql:ro
       - ./_control/install.sql:/control.sql:ro
       - ./_analyze/install.sql:/analyze.sql:ro
-      - ./tests:/tests:ro
+      - ./_record/tests:/tests/record:ro
+      - ./_analyze/tests:/tests/analyze:ro
+      - ./_control/tests:/tests/control:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s

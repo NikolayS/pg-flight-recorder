@@ -69,7 +69,7 @@ run_single_version() {
     $DOCKER_COMPOSE --profile $profile exec -T $service psql -U postgres -d postgres -c "SELECT pgfr.disable();" > /dev/null
 
     echo "Running tests with per-file timing..."
-    $DOCKER_COMPOSE --profile $profile exec -T $service sh -c 'pg_prove --timer -U postgres -d postgres /tests/*.sql'
+    $DOCKER_COMPOSE --profile $profile exec -T $service sh -c 'pg_prove --timer -U postgres -d postgres /tests/record/*.sql /tests/control/*.sql /tests/analyze/*.sql'
 
     echo "PostgreSQL $pg_version: PASS"
 
@@ -132,7 +132,7 @@ run_all_parallel() {
             echo "=========================================" > "$RESULTS_DIR/$version.log"
             echo "PostgreSQL $version" >> "$RESULTS_DIR/$version.log"
             echo "=========================================" >> "$RESULTS_DIR/$version.log"
-            if $DOCKER_COMPOSE --profile all exec -T $service sh -c 'pg_prove --timer -U postgres -d postgres /tests/*.sql' >> "$RESULTS_DIR/$version.log" 2>&1; then
+            if $DOCKER_COMPOSE --profile all exec -T $service sh -c 'pg_prove --timer -U postgres -d postgres /tests/record/*.sql /tests/control/*.sql /tests/analyze/*.sql' >> "$RESULTS_DIR/$version.log" 2>&1; then
                 echo "PASS" > "$RESULTS_DIR/$version.status"
             else
                 echo "FAIL" > "$RESULTS_DIR/$version.status"
