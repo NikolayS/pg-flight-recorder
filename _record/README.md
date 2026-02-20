@@ -65,31 +65,31 @@ SELECT * FROM pgfr.deltas;
 
 ## Key views
 
-| View                         | Description                      |
-|------------------------------|----------------------------------|
-| `pgfr.deltas`                | Snapshot-over-snapshot changes   |
-| `pgfr.recent_waits`          | Wait events from ring buffer     |
-| `pgfr.recent_activity`       | Active sessions from ring buffer |
-| `pgfr.recent_locks`          | Lock contention from ring buffer |
-| `pgfr.recent_idle_in_transaction` | Idle-in-transaction sessions |
-| `pgfr.recent_replication`    | Replication status               |
-| `pgfr.recent_vacuum_progress`| Vacuum operations in progress    |
-| `pgfr.archiver_status`       | WAL archiving status             |
+| View                              | Description                      |
+|-----------------------------------|----------------------------------|
+| `pgfr.deltas`                     | Snapshot-over-snapshot changes   |
+| `pgfr.recent_waits`               | Wait events from ring buffer     |
+| `pgfr.recent_activity`            | Active sessions from ring buffer |
+| `pgfr.recent_locks`               | Lock contention from ring buffer |
+| `pgfr.recent_idle_in_transaction` | Idle-in-transaction sessions     |
+| `pgfr.recent_replication`         | Replication status               |
+| `pgfr.recent_vacuum_progress`     | Vacuum operations in progress    |
+| `pgfr.archiver_status`            | WAL archiving status             |
 
 ## Key functions
 
-| Function                   | Description                                  |
-|----------------------------|----------------------------------------------|
-| `pgfr.enable()`            | Start collection jobs                        |
-| `pgfr.disable()`           | Stop collection jobs                         |
-| `pgfr.health_check()`      | System health status                         |
-| `pgfr.compare(id1, id2)`   | Compare two snapshots                        |
-| `pgfr.wait_summary(start, end)` | Wait event breakdown                    |
-| `pgfr.set_mode(mode)`      | Set collection mode                          |
-| `pgfr.apply_profile(name)` | Apply a configuration profile                |
-| `pgfr.list_profiles()`     | List available profiles                      |
-| `pgfr.ring_buffer_health()`| Ring buffer status                           |
-| `pgfr.cleanup()`           | Manual retention cleanup                     |
+| Function                        | Description                   |
+|---------------------------------|-------------------------------|
+| `pgfr.enable()`                 | Start collection jobs         |
+| `pgfr.disable()`                | Stop collection jobs          |
+| `pgfr.health_check()`           | System health status          |
+| `pgfr.compare(id1, id2)`        | Compare two snapshots         |
+| `pgfr.wait_summary(start, end)` | Wait event breakdown          |
+| `pgfr.set_mode(mode)`           | Set collection mode           |
+| `pgfr.apply_profile(name)`      | Apply a configuration profile |
+| `pgfr.list_profiles()`          | List available profiles       |
+| `pgfr.ring_buffer_health()`     | Ring buffer status            |
+| `pgfr.cleanup()`                | Manual retention cleanup      |
 
 ## Profiles
 

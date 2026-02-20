@@ -64,23 +64,23 @@ SELECT * FROM pgfr_analyze.capacity_summary('7 days');
 
 ### Reporting
 
-| Function                           | Description                     |
-|------------------------------------|---------------------------------|
-| `report(interval)`                 | Comprehensive diagnostic report |
-| `report(start, end)`              | Report for a specific time range |
-| `summary_report(start, end)`       | Summary statistics              |
-| `performance_report(start, end)`   | Performance-focused report      |
-| `anomaly_report(start, end)`       | Detailed anomaly analysis       |
-| `check_alerts()`                   | Check active alert conditions   |
+| Function                         | Description                      |
+|----------------------------------|----------------------------------|
+| `report(interval)`               | Comprehensive diagnostic report  |
+| `report(start, end)`             | Report for a specific time range |
+| `summary_report(start, end)`     | Summary statistics               |
+| `performance_report(start, end)` | Performance-focused report       |
+| `anomaly_report(start, end)`     | Detailed anomaly analysis        |
+| `check_alerts()`                 | Check active alert conditions    |
 
 ### Forensics
 
-| Function                           | Description                          |
-|------------------------------------|--------------------------------------|
-| `what_happened_at(timestamp)`      | Point-in-time analysis               |
-| `incident_timeline(start, end)`    | Reconstruct event timeline           |
-| `blast_radius(queryid)`            | Measure impact of a specific query   |
-| `blast_radius_report(interval)`    | Report on high-impact queries        |
+| Function                        | Description                        |
+|---------------------------------|------------------------------------|
+| `what_happened_at(timestamp)`   | Point-in-time analysis             |
+| `incident_timeline(start, end)` | Reconstruct event timeline         |
+| `blast_radius(queryid)`         | Measure impact of a specific query |
+| `blast_radius_report(interval)` | Report on high-impact queries      |
 
 ### Performance analysis
 
@@ -104,13 +104,13 @@ SELECT * FROM pgfr_analyze.capacity_summary('7 days');
 
 ### Configuration tracking
 
-| Function                           | Description                          |
-|------------------------------------|--------------------------------------|
-| `config_changes(start, end)`       | PostgreSQL config changes            |
-| `config_at(timestamp)`             | Config at a point in time            |
-| `config_health_check()`            | Configuration recommendations        |
-| `db_role_config_changes(start, end)` | Database/role config changes       |
-| `db_role_config_summary()`         | Current db/role overrides            |
+| Function                             | Description                   |
+|--------------------------------------|-------------------------------|
+| `config_changes(start, end)`         | PostgreSQL config changes     |
+| `config_at(timestamp)`               | Config at a point in time     |
+| `config_health_check()`              | Configuration recommendations |
+| `db_role_config_changes(start, end)` | Database/role config changes  |
+| `db_role_config_summary()`           | Current db/role overrides     |
 
 ### Pre-flight
 

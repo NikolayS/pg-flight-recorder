@@ -58,20 +58,20 @@ SELECT pgfr_control.time_to_oid_exhaustion();
 
 ### Vacuum control
 
-| Function                                | Description                                           |
-|-----------------------------------------|-------------------------------------------------------|
-| `vacuum_control_mode(oid)`              | Determine operating mode (normal/catch_up/safety)     |
-| `compute_recommended_scale_factor(oid)` | Recommend autovacuum scale factor                     |
-| `vacuum_diagnostic(oid)`                | Classify vacuum health with actionable guidance       |
-| `vacuum_control_report(start, end)`     | Vacuum control recommendations for all tables         |
+| Function                                | Description                                       |
+|-----------------------------------------|---------------------------------------------------|
+| `vacuum_control_mode(oid)`              | Determine operating mode (normal/catch_up/safety) |
+| `compute_recommended_scale_factor(oid)` | Recommend autovacuum scale factor                 |
+| `vacuum_diagnostic(oid)`                | Classify vacuum health with actionable guidance   |
+| `vacuum_control_report(start, end)`     | Vacuum control recommendations for all tables     |
 
 ### Dead tuple analysis
 
-| Function                                 | Description                                          |
-|------------------------------------------|------------------------------------------------------|
-| `dead_tuple_growth_rate(oid, interval)`  | Dead tuple accumulation rate (tuples/second)         |
-| `dead_tuple_trend(oid, interval)`        | Dead tuple trend via linear regression               |
-| `time_to_budget_exhaustion(oid, budget)` | Estimate time until autovacuum threshold is reached  |
+| Function                                 | Description                                         |
+|------------------------------------------|-----------------------------------------------------|
+| `dead_tuple_growth_rate(oid, interval)`  | Dead tuple accumulation rate (tuples/second)        |
+| `dead_tuple_trend(oid, interval)`        | Dead tuple trend via linear regression              |
+| `time_to_budget_exhaustion(oid, budget)` | Estimate time until autovacuum threshold is reached |
 
 ### Bloat estimation
 

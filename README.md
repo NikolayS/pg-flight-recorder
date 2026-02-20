@@ -23,10 +23,10 @@ Data flows through UNLOGGED ring buffers (hot, low-overhead) into durable archiv
 
 Three extensions, each published as a separate [dbdev](https://database.dev) package:
 
-| Extension | Schema | Purpose | README |
-|-----------|--------|---------|--------|
-| [pgfr_record](https://database.dev/dventimi/pgfr_record) | `pgfr` | Core: tables, collection, scheduling, ring buffers | [_record/README.md](_record/README.md) |
-| [pgfr_analyze](https://database.dev/dventimi/pgfr_analyze) | `pgfr_analyze` | Optional: reporting, anomaly detection, time travel | [_analyze/README.md](_analyze/README.md) |
+| Extension                                                  | Schema         | Purpose                                                  | README                                   |
+|------------------------------------------------------------|----------------|----------------------------------------------------------|------------------------------------------|
+| [pgfr_record](https://database.dev/dventimi/pgfr_record)   | `pgfr`         | Core: tables, collection, scheduling, ring buffers       | [_record/README.md](_record/README.md)   |
+| [pgfr_analyze](https://database.dev/dventimi/pgfr_analyze) | `pgfr_analyze` | Optional: reporting, anomaly detection, time travel      | [_analyze/README.md](_analyze/README.md) |
 | [pgfr_control](https://database.dev/dventimi/pgfr_control) | `pgfr_control` | Optional: vacuum diagnostics, scale factor tuning, bloat | [_control/README.md](_control/README.md) |
 
 ## Requirements
