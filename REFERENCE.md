@@ -520,7 +520,7 @@ Aggregates summarize ring buffer data into 5-minute windows.
 | `success` | bool | Whether collection succeeded |
 | `error_message` | text | Error message if failed |
 | `skipped` | bool | Whether collection was skipped |
-| `skipped_reason` | text | Reason for skip (load shedding, idle, etc.) |
+| `skipped_reason` | text | Reason for skip (load shedding, circuit breaker, etc.) |
 | `sections_total` | int | Total sections attempted |
 | `sections_succeeded` | int | Sections that succeeded |
 
@@ -752,6 +752,8 @@ SELECT * FROM pgfr.get_mode();     -- Check current mode
 |------------|---------|----------|
 | **Circuit Breaker** | Collection exceeds `circuit_breaker_threshold_ms` (default 1s) | Skips next collection cycle |
 | **Load Shedding** | Active connections exceed `load_shedding_active_pct` of `max_connections` | Skips entire collection cycle |
+| **Section Timeouts** | Per-query timeout (default 250ms) | Prevents catalog lock hangs within collection |
+| **Job Timeouts** | Outer `statement_timeout` on all pg_cron jobs (5-60s) | Kills hung collection as last-resort safety net |
 
 ### Manual mode control
 
