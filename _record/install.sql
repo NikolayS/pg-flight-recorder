@@ -3571,13 +3571,13 @@ BEGIN
         WHEN 'normal' THEN
             v_enable_locks := TRUE;
             v_enable_progress := TRUE;
-            v_sample_interval_seconds := 120;
-            v_description := 'Normal mode: 120s sampling, all collectors enabled (4h retention)';
+            v_sample_interval_seconds := 60;
+            v_description := 'Normal mode: 60s sampling, all collectors enabled (2h retention)';
         WHEN 'light' THEN
             v_enable_locks := TRUE;
             v_enable_progress := FALSE;
-            v_sample_interval_seconds := 120;
-            v_description := 'Light mode: 120s sampling, progress disabled (4h retention, minimal overhead)';
+            v_sample_interval_seconds := 60;
+            v_description := 'Light mode: 60s sampling, progress disabled (2h retention, minimal overhead)';
         WHEN 'emergency' THEN
             v_enable_locks := FALSE;
             v_enable_progress := FALSE;
@@ -3656,8 +3656,8 @@ LANGUAGE sql STABLE AS $$
         ('default',
          'Balanced configuration for most users',
          'General purpose monitoring - staging, development, or production',
-         '180s (6h retention)',
-         'Minimal (~0.013% CPU)'),
+         '60s (2h retention)',
+         'Low (~0.04% CPU)'),
         ('production_safe',
          'Ultra-conservative for production environments',
          'Production always-on monitoring with maximum safety',
@@ -3666,8 +3666,8 @@ LANGUAGE sql STABLE AS $$
         ('development',
          'Balanced for staging and development',
          'Active development, testing, or staging environments',
-         '180s (6h retention)',
-         'Minimal (~0.013% CPU)'),
+         '60s (2h retention)',
+         'Low (~0.04% CPU)'),
         ('troubleshooting',
          'Aggressive collection during incidents',
          'Active incident response - detailed data collection',
