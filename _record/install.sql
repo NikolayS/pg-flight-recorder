@@ -725,7 +725,7 @@ LANGUAGE sql STABLE AS $$
         ('default', 'work_mem_kb', '2048', 'work_mem 2MB for collection queries'),
         ('default', 'skip_locks_threshold', '50', 'Skip lock collection if > 50 blocked'),
         ('default', 'skip_activity_conn_threshold', '100', 'Skip activity if > 100 active'),
-        ('default', 'statements_interval_minutes', '5', 'Collect statements every 5 minutes'),
+        ('default', 'statements_interval_minutes', '1', 'Collect statements every minute'),
         ('default', 'statements_min_calls', '1', 'Include queries with >= 1 call'),
         ('default', 'statements_top_n', '50', 'Collect top 50 queries'),
         ('default', 'table_stats_top_n', '50', 'Track top 50 tables'),
@@ -776,7 +776,7 @@ LANGUAGE sql STABLE AS $$
         ('development', 'work_mem_kb', '2048', 'Standard work_mem'),
         ('development', 'skip_locks_threshold', '50', 'Standard lock skip threshold'),
         ('development', 'skip_activity_conn_threshold', '100', 'Standard activity skip threshold'),
-        ('development', 'statements_interval_minutes', '5', 'Collect statements every 5 minutes'),
+        ('development', 'statements_interval_minutes', '1', 'Collect statements every minute'),
         ('development', 'statements_min_calls', '1', 'Include all queries'),
         ('development', 'statements_top_n', '50', 'Collect top 50 queries'),
         ('development', 'table_stats_top_n', '50', 'Track top 50 tables'),
@@ -3091,8 +3091,8 @@ BEGIN
             v_prev_snapshot_id INTEGER;
         BEGIN
             v_statements_interval_minutes := COALESCE(
-                pgfr_record._get_config('statements_interval_minutes', '5')::integer,
-                5
+                pgfr_record._get_config('statements_interval_minutes', '1')::integer,
+                1
             );
             SELECT s.id, s.captured_at
               INTO v_prev_snapshot_id, v_last_statements_collection
@@ -4254,7 +4254,7 @@ BEGIN
              split_part(v_pgcron_version, '.', 2)::int = 4 AND
              COALESCE(NULLIF(split_part(v_pgcron_version, '.', 3), '')::int, 0) >= 1)
         );
-        PERFORM cron.schedule('pgfr_snapshot', '*/5 * * * *', 'SET statement_timeout = ''10s''; SELECT pgfr_record.snapshot()');
+        PERFORM cron.schedule('pgfr_snapshot', '* * * * *', 'SET statement_timeout = ''10s''; SELECT pgfr_record.snapshot()');
         v_scheduled := v_scheduled + 1;
         IF v_sample_interval_seconds <= 60 THEN
             v_cron_expression := '* * * * *';
@@ -4723,7 +4723,7 @@ BEGIN
     RAISE NOTICE 'Flight Recorder installed successfully.';
     RAISE NOTICE '';
     RAISE NOTICE 'Collection schedule:';
-    RAISE NOTICE '  - Snapshots: every 5 minutes (WAL, checkpoints, I/O stats) - DURABLE';
+    RAISE NOTICE '  - Snapshots: every minute (WAL, checkpoints, I/O stats) - DURABLE';
     RAISE NOTICE '  - Samples: every 120 seconds (ring buffer, 120 slots, 4-hour retention)';
     RAISE NOTICE '  - Flush: every 5 minutes (ring buffer → durable aggregates)';
     RAISE NOTICE '  - Cleanup: daily at 3 AM (aggregates: 7 days, snapshots: 30 days)';

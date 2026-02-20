@@ -10,7 +10,7 @@ pgfr_record installs a set of tables, views, and pg_cron jobs that continuously 
 
 - **Continuous background sampling** via pg_cron -- no external agents or sidecars
 - **Ring buffers** (UNLOGGED) for real-time wait events, active sessions, and lock contention
-- **Durable snapshots** every 5 minutes: WAL, checkpoints, I/O, tables, indexes, statements, replication, configuration
+- **Durable snapshots** every minute: WAL, checkpoints, I/O, tables, indexes, statements, replication, configuration
 - **Aggregates and archives** for longer retention (7 days for archives, 30 days for snapshots)
 - **Safety mechanisms**: circuit breaker, load shedding
 - **Collection modes**: normal, light, emergency, kill

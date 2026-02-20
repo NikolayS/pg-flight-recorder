@@ -90,8 +90,8 @@ SELECT is(
 
 SELECT is(
     (SELECT value FROM pgfr_record.config WHERE key = 'statements_interval_minutes'),
-    '5',
-    'Default statements_interval_minutes should be 5'
+    '1',
+    'Default statements_interval_minutes should be 1'
 );
 
 -- =============================================================================
