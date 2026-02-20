@@ -17,7 +17,7 @@ Flight Recorder collects two types of data:
 | **Sampled Activity** | Wait events, sessions, locks           | 3 min     | Ring buffer: 6-10h, Archives: 7d  |
 | **Snapshots**        | WAL, checkpoints, I/O, tables, indexes | 5 min     | 30 days                           |
 
-Data flows through UNLOGGED ring buffers (hot, low-overhead) into durable archives and aggregates (cold, long-retention). Multiple safety mechanisms -- circuit breaker, load shedding, adaptive sampling, DDL lock avoidance, replica lag detection -- prevent the recorder from impacting production workloads.
+Data flows through UNLOGGED ring buffers (hot, low-overhead) into durable archives and aggregates (cold, long-retention). Safety mechanisms -- circuit breaker, load shedding, per-section timeouts, and pg_cron job timeouts -- prevent the recorder from impacting production workloads.
 
 ## Extensions
 
@@ -143,16 +143,14 @@ SELECT * FROM pgfr.apply_profile('production_safe');
 
 ## Safety
 
-Flight Recorder includes multiple automatic protections:
+Flight Recorder includes automatic protections:
 
-| Protection            | Description                                   |
-|-----------------------|-----------------------------------------------|
-| **Circuit Breaker**   | Auto-disables if collections exceed 1s        |
-| **Load Shedding**     | Skips collection when >70% connections active |
-| **Load Throttle**     | Skips during high I/O pressure                |
-| **Adaptive Sampling** | Skips when system is idle                     |
-| **DDL Lock Check**    | Avoids collection during schema changes       |
-| **Replica Lag Check** | Pauses on replicas with high lag              |
+| Protection             | Description                                           |
+|------------------------|-------------------------------------------------------|
+| **Circuit Breaker**    | Skips collection if recent runs averaged > 1s         |
+| **Load Shedding**      | Skips collection when > 70% connections active        |
+| **Section Timeouts**   | Per-query timeout (250ms) prevents catalog lock hangs |
+| **Job Timeouts**       | Outer statement_timeout on all pg_cron jobs (5-60s)   |
 
 Collection modes provide manual control: `normal`, `light`, `emergency`, `kill`.
 
