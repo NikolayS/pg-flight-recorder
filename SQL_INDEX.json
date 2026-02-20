@@ -1964,213 +1964,208 @@
         "returns": "record"
       },
       {
-        "name": "pgfr._should_skip_collection",
-        "line": 1483,
-        "returns": "text"
-      },
-      {
         "name": "pgfr.sample",
-        "line": 1520,
+        "line": 1485,
         "returns": "timestamptz"
       },
       {
         "name": "pgfr.flush_ring_to_aggregates",
-        "line": 1909,
+        "line": 1864,
         "returns": "void"
       },
       {
         "name": "pgfr.archive_ring_samples",
-        "line": 1994,
+        "line": 1949,
         "returns": "void"
       },
       {
         "name": "pgfr.cleanup_aggregates",
-        "line": 2132,
+        "line": 2087,
         "returns": "void"
       },
       {
         "name": "pgfr._collect_table_stats",
-        "line": 2183,
+        "line": 2138,
         "returns": "void"
       },
       {
         "name": "pgfr._collect_index_stats",
-        "line": 2367,
+        "line": 2322,
         "returns": "void"
       },
       {
         "name": "pgfr._collect_config_snapshot",
-        "line": 2405,
+        "line": 2360,
         "returns": "void"
       },
       {
         "name": "pgfr._collect_db_role_config_snapshot",
-        "line": 2535,
+        "line": 2490,
         "returns": "void"
       },
       {
         "name": "pgfr.snapshot",
-        "line": 2628,
+        "line": 2583,
         "returns": "timestamptz"
       },
       {
         "name": "pgfr.compare",
-        "line": 3356,
+        "line": 3301,
         "returns": "record"
       },
       {
         "name": "pgfr._get_ring_retention_interval",
-        "line": 3464,
+        "line": 3409,
         "returns": "interval"
       },
       {
         "name": "pgfr.recent_waits_current",
-        "line": 3553,
+        "line": 3498,
         "returns": "record"
       },
       {
         "name": "pgfr.recent_activity_current",
-        "line": 3578,
+        "line": 3523,
         "returns": "record"
       },
       {
         "name": "pgfr.recent_locks_current",
-        "line": 3613,
+        "line": 3558,
         "returns": "record"
       },
       {
         "name": "pgfr.wait_summary",
-        "line": 3723,
+        "line": 3668,
         "returns": "record"
       },
       {
         "name": "pgfr.statement_compare",
-        "line": 3765,
+        "line": 3710,
         "returns": "record"
       },
       {
         "name": "pgfr.activity_at",
-        "line": 3879,
+        "line": 3824,
         "returns": "record"
       },
       {
         "name": "pgfr.set_mode",
-        "line": 3993,
+        "line": 3938,
         "returns": "text"
       },
       {
         "name": "pgfr.get_mode",
-        "line": 4065,
+        "line": 4010,
         "returns": "record"
       },
       {
         "name": "pgfr.list_profiles",
-        "line": 4088,
+        "line": 4033,
         "returns": "record"
       },
       {
         "name": "pgfr.get_optimization_profiles",
-        "line": 4128,
+        "line": 4073,
         "returns": "record"
       },
       {
         "name": "pgfr.apply_optimization_profile",
-        "line": 4169,
+        "line": 4114,
         "returns": "record"
       },
       {
         "name": "pgfr.explain_profile",
-        "line": 4250,
+        "line": 4195,
         "returns": "record"
       },
       {
         "name": "pgfr.apply_profile",
-        "line": 4278,
+        "line": 4223,
         "returns": "record"
       },
       {
         "name": "pgfr.get_current_profile",
-        "line": 4332,
+        "line": 4277,
         "returns": "record"
       },
       {
         "name": "pgfr.cleanup",
-        "line": 4385,
+        "line": 4330,
         "returns": "record"
       },
       {
         "name": "pgfr.ring_buffer_health",
-        "line": 4457,
+        "line": 4402,
         "returns": "record"
       },
       {
         "name": "pgfr.disable",
-        "line": 4512,
+        "line": 4457,
         "returns": "text"
       },
       {
         "name": "pgfr.configure_ring_autovacuum",
-        "line": 4554,
+        "line": 4499,
         "returns": "text"
       },
       {
         "name": "pgfr.rebuild_ring_buffers",
-        "line": 4580,
+        "line": 4525,
         "returns": "text"
       },
       {
         "name": "pgfr.enable",
-        "line": 4667,
+        "line": 4612,
         "returns": "text"
       },
       {
         "name": "pgfr.health_check",
-        "line": 4826,
+        "line": 4771,
         "returns": "record"
       },
       {
         "name": "pgfr.export_for_upgrade",
-        "line": 5011,
+        "line": 4956,
         "returns": "record"
       },
       {
         "name": "pgfr.config_recommendations",
-        "line": 5094,
+        "line": 5039,
         "returns": "record"
       }
     ],
     "views": [
       {
         "name": "pgfr.deltas",
-        "line": 3305
+        "line": 3250
       },
       {
         "name": "pgfr.recent_waits",
-        "line": 3473
+        "line": 3418
       },
       {
         "name": "pgfr.recent_activity",
-        "line": 3486
+        "line": 3431
       },
       {
         "name": "pgfr.recent_locks",
-        "line": 3509
+        "line": 3454
       },
       {
         "name": "pgfr.recent_idle_in_transaction",
-        "line": 3531
+        "line": 3476
       },
       {
         "name": "pgfr.recent_replication",
-        "line": 3648
+        "line": 3593
       },
       {
         "name": "pgfr.recent_vacuum_progress",
-        "line": 3671
+        "line": 3616
       },
       {
         "name": "pgfr.archiver_status",
-        "line": 3699
+        "line": 3644
       }
     ],
     "types": []
@@ -2180,123 +2175,123 @@
     "tables": [
       {
         "name": "test_lock_contention",
-        "line": 29,
+        "line": 25,
         "columns": [
           {
             "name": "id",
             "type": "int4",
-            "line": 30
+            "line": 26
           },
           {
             "name": "value",
             "type": "int4",
-            "line": 31
+            "line": 27
           }
         ]
       },
       {
         "name": "test_memory_pressure",
-        "line": 110,
+        "line": 106,
         "columns": [
           {
             "name": "id",
             "type": "int4",
-            "line": 111
+            "line": 107
           },
           {
             "name": "data",
             "type": "text",
-            "line": 112
+            "line": 108
           }
         ]
       },
       {
         "name": "test_cpu_intensive",
-        "line": 235,
+        "line": 231,
         "columns": [
           {
             "name": "id",
             "type": "int4",
-            "line": 236
+            "line": 232
           },
           {
             "name": "value",
             "type": "numeric",
-            "line": 237
+            "line": 233
           }
         ]
       },
       {
         "name": "test_slow_realtime",
-        "line": 316,
+        "line": 312,
         "columns": [
           {
             "name": "id",
             "type": "int4",
-            "line": 317
+            "line": 313
           },
           {
             "name": "data",
             "type": "text",
-            "line": 318
+            "line": 314
           }
         ]
       },
       {
         "name": "test_slow_queries",
-        "line": 385,
+        "line": 381,
         "columns": [
           {
             "name": "id",
             "type": "int4",
-            "line": 386
+            "line": 382
           },
           {
             "name": "category",
             "type": "int4",
-            "line": 387
+            "line": 383
           },
           {
             "name": "data",
             "type": "text",
-            "line": 388
+            "line": 384
           },
           {
             "name": "created_at",
             "type": "timestamp",
-            "line": 389
+            "line": 385
           }
         ]
       },
       {
         "name": "test_historical",
-        "line": 623,
+        "line": 619,
         "columns": [
           {
             "name": "id",
             "type": "int4",
-            "line": 624
+            "line": 620
           },
           {
             "name": "data",
             "type": "text",
-            "line": 625
+            "line": 621
           }
         ]
       },
       {
         "name": "test_disk_io",
-        "line": 706,
+        "line": 702,
         "columns": [
           {
             "name": "id",
             "type": "int4",
-            "line": 707
+            "line": 703
           },
           {
             "name": "padding",
             "type": "text",
-            "line": 708
+            "line": 704
           }
         ]
       }
@@ -2310,33 +2305,33 @@
     "tables": [
       {
         "name": "vc_memory_test",
-        "line": 22,
+        "line": 18,
         "columns": [
           {
             "name": "id",
             "type": "int4",
-            "line": 22
+            "line": 18
           },
           {
             "name": "data",
             "type": "text",
-            "line": 22
+            "line": 18
           }
         ]
       },
       {
         "name": "vc_cpu_test",
-        "line": 88,
+        "line": 84,
         "columns": [
           {
             "name": "id",
             "type": "int4",
-            "line": 88
+            "line": 84
           },
           {
             "name": "value",
             "type": "numeric",
-            "line": 88
+            "line": 84
           }
         ]
       }
