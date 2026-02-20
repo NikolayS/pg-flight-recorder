@@ -765,7 +765,7 @@ SELECT * FROM pgfr.get_mode();     -- Check current mode
 | **Load Throttle** | Transaction rate exceeds `load_throttle_xact_threshold` or block rate exceeds `load_throttle_blk_threshold` | Skips collection |
 | **Adaptive Sampling** | Active connections below `adaptive_sampling_idle_threshold` | Skips collection (system is idle) |
 | **DDL Lock Check** | `AccessExclusiveLock` held on system catalogs | Skips collection to avoid lock contention |
-| **Checkpoint/Backup Check** | Active checkpoint or backup detected | Skips collection to avoid I/O contention |
+| **Backup Check** | Active backup detected (pg_dump/pg_basebackup/walsender) | Skips collection to avoid I/O contention |
 
 ### Automatic mode switching
 

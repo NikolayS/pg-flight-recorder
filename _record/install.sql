@@ -1633,14 +1633,13 @@ $$;
 COMMENT ON FUNCTION pgfr._check_catalog_ddl_locks() IS 'Pre-check for DDL locks on system catalogs to avoid lock contention';
 
 
--- Evaluates active checkpoints and backups to determine collection eligibility
+-- Evaluates active backups to determine collection eligibility
 -- Returns skip reason message or NULL if collection can proceed
 CREATE OR REPLACE FUNCTION pgfr._should_skip_collection()
 RETURNS TEXT
 LANGUAGE plpgsql AS $$
 DECLARE
     v_checkpoint_check BOOLEAN;
-    v_checkpoint_in_progress BOOLEAN;
     v_backup_running BOOLEAN;
 BEGIN
     v_checkpoint_check := COALESCE(
@@ -1649,14 +1648,6 @@ BEGIN
     );
     IF v_checkpoint_check THEN
         BEGIN
-            SELECT EXISTS(
-                SELECT 1 FROM pg_stat_bgwriter
-                WHERE checkpoints_req > 0
-                  AND stats_reset > now() - interval '1 minute'
-            ) INTO v_checkpoint_in_progress;
-            IF v_checkpoint_in_progress THEN
-                RETURN 'Active checkpoint detected (recent requested checkpoint)';
-            END IF;
             SELECT EXISTS(
                 SELECT 1 FROM pg_stat_activity
                 WHERE (backend_type = 'walsender' AND state = 'active')
@@ -1676,7 +1667,7 @@ EXCEPTION WHEN OTHERS THEN
     RETURN NULL;
 END;
 $$;
-COMMENT ON FUNCTION pgfr._should_skip_collection() IS 'Pre-flight checks for checkpoints and backups';
+COMMENT ON FUNCTION pgfr._should_skip_collection() IS 'Pre-flight checks for backups';
 
 
 -- Sampled activity: Collect performance samples (wait events, active sessions, locks) into ring buffers
