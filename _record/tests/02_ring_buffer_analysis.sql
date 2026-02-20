@@ -15,41 +15,41 @@ SELECT plan(25);
 
 -- Test ring buffer slot initialization (120 slots, 0-119)
 SELECT ok(
-    (SELECT count(*) FROM pgfr.samples_ring) = 120,
+    (SELECT count(*) FROM pgfr_record.samples_ring) = 120,
     'Ring buffer should have exactly 120 slots initialized'
 );
 
 SELECT ok(
-    (SELECT min(slot_id) FROM pgfr.samples_ring) = 0,
+    (SELECT min(slot_id) FROM pgfr_record.samples_ring) = 0,
     'Ring buffer min slot_id should be 0'
 );
 
 SELECT ok(
-    (SELECT max(slot_id) FROM pgfr.samples_ring) = 119,
+    (SELECT max(slot_id) FROM pgfr_record.samples_ring) = 119,
     'Ring buffer max slot_id should be 119'
 );
 
 -- Test flush_ring_to_aggregates() function
 SELECT lives_ok(
-    $$SELECT pgfr.flush_ring_to_aggregates()$$,
+    $$SELECT pgfr_record.flush_ring_to_aggregates()$$,
     'flush_ring_to_aggregates() should execute without error'
 );
 
 -- Capture a sample first to ensure we have data to aggregate
-SELECT pgfr.sample();
+SELECT pgfr_record.sample();
 
 -- Flush again to ensure aggregates are created
-SELECT pgfr.flush_ring_to_aggregates();
+SELECT pgfr_record.flush_ring_to_aggregates();
 
 -- Verify aggregates were created
 SELECT ok(
-    (SELECT count(*) FROM pgfr.wait_event_aggregates) >= 1,
+    (SELECT count(*) FROM pgfr_record.wait_event_aggregates) >= 1,
     'At least one wait event aggregate should be created after flush'
 );
 
 -- Test cleanup_aggregates() function
 SELECT lives_ok(
-    $$SELECT pgfr.cleanup_aggregates()$$,
+    $$SELECT pgfr_record.cleanup_aggregates()$$,
     'cleanup_aggregates() should execute without error'
 );
 
@@ -57,7 +57,7 @@ SELECT lives_ok(
 DO $$
 BEGIN
     -- Insert old test data (10 days ago)
-    INSERT INTO pgfr.wait_event_aggregates
+    INSERT INTO pgfr_record.wait_event_aggregates
     (start_time, end_time, backend_type, wait_event_type, wait_event, state, sample_count, total_waiters, avg_waiters, max_waiters, pct_of_samples)
     VALUES
     (now() - interval '10 days', now() - interval '10 days', 'client backend', 'Running', 'CPU', 'active', 1, 1, 1, 1, 100);
@@ -65,22 +65,22 @@ END $$;
 
 -- Verify old data exists before cleanup
 SELECT ok(
-    (SELECT count(*) FROM pgfr.wait_event_aggregates WHERE start_time < now() - interval '7 days') >= 1,
+    (SELECT count(*) FROM pgfr_record.wait_event_aggregates WHERE start_time < now() - interval '7 days') >= 1,
     'Old test aggregate should exist before cleanup'
 );
 
 -- Run cleanup
-SELECT pgfr.cleanup_aggregates();
+SELECT pgfr_record.cleanup_aggregates();
 
 -- Verify old data was deleted (default 7 day retention)
 SELECT ok(
-    (SELECT count(*) FROM pgfr.wait_event_aggregates WHERE start_time < now() - interval '7 days') = 0,
+    (SELECT count(*) FROM pgfr_record.wait_event_aggregates WHERE start_time < now() - interval '7 days') = 0,
     'Old aggregates should be deleted by cleanup_aggregates() with 7 day retention'
 );
 
 -- Verify recent data was NOT deleted
 SELECT ok(
-    (SELECT count(*) FROM pgfr.wait_event_aggregates WHERE start_time >= now() - interval '1 day') >= 0,
+    (SELECT count(*) FROM pgfr_record.wait_event_aggregates WHERE start_time >= now() - interval '1 day') >= 0,
     'Recent aggregates should be preserved by cleanup_aggregates()'
 );
 
@@ -90,8 +90,8 @@ SELECT ok(
 
 -- Capture a second snapshot and sample for time-based queries
 SELECT pg_sleep(0.1);
-SELECT pgfr.snapshot();
-SELECT pgfr.sample();
+SELECT pgfr_record.snapshot();
+SELECT pgfr_record.sample();
 
 -- Get time range for queries
 DO $$
@@ -99,8 +99,8 @@ DECLARE
     v_start_time TIMESTAMPTZ;
     v_end_time TIMESTAMPTZ;
 BEGIN
-    SELECT min(captured_at) INTO v_start_time FROM pgfr.samples_ring;
-    SELECT max(captured_at) INTO v_end_time FROM pgfr.samples_ring;
+    SELECT min(captured_at) INTO v_start_time FROM pgfr_record.samples_ring;
+    SELECT max(captured_at) INTO v_end_time FROM pgfr_record.samples_ring;
 
     -- Store for later tests
     CREATE TEMP TABLE test_times (start_time TIMESTAMPTZ, end_time TIMESTAMPTZ);
@@ -174,36 +174,36 @@ SELECT ok(
 
 -- Test get_mode()
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.get_mode()$$,
+    $$SELECT * FROM pgfr_record.get_mode()$$,
     'get_mode() should execute without error'
 );
 
 -- Test default mode is normal
 SELECT is(
-    (SELECT mode FROM pgfr.get_mode()),
+    (SELECT mode FROM pgfr_record.get_mode()),
     'normal',
     'Default mode should be normal'
 );
 
 -- Test set_mode() to light
 SELECT lives_ok(
-    $$SELECT pgfr.set_mode('light')$$,
+    $$SELECT pgfr_record.set_mode('light')$$,
     'set_mode() should work'
 );
 
 -- Verify mode changed
 SELECT is(
-    (SELECT mode FROM pgfr.get_mode()),
+    (SELECT mode FROM pgfr_record.get_mode()),
     'light',
     'Mode should be changed to light'
 );
 
 -- Reset to normal
-SELECT pgfr.set_mode('normal');
+SELECT pgfr_record.set_mode('normal');
 
 -- Test invalid mode throws error
 SELECT throws_ok(
-    $$SELECT pgfr.set_mode('invalid')$$,
+    $$SELECT pgfr_record.set_mode('invalid')$$,
     'Invalid mode: invalid. Must be normal, light, or emergency.',
     'set_mode() should reject invalid modes'
 );
@@ -214,25 +214,25 @@ SELECT throws_ok(
 
 -- Test deltas view
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.deltas LIMIT 1$$,
+    $$SELECT * FROM pgfr_record.deltas LIMIT 1$$,
     'deltas view should be queryable'
 );
 
 -- Test recent_waits view
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.recent_waits LIMIT 1$$,
+    $$SELECT * FROM pgfr_record.recent_waits LIMIT 1$$,
     'recent_waits view should be queryable'
 );
 
 -- Test recent_activity view
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.recent_activity LIMIT 1$$,
+    $$SELECT * FROM pgfr_record.recent_activity LIMIT 1$$,
     'recent_activity view should be queryable'
 );
 
 -- Test recent_locks view
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.recent_locks LIMIT 1$$,
+    $$SELECT * FROM pgfr_record.recent_locks LIMIT 1$$,
     'recent_locks view should be queryable'
 );
 

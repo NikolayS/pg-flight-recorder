@@ -239,8 +239,8 @@ SELECT ok(
 -- =============================================================================
 
 -- Ensure we have some data
-SELECT pgfr.snapshot();
-SELECT pgfr.sample();
+SELECT pgfr_record.snapshot();
+SELECT pgfr_record.sample();
 
 -- Test that incident_start matches input
 SELECT is(

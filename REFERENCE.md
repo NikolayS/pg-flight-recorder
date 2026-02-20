@@ -6,59 +6,59 @@
 
 Complete reference for [pg-flight-recorder](README.md). For installation and getting started, see the [README](README.md). For per-extension overviews, see [pgfr_record](_record/README.md), [pgfr_analyze](_analyze/README.md), and [pgfr_control](_control/README.md).
 
-## Functions: pgfr (core)
+## Functions: pgfr_record (core)
 
 ### Control
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `pgfr.enable()` | `text` | Start collection jobs via pg_cron |
-| `pgfr.disable()` | `text` | Stop collection jobs |
-| `pgfr.health_check()` | `record` | System health status with diagnostics |
-| `pgfr.set_mode(mode text)` | `text` | Set collection mode: `normal`, `light`, `emergency`, `kill` |
-| `pgfr.get_mode()` | `record` | Get current collection mode |
-| `pgfr.validate_config()` | `record` | Validate all configuration settings |
-| `pgfr.config_recommendations()` | `record` | Get configuration recommendations based on system state |
+| `pgfr_record.enable()` | `text` | Start collection jobs via pg_cron |
+| `pgfr_record.disable()` | `text` | Stop collection jobs |
+| `pgfr_record.health_check()` | `record` | System health status with diagnostics |
+| `pgfr_record.set_mode(mode text)` | `text` | Set collection mode: `normal`, `light`, `emergency`, `kill` |
+| `pgfr_record.get_mode()` | `record` | Get current collection mode |
+| `pgfr_record.validate_config()` | `record` | Validate all configuration settings |
+| `pgfr_record.config_recommendations()` | `record` | Get configuration recommendations based on system state |
 
 ### Collection
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `pgfr.snapshot()` | `timestamptz` | Durable snapshot: WAL, checkpoints, I/O, tables, indexes, statements, replication, config |
-| `pgfr.sample()` | `timestamptz` | Sampled activity: wait events, active sessions, locks into ring buffers |
-| `pgfr.flush_ring_to_aggregates()` | `void` | Flush ring buffer data to durable aggregate tables (every 5 min) |
-| `pgfr.archive_ring_samples()` | `void` | Archive raw ring buffer samples to durable archive tables (every 15 min) |
-| `pgfr.cleanup()` | `record` | Remove expired data based on retention settings |
-| `pgfr.cleanup_aggregates()` | `void` | Remove old aggregate and archive data |
+| `pgfr_record.snapshot()` | `timestamptz` | Durable snapshot: WAL, checkpoints, I/O, tables, indexes, statements, replication, config |
+| `pgfr_record.sample()` | `timestamptz` | Sampled activity: wait events, active sessions, locks into ring buffers |
+| `pgfr_record.flush_ring_to_aggregates()` | `void` | Flush ring buffer data to durable aggregate tables (every 5 min) |
+| `pgfr_record.archive_ring_samples()` | `void` | Archive raw ring buffer samples to durable archive tables (every 15 min) |
+| `pgfr_record.cleanup()` | `record` | Remove expired data based on retention settings |
+| `pgfr_record.cleanup_aggregates()` | `void` | Remove old aggregate and archive data |
 
 ### Profile management
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `pgfr.list_profiles()` | `record` | List available configuration profiles |
-| `pgfr.explain_profile(name text)` | `record` | Preview what a profile would change |
-| `pgfr.apply_profile(name text)` | `record` | Apply a configuration profile |
-| `pgfr.get_current_profile()` | `record` | Identify which profile matches current settings |
-| `pgfr.get_optimization_profiles()` | `record` | List ring buffer optimization presets |
-| `pgfr.apply_optimization_profile(name text)` | `record` | Apply a ring buffer optimization preset |
+| `pgfr_record.list_profiles()` | `record` | List available configuration profiles |
+| `pgfr_record.explain_profile(name text)` | `record` | Preview what a profile would change |
+| `pgfr_record.apply_profile(name text)` | `record` | Apply a configuration profile |
+| `pgfr_record.get_current_profile()` | `record` | Identify which profile matches current settings |
+| `pgfr_record.get_optimization_profiles()` | `record` | List ring buffer optimization presets |
+| `pgfr_record.apply_optimization_profile(name text)` | `record` | Apply a ring buffer optimization preset |
 
 ### Ring buffer management
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `pgfr.ring_buffer_health()` | `record` | Ring buffer fill status and diagnostics |
-| `pgfr.rebuild_ring_buffers(slots int)` | `text` | Resize ring buffers (72-2880 slots). **Clears ring data**; archives and aggregates preserved |
-| `pgfr.configure_ring_autovacuum(enabled bool)` | `text` | Toggle autovacuum on ring buffer tables |
-| `pgfr.validate_ring_configuration()` | `record` | Validate ring buffer retention, batching, CPU, and memory |
+| `pgfr_record.ring_buffer_health()` | `record` | Ring buffer fill status and diagnostics |
+| `pgfr_record.rebuild_ring_buffers(slots int)` | `text` | Resize ring buffers (72-2880 slots). **Clears ring data**; archives and aggregates preserved |
+| `pgfr_record.configure_ring_autovacuum(enabled bool)` | `text` | Toggle autovacuum on ring buffer tables |
+| `pgfr_record.validate_ring_configuration()` | `record` | Validate ring buffer retention, batching, CPU, and memory |
 
 ### Export
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `pgfr.export_for_upgrade()` | `record` | Prepare data for export with OID-to-name resolution |
-| `pgfr._populate_relation_names()` | `int` | Populate OID-to-name lookup table for offline analysis |
-| `pgfr._safe_relname(oid)` | `text` | Resolve OID to schema-qualified name using `relation_names` |
-| `pgfr._get_setting_from_snapshots(name text, default_val text)` | `text` | Get a setting value from captured `config_snapshots` |
+| `pgfr_record.export_for_upgrade()` | `record` | Prepare data for export with OID-to-name resolution |
+| `pgfr_record._populate_relation_names()` | `int` | Populate OID-to-name lookup table for offline analysis |
+| `pgfr_record._safe_relname(oid)` | `text` | Resolve OID to schema-qualified name using `relation_names` |
+| `pgfr_record._get_setting_from_snapshots(name text, default_val text)` | `text` | Get a setting value from captured `config_snapshots` |
 
 ## Functions: pgfr_analyze
 
@@ -170,18 +170,18 @@ Complete reference for [pg-flight-recorder](README.md). For installation and get
 
 ## Views
 
-### pgfr (core)
+### pgfr_record (core)
 
 | View | Source | Description |
 |------|--------|-------------|
-| `pgfr.deltas` | Snapshots | Snapshot-over-snapshot changes for all metrics |
-| `pgfr.recent_waits` | Ring buffer + archives | Wait events (last 6-10h from ring, 7d from archives) |
-| `pgfr.recent_activity` | Ring buffer + archives | Active sessions with wait events and query previews |
-| `pgfr.recent_locks` | Ring buffer + archives | Lock contention: blocked/blocking pairs |
-| `pgfr.recent_idle_in_transaction` | Ring buffer + archives | Sessions idle in transaction with duration |
-| `pgfr.recent_replication` | Snapshots | Replication status: lag, LSN positions |
-| `pgfr.recent_vacuum_progress` | Snapshots | Vacuum operations in progress with % scanned/vacuumed |
-| `pgfr.archiver_status` | Snapshots | WAL archiver status with delta calculations |
+| `pgfr_record.deltas` | Snapshots | Snapshot-over-snapshot changes for all metrics |
+| `pgfr_record.recent_waits` | Ring buffer + archives | Wait events (last 6-10h from ring, 7d from archives) |
+| `pgfr_record.recent_activity` | Ring buffer + archives | Active sessions with wait events and query previews |
+| `pgfr_record.recent_locks` | Ring buffer + archives | Lock contention: blocked/blocking pairs |
+| `pgfr_record.recent_idle_in_transaction` | Ring buffer + archives | Sessions idle in transaction with duration |
+| `pgfr_record.recent_replication` | Snapshots | Replication status: lag, LSN positions |
+| `pgfr_record.recent_vacuum_progress` | Snapshots | Vacuum operations in progress with % scanned/vacuumed |
+| `pgfr_record.archiver_status` | Snapshots | WAL archiver status with delta calculations |
 
 ### pgfr_analyze
 
@@ -193,7 +193,7 @@ Complete reference for [pg-flight-recorder](README.md). For installation and get
 
 ### Ring buffers (UNLOGGED, auto-overwrite)
 
-**`pgfr.samples_ring`** -- Slot tracker (configurable slots, default 120, range 72-2880)
+**`pgfr_record.samples_ring`** -- Slot tracker (configurable slots, default 120, range 72-2880)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -201,7 +201,7 @@ Complete reference for [pg-flight-recorder](README.md). For installation and get
 | `captured_at` | timestamptz | When this slot was last written |
 | `epoch_seconds` | bigint | Epoch timestamp for fast comparisons |
 
-**`pgfr.wait_samples_ring`** -- Wait event samples (slots x 100 rows)
+**`pgfr_record.wait_samples_ring`** -- Wait event samples (slots x 100 rows)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -213,7 +213,7 @@ Complete reference for [pg-flight-recorder](README.md). For installation and get
 | `state` | text | Backend state (active, idle, etc.) |
 | `count` | int | Number of backends in this state |
 
-**`pgfr.activity_samples_ring`** -- Active session samples (slots x 25 rows)
+**`pgfr_record.activity_samples_ring`** -- Active session samples (slots x 25 rows)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -233,7 +233,7 @@ Complete reference for [pg-flight-recorder](README.md). For installation and get
 | `state_change` | timestamptz | When state last changed |
 | `query_preview` | text | Truncated query text |
 
-**`pgfr.lock_samples_ring`** -- Lock contention samples (slots x 100 rows)
+**`pgfr_record.lock_samples_ring`** -- Lock contention samples (slots x 100 rows)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -255,15 +255,15 @@ Complete reference for [pg-flight-recorder](README.md). For installation and get
 
 Archives preserve raw ring buffer samples at full resolution for forensic analysis. Archived every 15 minutes by default.
 
-- **`pgfr.wait_samples_archive`** -- Same columns as `wait_samples_ring` plus `id` (bigserial), `sample_id`, `captured_at`
-- **`pgfr.activity_samples_archive`** -- Same columns as `activity_samples_ring` plus `id` (bigserial), `sample_id`, `captured_at`
-- **`pgfr.lock_samples_archive`** -- Same columns as `lock_samples_ring` plus `id` (bigserial), `sample_id`, `captured_at`
+- **`pgfr_record.wait_samples_archive`** -- Same columns as `wait_samples_ring` plus `id` (bigserial), `sample_id`, `captured_at`
+- **`pgfr_record.activity_samples_archive`** -- Same columns as `activity_samples_ring` plus `id` (bigserial), `sample_id`, `captured_at`
+- **`pgfr_record.lock_samples_archive`** -- Same columns as `lock_samples_ring` plus `id` (bigserial), `sample_id`, `captured_at`
 
 ### Aggregates (durable, 7-day default retention)
 
 Aggregates summarize ring buffer data into 5-minute windows.
 
-**`pgfr.wait_event_aggregates`**
+**`pgfr_record.wait_event_aggregates`**
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -280,7 +280,7 @@ Aggregates summarize ring buffer data into 5-minute windows.
 | `max_waiters` | int | Peak waiters in window |
 | `pct_of_samples` | numeric | Percentage of samples with this event |
 
-**`pgfr.lock_aggregates`**
+**`pgfr_record.lock_aggregates`**
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -296,7 +296,7 @@ Aggregates summarize ring buffer data into 5-minute windows.
 | `avg_duration` | interval | Average block duration |
 | `sample_query` | text | Sample blocked query |
 
-**`pgfr.activity_aggregates`**
+**`pgfr_record.activity_aggregates`**
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -310,7 +310,7 @@ Aggregates summarize ring buffer data into 5-minute windows.
 
 ### Snapshots (durable, 30-day default retention)
 
-**`pgfr.snapshots`** -- System-level statistics (WAL, checkpoints, I/O, connections, conflicts)
+**`pgfr_record.snapshots`** -- System-level statistics (WAL, checkpoints, I/O, connections, conflicts)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -365,7 +365,7 @@ Aggregates summarize ring buffer data into 5-minute windows.
 | `max_catalog_oid` | bigint | Highest catalog OID |
 | `large_object_count` | bigint | Number of large objects |
 
-**`pgfr.statement_snapshots`** -- Per-query statistics from pg_stat_statements
+**`pgfr_record.statement_snapshots`** -- Per-query statistics from pg_stat_statements
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -391,7 +391,7 @@ Aggregates summarize ring buffer data into 5-minute windows.
 | `wal_records` | bigint | WAL records generated |
 | `wal_bytes` | numeric | WAL bytes generated |
 
-**`pgfr.table_snapshots`** -- Per-table statistics
+**`pgfr_record.table_snapshots`** -- Per-table statistics
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -426,7 +426,7 @@ Aggregates summarize ring buffer data into 5-minute windows.
 | `total_size_bytes` | bigint | Table + index size |
 | `indexes_size_bytes` | bigint | Index size |
 
-**`pgfr.index_snapshots`** -- Per-index statistics
+**`pgfr_record.index_snapshots`** -- Per-index statistics
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -441,7 +441,7 @@ Aggregates summarize ring buffer data into 5-minute windows.
 | `idx_tup_fetch` | bigint | Index tuples fetched |
 | `index_size_bytes` | bigint | Index size (bytes) |
 
-**`pgfr.config_snapshots`** -- PostgreSQL configuration
+**`pgfr_record.config_snapshots`** -- PostgreSQL configuration
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -452,7 +452,7 @@ Aggregates summarize ring buffer data into 5-minute windows.
 | `source` | text | Setting source (e.g., `configuration file`) |
 | `sourcefile` | text | Config file path |
 
-**`pgfr.db_role_config_snapshots`** -- Database/role configuration overrides
+**`pgfr_record.db_role_config_snapshots`** -- Database/role configuration overrides
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -462,7 +462,7 @@ Aggregates summarize ring buffer data into 5-minute windows.
 | `parameter_name` | text | Parameter name |
 | `parameter_value` | text | Parameter value |
 
-**`pgfr.replication_snapshots`** -- Replication state
+**`pgfr_record.replication_snapshots`** -- Replication state
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -480,7 +480,7 @@ Aggregates summarize ring buffer data into 5-minute windows.
 | `flush_lag` | interval | Flush lag |
 | `replay_lag` | interval | Replay lag |
 
-**`pgfr.vacuum_progress_snapshots`** -- Vacuum progress
+**`pgfr_record.vacuum_progress_snapshots`** -- Vacuum progress
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -500,7 +500,7 @@ Aggregates summarize ring buffer data into 5-minute windows.
 
 ### Internal
 
-**`pgfr.config`** -- Flight Recorder configuration (key-value store)
+**`pgfr_record.config`** -- Flight Recorder configuration (key-value store)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -508,7 +508,7 @@ Aggregates summarize ring buffer data into 5-minute windows.
 | `value` | text | Setting value |
 | `updated_at` | timestamptz | Last modified |
 
-**`pgfr.collection_stats`** -- Collection job metrics
+**`pgfr_record.collection_stats`** -- Collection job metrics
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -524,7 +524,7 @@ Aggregates summarize ring buffer data into 5-minute windows.
 | `sections_total` | int | Total sections attempted |
 | `sections_succeeded` | int | Sections that succeeded |
 
-**`pgfr.relation_names`** -- OID to relation name mappings (populated at export time)
+**`pgfr_record.relation_names`** -- OID to relation name mappings (populated at export time)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -559,10 +559,10 @@ This eliminates `pg_catalog` joins during collection, avoiding even `AccessShare
 
 ## Configuration settings
 
-Settings are stored in `pgfr.config`. Profiles set groups of related settings. Update individual settings with:
+Settings are stored in `pgfr_record.config`. Profiles set groups of related settings. Update individual settings with:
 
 ```sql
-UPDATE pgfr.config SET value = '300' WHERE key = 'sample_interval_seconds';
+UPDATE pgfr_record.config SET value = '300' WHERE key = 'sample_interval_seconds';
 ```
 
 ### Core settings
@@ -717,16 +717,16 @@ Profiles configure groups of related settings for different environments. Key di
 
 ```sql
 -- List all profiles and their settings
-SELECT * FROM pgfr.list_profiles();
+SELECT * FROM pgfr_record.list_profiles();
 
 -- Preview what a profile would change
-SELECT * FROM pgfr.explain_profile('production_safe');
+SELECT * FROM pgfr_record.explain_profile('production_safe');
 
 -- Apply a profile
-SELECT * FROM pgfr.apply_profile('production_safe');
+SELECT * FROM pgfr_record.apply_profile('production_safe');
 
 -- Check which profile matches current settings
-SELECT * FROM pgfr.get_current_profile();
+SELECT * FROM pgfr_record.get_current_profile();
 ```
 
 ## Safety features
@@ -741,9 +741,9 @@ SELECT * FROM pgfr.get_current_profile();
 | `kill` | All collection disabled |
 
 ```sql
-SELECT pgfr.set_mode('kill');      -- Emergency stop
-SELECT pgfr.set_mode('normal');    -- Resume
-SELECT * FROM pgfr.get_mode();     -- Check current mode
+SELECT pgfr_record.set_mode('kill');      -- Emergency stop
+SELECT pgfr_record.set_mode('normal');    -- Resume
+SELECT * FROM pgfr_record.get_mode();     -- Check current mode
 ```
 
 ### Automatic protections
@@ -757,4 +757,4 @@ SELECT * FROM pgfr.get_mode();     -- Check current mode
 
 ### Manual mode control
 
-Use `pgfr.set_mode()` to manually switch collection modes: `normal`, `light`, `emergency`, `kill`.
+Use `pgfr_record.set_mode()` to manually switch collection modes: `normal`, `light`, `emergency`, `kill`.

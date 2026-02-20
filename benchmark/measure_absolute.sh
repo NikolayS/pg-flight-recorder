@@ -22,7 +22,7 @@ info() {
 }
 
 # Check prerequisites
-if ! psql -c "SELECT pgfr.get_mode()" &> /dev/null; then
+if ! psql -c "SELECT pgfr_record.get_mode()" &> /dev/null; then
     echo "Error: Flight recorder not installed" >&2
     echo "Run: psql --single-transaction -f _record/install.sql" >&2
     exit 1
@@ -48,18 +48,18 @@ info "  Tables: $TABLE_COUNT"
 info ""
 
 # Enable flight recorder
-psql -c "SELECT pgfr.enable()" &> /dev/null
-psql -c "SELECT pgfr.set_mode('normal')" &> /dev/null
+psql -c "SELECT pgfr_record.enable()" &> /dev/null
+psql -c "SELECT pgfr_record.set_mode('normal')" &> /dev/null
 
 # Disable collection jitter for accurate timing measurement
 # (Jitter adds 0-10s random sleep to avoid thundering herd in SaaS environments)
 log "Disabling collection jitter for accurate measurement..."
-ORIGINAL_JITTER=$(psql -t -c "SELECT value FROM pgfr.config WHERE key = 'collection_jitter_enabled'" | xargs)
-psql -c "UPDATE pgfr.config SET value = 'false' WHERE key = 'collection_jitter_enabled'" &> /dev/null
+ORIGINAL_JITTER=$(psql -t -c "SELECT value FROM pgfr_record.config WHERE key = 'collection_jitter_enabled'" | xargs)
+psql -c "UPDATE pgfr_record.config SET value = 'false' WHERE key = 'collection_jitter_enabled'" &> /dev/null
 
 log "Warming up (5 collections)..."
 for i in {1..5}; do
-    psql -c "SELECT pgfr.sample()" &> /dev/null
+    psql -c "SELECT pgfr_record.sample()" &> /dev/null
     sleep 1
 done
 
@@ -88,7 +88,7 @@ for i in $(seq 1 $ITERATIONS); do
     " > /tmp/before_stats.txt
 
     # Run collection with timing
-    TIMING=$(psql -t -c "\timing on" -c "SELECT pgfr.sample()" 2>&1 | grep "Time:" | sed 's/Time: \([0-9.]*\).*/\1/')
+    TIMING=$(psql -t -c "\timing on" -c "SELECT pgfr_record.sample()" 2>&1 | grep "Time:" | sed 's/Time: \([0-9.]*\).*/\1/')
 
     # Capture after stats
     psql -t -c "
@@ -291,7 +291,7 @@ PYTHON
 
 # Restore original jitter setting
 if [[ -n "$ORIGINAL_JITTER" ]]; then
-    psql -c "UPDATE pgfr.config SET value = '$ORIGINAL_JITTER' WHERE key = 'collection_jitter_enabled'" &> /dev/null
+    psql -c "UPDATE pgfr_record.config SET value = '$ORIGINAL_JITTER' WHERE key = 'collection_jitter_enabled'" &> /dev/null
     log "Restored collection jitter setting: $ORIGINAL_JITTER"
 fi
 
@@ -303,5 +303,5 @@ log ""
 log "1. Review absolute costs above"
 log "2. Compare to your available CPU headroom"
 log "3. For tiny systems (1 vCPU), test in staging"
-log "4. For production, monitor with: SELECT * FROM pgfr.recent_activity"
+log "4. For production, monitor with: SELECT * FROM pgfr_record.recent_activity"
 log ""

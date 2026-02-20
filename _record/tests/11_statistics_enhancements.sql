@@ -13,22 +13,22 @@ SELECT plan(23);
 -- =============================================================================
 
 SELECT has_column(
-    'pgfr', 'activity_samples_ring', 'backend_start',
+    'pgfr_record', 'activity_samples_ring', 'backend_start',
     'activity_samples_ring should have backend_start column'
 );
 
 SELECT has_column(
-    'pgfr', 'activity_samples_ring', 'xact_start',
+    'pgfr_record', 'activity_samples_ring', 'xact_start',
     'activity_samples_ring should have xact_start column'
 );
 
 SELECT has_column(
-    'pgfr', 'activity_samples_archive', 'backend_start',
+    'pgfr_record', 'activity_samples_archive', 'backend_start',
     'activity_samples_archive should have backend_start column'
 );
 
 SELECT has_column(
-    'pgfr', 'activity_samples_archive', 'xact_start',
+    'pgfr_record', 'activity_samples_archive', 'xact_start',
     'activity_samples_archive should have xact_start column'
 );
 
@@ -37,12 +37,12 @@ SELECT has_column(
 -- =============================================================================
 
 SELECT has_table(
-    'pgfr', 'vacuum_progress_snapshots',
+    'pgfr_record', 'vacuum_progress_snapshots',
     'vacuum_progress_snapshots table should exist'
 );
 
 SELECT has_column(
-    'pgfr', 'vacuum_progress_snapshots', 'phase',
+    'pgfr_record', 'vacuum_progress_snapshots', 'phase',
     'vacuum_progress_snapshots should have phase column'
 );
 
@@ -51,37 +51,37 @@ SELECT has_column(
 -- =============================================================================
 
 SELECT has_column(
-    'pgfr', 'snapshots', 'archived_count',
+    'pgfr_record', 'snapshots', 'archived_count',
     'snapshots should have archived_count column'
 );
 
 SELECT has_column(
-    'pgfr', 'snapshots', 'last_archived_wal',
+    'pgfr_record', 'snapshots', 'last_archived_wal',
     'snapshots should have last_archived_wal column'
 );
 
 SELECT has_column(
-    'pgfr', 'snapshots', 'last_archived_time',
+    'pgfr_record', 'snapshots', 'last_archived_time',
     'snapshots should have last_archived_time column'
 );
 
 SELECT has_column(
-    'pgfr', 'snapshots', 'failed_count',
+    'pgfr_record', 'snapshots', 'failed_count',
     'snapshots should have failed_count column'
 );
 
 SELECT has_column(
-    'pgfr', 'snapshots', 'last_failed_wal',
+    'pgfr_record', 'snapshots', 'last_failed_wal',
     'snapshots should have last_failed_wal column'
 );
 
 SELECT has_column(
-    'pgfr', 'snapshots', 'last_failed_time',
+    'pgfr_record', 'snapshots', 'last_failed_time',
     'snapshots should have last_failed_time column'
 );
 
 SELECT has_column(
-    'pgfr', 'snapshots', 'archiver_stats_reset',
+    'pgfr_record', 'snapshots', 'archiver_stats_reset',
     'snapshots should have archiver_stats_reset column'
 );
 
@@ -90,17 +90,17 @@ SELECT has_column(
 -- =============================================================================
 
 -- Take a sample to populate data
-SELECT pgfr.sample();
+SELECT pgfr_record.sample();
 
 -- Verify backend_start is populated for active sessions
 -- Note: May be NULL if no sessions were active at sample time
 SELECT lives_ok(
-    $$SELECT backend_start FROM pgfr.activity_samples_ring LIMIT 1$$,
+    $$SELECT backend_start FROM pgfr_record.activity_samples_ring LIMIT 1$$,
     'backend_start column should be queryable in activity_samples_ring'
 );
 
 SELECT lives_ok(
-    $$SELECT xact_start FROM pgfr.activity_samples_ring LIMIT 1$$,
+    $$SELECT xact_start FROM pgfr_record.activity_samples_ring LIMIT 1$$,
     'xact_start column should be queryable in activity_samples_ring'
 );
 
@@ -109,23 +109,23 @@ SELECT lives_ok(
 -- =============================================================================
 
 -- Take a snapshot to populate data
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Verify archiver columns are queryable (may be NULL if archive_mode=off)
 SELECT lives_ok(
-    $$SELECT archived_count, last_archived_wal, failed_count FROM pgfr.snapshots ORDER BY id DESC LIMIT 1$$,
+    $$SELECT archived_count, last_archived_wal, failed_count FROM pgfr_record.snapshots ORDER BY id DESC LIMIT 1$$,
     'archiver columns should be queryable in snapshots'
 );
 
 -- Verify vacuum_progress_snapshots is queryable (may be empty if no vacuums running)
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.vacuum_progress_snapshots LIMIT 1$$,
+    $$SELECT * FROM pgfr_record.vacuum_progress_snapshots LIMIT 1$$,
     'vacuum_progress_snapshots should be queryable'
 );
 
 -- Verify snapshot was created successfully
 SELECT ok(
-    (SELECT count(*) FROM pgfr.snapshots WHERE captured_at > now() - interval '1 minute') > 0,
+    (SELECT count(*) FROM pgfr_record.snapshots WHERE captured_at > now() - interval '1 minute') > 0,
     'snapshot() should create a new snapshot'
 );
 
@@ -135,17 +135,17 @@ SELECT ok(
 
 -- Verify recent_activity view includes new columns by querying them
 SELECT lives_ok(
-    $$SELECT backend_start FROM pgfr.recent_activity LIMIT 1$$,
+    $$SELECT backend_start FROM pgfr_record.recent_activity LIMIT 1$$,
     'recent_activity view should include backend_start column'
 );
 
 SELECT lives_ok(
-    $$SELECT xact_start FROM pgfr.recent_activity LIMIT 1$$,
+    $$SELECT xact_start FROM pgfr_record.recent_activity LIMIT 1$$,
     'recent_activity view should include xact_start column'
 );
 
 SELECT lives_ok(
-    $$SELECT session_age FROM pgfr.recent_activity LIMIT 1$$,
+    $$SELECT session_age FROM pgfr_record.recent_activity LIMIT 1$$,
     'recent_activity view should include session_age computed column'
 );
 
@@ -154,7 +154,7 @@ SELECT lives_ok(
 -- =============================================================================
 
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.recent_vacuum_progress LIMIT 1$$,
+    $$SELECT * FROM pgfr_record.recent_vacuum_progress LIMIT 1$$,
     'recent_vacuum_progress view should be queryable'
 );
 
@@ -163,7 +163,7 @@ SELECT lives_ok(
 -- =============================================================================
 
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.archiver_status LIMIT 1$$,
+    $$SELECT * FROM pgfr_record.archiver_status LIMIT 1$$,
     'archiver_status view should be queryable'
 );
 

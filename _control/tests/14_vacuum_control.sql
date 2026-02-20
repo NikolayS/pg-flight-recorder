@@ -38,22 +38,22 @@ SELECT has_column(
 -- =============================================================================
 
 SELECT has_column(
-    'pgfr', 'table_snapshots', 'reltuples',
+    'pgfr_record', 'table_snapshots', 'reltuples',
     'table_snapshots should have reltuples column'
 );
 
 SELECT col_type_is(
-    'pgfr', 'table_snapshots', 'reltuples', 'bigint',
+    'pgfr_record', 'table_snapshots', 'reltuples', 'bigint',
     'reltuples should be BIGINT type'
 );
 
 SELECT has_column(
-    'pgfr', 'table_snapshots', 'vacuum_running',
+    'pgfr_record', 'table_snapshots', 'vacuum_running',
     'table_snapshots should have vacuum_running column'
 );
 
 SELECT has_column(
-    'pgfr', 'table_snapshots', 'last_vacuum_duration_ms',
+    'pgfr_record', 'table_snapshots', 'last_vacuum_duration_ms',
     'table_snapshots should have last_vacuum_duration_ms column'
 );
 
@@ -62,39 +62,39 @@ SELECT has_column(
 -- =============================================================================
 
 SELECT ok(
-    EXISTS(SELECT 1 FROM pgfr.config WHERE key = 'vacuum_control_enabled'),
+    EXISTS(SELECT 1 FROM pgfr_record.config WHERE key = 'vacuum_control_enabled'),
     'vacuum_control_enabled config parameter should exist'
 );
 
 SELECT is(
-    (SELECT value FROM pgfr.config WHERE key = 'vacuum_control_enabled'),
+    (SELECT value FROM pgfr_record.config WHERE key = 'vacuum_control_enabled'),
     'true',
     'vacuum_control_enabled default should be true'
 );
 
 SELECT ok(
-    EXISTS(SELECT 1 FROM pgfr.config WHERE key = 'vacuum_control_dead_tuple_budget_pct'),
+    EXISTS(SELECT 1 FROM pgfr_record.config WHERE key = 'vacuum_control_dead_tuple_budget_pct'),
     'vacuum_control_dead_tuple_budget_pct config parameter should exist'
 );
 
 SELECT is(
-    (SELECT value FROM pgfr.config WHERE key = 'vacuum_control_dead_tuple_budget_pct'),
+    (SELECT value FROM pgfr_record.config WHERE key = 'vacuum_control_dead_tuple_budget_pct'),
     '5',
     'vacuum_control_dead_tuple_budget_pct default should be 5'
 );
 
 SELECT ok(
-    EXISTS(SELECT 1 FROM pgfr.config WHERE key = 'vacuum_control_min_scale_factor'),
+    EXISTS(SELECT 1 FROM pgfr_record.config WHERE key = 'vacuum_control_min_scale_factor'),
     'vacuum_control_min_scale_factor config parameter should exist'
 );
 
 SELECT ok(
-    EXISTS(SELECT 1 FROM pgfr.config WHERE key = 'vacuum_control_hysteresis_pct'),
+    EXISTS(SELECT 1 FROM pgfr_record.config WHERE key = 'vacuum_control_hysteresis_pct'),
     'vacuum_control_hysteresis_pct config parameter should exist'
 );
 
 SELECT ok(
-    EXISTS(SELECT 1 FROM pgfr.config WHERE key = 'vacuum_control_rate_limit_minutes'),
+    EXISTS(SELECT 1 FROM pgfr_record.config WHERE key = 'vacuum_control_rate_limit_minutes'),
     'vacuum_control_rate_limit_minutes config parameter should exist'
 );
 
@@ -182,7 +182,7 @@ SELECT ok(
 -- =============================================================================
 
 -- Take a snapshot to populate data
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Test vacuum_control_mode executes without error
 SELECT lives_ok(
@@ -276,12 +276,12 @@ SELECT lives_ok(
     'vacuum_control_mode catch_up check should not error'
 );
 
--- Test mode with pgfr tables (should work)
+-- Test mode with pgfr_record tables (should work)
 SELECT lives_ok(
     $$SELECT * FROM pgfr_control.vacuum_control_mode(
-        'pgfr.snapshots'::regclass::oid
+        'pgfr_record.snapshots'::regclass::oid
     )$$,
-    'vacuum_control_mode should work on pgfr tables'
+    'vacuum_control_mode should work on pgfr_record tables'
 );
 
 -- =============================================================================
@@ -512,12 +512,12 @@ SELECT ok(
 );
 
 -- Test snapshot populates new columns
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 SELECT lives_ok(
     $$SELECT reltuples, vacuum_running, last_vacuum_duration_ms
-      FROM pgfr.table_snapshots
-      WHERE snapshot_id = (SELECT max(id) FROM pgfr.snapshots)
+      FROM pgfr_record.table_snapshots
+      WHERE snapshot_id = (SELECT max(id) FROM pgfr_record.snapshots)
       LIMIT 1$$,
     'snapshot should populate new table_snapshots columns'
 );

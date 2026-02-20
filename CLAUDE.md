@@ -6,7 +6,7 @@ Three extensions, each in its own subdirectory:
 
 | Directory   | Extension      | Schema         | Purpose                                                  |
 |-------------|----------------|----------------|----------------------------------------------------------|
-| `_record/`  | `pgfr_record`  | `pgfr`         | Core: tables, collection, scheduling, ring buffers       |
+| `_record/`  | `pgfr_record`  | `pgfr_record`  | Core: tables, collection, scheduling, ring buffers       |
 | `_analyze/` | `pgfr_analyze` | `pgfr_analyze` | Optional: reporting, anomaly detection, time travel      |
 | `_control/` | `pgfr_control` | `pgfr_control` | Optional: vacuum diagnostics, scale factor tuning, bloat |
 
@@ -85,9 +85,9 @@ Tests are distributed across extension subdirectories:
 ## Code Style
 
 - Follow existing patterns in the relevant `install.sql`
-- Use the correct schema prefix: `pgfr.` for core, `pgfr_analyze.` for analyze, `pgfr_control.` for control
+- Use the correct schema prefix: `pgfr_record.` for core, `pgfr_analyze.` for analyze, `pgfr_control.` for control
 - Include COMMENT ON statements for new functions and tables
-- Extensions read core tables cross-schema (e.g., `pgfr.snapshots`) but never write to another extension's schema
+- Extensions read core tables cross-schema (e.g., `pgfr_record.snapshots`) but never write to another extension's schema
 
 ## Schema Evolution
 
@@ -101,5 +101,5 @@ pgfr_record uses **additive-only schema changes**:
 
 - Query performance matters during incident analysis
 - Strong typing catches errors early
-- Schema-as-documentation (`\d pgfr.snapshots` shows what's collected)
+- Schema-as-documentation (`\d pgfr_record.snapshots` shows what's collected)
 - Underlying pg_stat_* views evolve slowly and additively

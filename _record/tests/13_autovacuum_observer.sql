@@ -13,17 +13,17 @@ SELECT plan(35);
 -- =============================================================================
 
 SELECT has_column(
-    'pgfr', 'table_snapshots', 'n_mod_since_analyze',
+    'pgfr_record', 'table_snapshots', 'n_mod_since_analyze',
     'table_snapshots should have n_mod_since_analyze column'
 );
 
 SELECT col_type_is(
-    'pgfr', 'table_snapshots', 'n_mod_since_analyze', 'bigint',
+    'pgfr_record', 'table_snapshots', 'n_mod_since_analyze', 'bigint',
     'n_mod_since_analyze should be BIGINT type'
 );
 
 SELECT col_is_null(
-    'pgfr', 'table_snapshots', 'n_mod_since_analyze',
+    'pgfr_record', 'table_snapshots', 'n_mod_since_analyze',
     'n_mod_since_analyze should be nullable'
 );
 
@@ -32,23 +32,23 @@ SELECT col_is_null(
 -- =============================================================================
 
 SELECT ok(
-    EXISTS(SELECT 1 FROM pgfr.config WHERE key = 'table_stats_mode'),
+    EXISTS(SELECT 1 FROM pgfr_record.config WHERE key = 'table_stats_mode'),
     'table_stats_mode config parameter should exist'
 );
 
 SELECT is(
-    (SELECT value FROM pgfr.config WHERE key = 'table_stats_mode'),
+    (SELECT value FROM pgfr_record.config WHERE key = 'table_stats_mode'),
     'top_n',
     'table_stats_mode default should be top_n'
 );
 
 SELECT ok(
-    EXISTS(SELECT 1 FROM pgfr.config WHERE key = 'table_stats_activity_threshold'),
+    EXISTS(SELECT 1 FROM pgfr_record.config WHERE key = 'table_stats_activity_threshold'),
     'table_stats_activity_threshold config parameter should exist'
 );
 
 SELECT is(
-    (SELECT value FROM pgfr.config WHERE key = 'table_stats_activity_threshold'),
+    (SELECT value FROM pgfr_record.config WHERE key = 'table_stats_activity_threshold'),
     '0',
     'table_stats_activity_threshold default should be 0'
 );
@@ -86,24 +86,24 @@ SELECT has_function(
 -- =============================================================================
 
 -- Take a snapshot to populate data
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Verify n_mod_since_analyze is queryable
 SELECT lives_ok(
-    $$SELECT n_mod_since_analyze FROM pgfr.table_snapshots LIMIT 1$$,
+    $$SELECT n_mod_since_analyze FROM pgfr_record.table_snapshots LIMIT 1$$,
     'n_mod_since_analyze column should be queryable'
 );
 
 -- Verify snapshot was created successfully
 SELECT ok(
-    (SELECT count(*) FROM pgfr.snapshots WHERE captured_at > now() - interval '1 minute') > 0,
+    (SELECT count(*) FROM pgfr_record.snapshots WHERE captured_at > now() - interval '1 minute') > 0,
     'snapshot() should create a new snapshot with table stats'
 );
 
 -- Verify table_snapshots has data (if there are user tables)
 SELECT lives_ok(
     $$SELECT relid, n_dead_tup, n_mod_since_analyze
-      FROM pgfr.table_snapshots
+      FROM pgfr_record.table_snapshots
       ORDER BY snapshot_id DESC LIMIT 5$$,
     'table_snapshots should be queryable with n_mod_since_analyze'
 );
@@ -111,8 +111,8 @@ SELECT lives_ok(
 -- Verify n_mod_since_analyze is populated from pg_stat_user_tables
 SELECT lives_ok(
     $$SELECT ts.n_mod_since_analyze
-      FROM pgfr.table_snapshots ts
-      JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+      FROM pgfr_record.table_snapshots ts
+      JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
       WHERE s.captured_at > now() - interval '1 minute'
       LIMIT 1$$,
     'n_mod_since_analyze should be populated in recent snapshots'
@@ -197,66 +197,66 @@ SELECT ok(
 -- =============================================================================
 
 -- Test top_n mode (default)
-UPDATE pgfr.config SET value = 'top_n' WHERE key = 'table_stats_mode';
-UPDATE pgfr.config SET value = '5' WHERE key = 'table_stats_top_n';
+UPDATE pgfr_record.config SET value = 'top_n' WHERE key = 'table_stats_mode';
+UPDATE pgfr_record.config SET value = '5' WHERE key = 'table_stats_top_n';
 
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Get the most recent snapshot and count its table_snapshots
 SELECT ok(
-    (SELECT count(*) FROM pgfr.table_snapshots
-     WHERE snapshot_id = (SELECT max(id) FROM pgfr.snapshots)) <= 5,
+    (SELECT count(*) FROM pgfr_record.table_snapshots
+     WHERE snapshot_id = (SELECT max(id) FROM pgfr_record.snapshots)) <= 5,
     'top_n mode should limit to table_stats_top_n tables'
 );
 
 -- Test all mode
-UPDATE pgfr.config SET value = 'all' WHERE key = 'table_stats_mode';
+UPDATE pgfr_record.config SET value = 'all' WHERE key = 'table_stats_mode';
 
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 SELECT lives_ok(
-    $$SELECT count(*) FROM pgfr.table_snapshots ts
-      JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    $$SELECT count(*) FROM pgfr_record.table_snapshots ts
+      JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
       WHERE s.captured_at > now() - interval '10 seconds'$$,
     'all mode should collect all tables without error'
 );
 
 -- Verify all mode collects tables
 SELECT ok(
-    (SELECT count(*) FROM pgfr.table_snapshots ts
-     JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    (SELECT count(*) FROM pgfr_record.table_snapshots ts
+     JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
      WHERE s.captured_at > now() - interval '10 seconds') >= 0,
     'all mode should collect tables'
 );
 
 -- Test threshold mode with high threshold (should collect few/none)
-UPDATE pgfr.config SET value = 'threshold' WHERE key = 'table_stats_mode';
-UPDATE pgfr.config SET value = '999999999999' WHERE key = 'table_stats_activity_threshold';
+UPDATE pgfr_record.config SET value = 'threshold' WHERE key = 'table_stats_mode';
+UPDATE pgfr_record.config SET value = '999999999999' WHERE key = 'table_stats_activity_threshold';
 
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 SELECT ok(
-    (SELECT count(*) FROM pgfr.table_snapshots ts
-     JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    (SELECT count(*) FROM pgfr_record.table_snapshots ts
+     JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
      WHERE s.captured_at > now() - interval '10 seconds') >= 0,
     'threshold mode with high threshold should work'
 );
 
 -- Test threshold mode with zero threshold (should collect all active)
-UPDATE pgfr.config SET value = '0' WHERE key = 'table_stats_activity_threshold';
+UPDATE pgfr_record.config SET value = '0' WHERE key = 'table_stats_activity_threshold';
 
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 SELECT lives_ok(
-    $$SELECT count(*) FROM pgfr.table_snapshots ts
-      JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    $$SELECT count(*) FROM pgfr_record.table_snapshots ts
+      JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
       WHERE s.captured_at > now() - interval '10 seconds'$$,
     'threshold mode with zero threshold should collect tables'
 );
 
 -- Reset to default mode
-UPDATE pgfr.config SET value = 'top_n' WHERE key = 'table_stats_mode';
-UPDATE pgfr.config SET value = '50' WHERE key = 'table_stats_top_n';
+UPDATE pgfr_record.config SET value = 'top_n' WHERE key = 'table_stats_mode';
+UPDATE pgfr_record.config SET value = '50' WHERE key = 'table_stats_top_n';
 
 SELECT lives_ok(
     $$SELECT 1$$,
@@ -264,15 +264,15 @@ SELECT lives_ok(
 );
 
 -- Test invalid mode falls back gracefully
-UPDATE pgfr.config SET value = 'invalid_mode' WHERE key = 'table_stats_mode';
+UPDATE pgfr_record.config SET value = 'invalid_mode' WHERE key = 'table_stats_mode';
 
 SELECT lives_ok(
-    $$SELECT pgfr.snapshot()$$,
+    $$SELECT pgfr_record.snapshot()$$,
     'invalid table_stats_mode should not cause error (falls back to top_n)'
 );
 
 -- Reset mode
-UPDATE pgfr.config SET value = 'top_n' WHERE key = 'table_stats_mode';
+UPDATE pgfr_record.config SET value = 'top_n' WHERE key = 'table_stats_mode';
 
 SELECT lives_ok(
     $$SELECT 1$$,

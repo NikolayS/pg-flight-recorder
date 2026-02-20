@@ -32,12 +32,12 @@ echo ""
 echo "Checking flight recorder installation..."
 FR_INSTALLED=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -qtA -c "
     SELECT EXISTS (
-        SELECT 1 FROM pg_namespace WHERE nspname = 'pgfr'
+        SELECT 1 FROM pg_namespace WHERE nspname = 'pgfr_record'
     );
 ")
 
 if [ "$FR_INSTALLED" != "t" ]; then
-    echo "ERROR: pgfr not installed. Installing..."
+    echo "ERROR: pgfr_record not installed. Installing..."
     psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" --single-transaction -f "${SCRIPT_DIR}/../_record/install.sql"
 fi
 
@@ -45,22 +45,22 @@ fi
 echo "Configuring flight recorder (${INTERVAL}s interval)..."
 psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -c "
     -- Set sampling interval
-    UPDATE pgfr.config
+    UPDATE pgfr_record.config
     SET value = '${INTERVAL}'
     WHERE key = 'sample_interval_seconds';
 
     -- Disable adaptive sampling (we want consistent timing)
-    UPDATE pgfr.config
+    UPDATE pgfr_record.config
     SET value = 'false'
     WHERE key = 'adaptive_sampling';
 
     -- Enable snapshot-based collection (reduces locks from 3 to 1)
-    UPDATE pgfr.config
+    UPDATE pgfr_record.config
     SET value = 'true'
     WHERE key = 'snapshot_based_collection';
 
     -- Enable flight recorder
-    SELECT pgfr.enable();
+    SELECT pgfr_record.enable();
 "
 
 # Wait for first collection to ensure jobs are running
@@ -69,7 +69,7 @@ sleep $((INTERVAL + 5))
 
 # Clear collection stats to start fresh
 psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -c "
-    TRUNCATE pgfr.collection_stats;
+    TRUNCATE pgfr_record.collection_stats;
 "
 
 # Start background process to log collections
@@ -84,7 +84,7 @@ echo "Starting collection monitor..."
                     collection_type,
                     duration_ms,
                     success
-                FROM pgfr.collection_stats
+                FROM pgfr_record.collection_stats
                 ORDER BY started_at DESC
                 LIMIT 1
             ) t;

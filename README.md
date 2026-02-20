@@ -25,7 +25,7 @@ Three extensions, each published as a separate [dbdev](https://database.dev) pac
 
 | Extension                                                  | Schema         | Purpose                                                  | README                                   |
 |------------------------------------------------------------|----------------|----------------------------------------------------------|------------------------------------------|
-| [pgfr_record](https://database.dev/dventimi/pgfr_record)   | `pgfr`         | Core: tables, collection, scheduling, ring buffers       | [_record/README.md](_record/README.md)   |
+| [pgfr_record](https://database.dev/dventimi/pgfr_record)   | `pgfr_record`  | Core: tables, collection, scheduling, ring buffers       | [_record/README.md](_record/README.md)   |
 | [pgfr_analyze](https://database.dev/dventimi/pgfr_analyze) | `pgfr_analyze` | Optional: reporting, anomaly detection, time travel      | [_analyze/README.md](_analyze/README.md) |
 | [pgfr_control](https://database.dev/dventimi/pgfr_control) | `pgfr_control` | Optional: vacuum diagnostics, scale factor tuning, bloat | [_control/README.md](_control/README.md) |
 
@@ -49,10 +49,10 @@ psql --single-transaction -f _analyze/install.sql
 
 ```sql
 -- Enable collection
-SELECT pgfr.enable();
+SELECT pgfr_record.enable();
 
 -- Check health
-SELECT * FROM pgfr.health_check();
+SELECT * FROM pgfr_record.health_check();
 
 -- Generate a diagnostic report
 SELECT pgfr_analyze.report('1 hour');
@@ -63,7 +63,7 @@ SELECT pgfr_analyze.report('1 hour');
 ### Daily monitoring
 
 ```sql
-SELECT * FROM pgfr.health_check();
+SELECT * FROM pgfr_record.health_check();
 SELECT pgfr_analyze.report('1 hour');
 ```
 
@@ -71,7 +71,7 @@ SELECT pgfr_analyze.report('1 hour');
 
 ```sql
 -- Switch to high-frequency collection
-SELECT * FROM pgfr.apply_profile('troubleshooting');
+SELECT * FROM pgfr_record.apply_profile('troubleshooting');
 
 -- What was happening at a specific time?
 SELECT * FROM pgfr_analyze.what_happened_at('2024-01-15 14:32');
@@ -83,7 +83,7 @@ SELECT * FROM pgfr_analyze.incident_timeline(
 );
 
 -- Return to normal after incident
-SELECT * FROM pgfr.apply_profile('default');
+SELECT * FROM pgfr_record.apply_profile('default');
 ```
 
 ### Performance analysis
@@ -136,9 +136,9 @@ Profiles are pre-configured settings for different environments:
 | `minimal_overhead` | 300s            | Resource-constrained systems           |
 
 ```sql
-SELECT * FROM pgfr.list_profiles();
-SELECT * FROM pgfr.explain_profile('production_safe');
-SELECT * FROM pgfr.apply_profile('production_safe');
+SELECT * FROM pgfr_record.list_profiles();
+SELECT * FROM pgfr_record.explain_profile('production_safe');
+SELECT * FROM pgfr_record.apply_profile('production_safe');
 ```
 
 ## Safety
@@ -156,10 +156,10 @@ Collection modes provide manual control: `normal`, `light`, `emergency`, `kill`.
 
 ```sql
 -- Emergency stop
-SELECT pgfr.set_mode('kill');
+SELECT pgfr_record.set_mode('kill');
 
 -- Resume
-SELECT pgfr.set_mode('normal');
+SELECT pgfr_record.set_mode('normal');
 ```
 
 ## Export
@@ -168,13 +168,13 @@ With default retention: ~2.5GB uncompressed, ~150MB compressed.
 
 ```bash
 # Without compression
-pg_dump -d your_database -n pgfr --data-only -f pgfr_data.sql
+pg_dump -d your_database -n pgfr_record --data-only -f pgfr_data.sql
 
 # With compression (PostgreSQL 16+)
-pg_dump -d your_database -n pgfr --data-only --compress=gzip:9 -f pgfr_data.sql.gz
+pg_dump -d your_database -n pgfr_record --data-only --compress=gzip:9 -f pgfr_data.sql.gz
 
 # With compression (PostgreSQL 15)
-pg_dump -d your_database -n pgfr --data-only | gzip > pgfr_data.sql.gz
+pg_dump -d your_database -n pgfr_record --data-only | gzip > pgfr_data.sql.gz
 ```
 
 ## Upgrade

@@ -31,7 +31,7 @@ info() {
 
 # Check if flight recorder is installed
 check_pgfr() {
-    if psql -c "SELECT pgfr.get_mode()" &> /dev/null; then
+    if psql -c "SELECT pgfr_record.get_mode()" &> /dev/null; then
         log "✓ Flight recorder is installed"
         return 0
     else
@@ -49,7 +49,7 @@ run_baseline() {
     log "Running baseline (flight recorder DISABLED)..."
 
     # Disable flight recorder
-    psql -c "SELECT pgfr.disable()" &> /dev/null || true
+    psql -c "SELECT pgfr_record.disable()" &> /dev/null || true
 
     # Wait for any in-flight collections to complete
     sleep 5
@@ -73,8 +73,8 @@ run_with_pgfr() {
     log "Running with flight recorder ENABLED (mode: $mode)..."
 
     # Enable flight recorder
-    psql -c "SELECT pgfr.enable()" &> /dev/null
-    psql -c "SELECT pgfr.set_mode('$mode')" &> /dev/null
+    psql -c "SELECT pgfr_record.enable()" &> /dev/null
+    psql -c "SELECT pgfr_record.set_mode('$mode')" &> /dev/null
 
     # Wait for flight recorder to stabilize
     sleep 5

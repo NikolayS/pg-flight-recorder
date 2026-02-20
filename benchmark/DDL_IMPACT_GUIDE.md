@@ -108,7 +108,7 @@ If collision rate is concerning:
 ### Option 1: Emergency Mode (300s intervals)
 
 ```sql
-SELECT pgfr.set_mode('emergency');
+SELECT pgfr_record.set_mode('emergency');
 -- 40% fewer collections = 40% fewer collision opportunities
 ```
 
@@ -116,7 +116,7 @@ SELECT pgfr.set_mode('emergency');
 
 ```sql
 -- Fail faster, less DDL delay
-UPDATE pgfr.config
+UPDATE pgfr_record.config
 SET value = '50'
 WHERE key = 'lock_timeout_ms';
 ```
@@ -125,14 +125,14 @@ WHERE key = 'lock_timeout_ms';
 
 ```sql
 -- Before maintenance window
-SELECT pgfr.disable();
+SELECT pgfr_record.disable();
 
 -- Run DDL operations
 ALTER TABLE ...;
 CREATE INDEX ...;
 
 -- After maintenance
-SELECT pgfr.enable();
+SELECT pgfr_record.enable();
 ```
 
 ### Option 4: Schedule DDL During Low-Traffic
@@ -213,7 +213,7 @@ Check that the database is accessible and flight recorder is installed:
 
 ```bash
 psql -c "SELECT version();"
-psql -c "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'pgfr');"
+psql -c "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'pgfr_record');"
 ```
 
 ### High Collision Rate (>10%)

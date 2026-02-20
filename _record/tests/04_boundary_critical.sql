@@ -17,25 +17,25 @@ SELECT plan(79);
 
 -- Test slot_id = 119 (should succeed - max valid)
 SELECT lives_ok(
-    $$UPDATE pgfr.samples_ring SET captured_at = now() WHERE slot_id = 119$$,
+    $$UPDATE pgfr_record.samples_ring SET captured_at = now() WHERE slot_id = 119$$,
     'Boundary: slot_id = 119 should be valid (max slot)'
 );
 
 -- Test slot_id = 0 (should succeed - min valid)
 SELECT lives_ok(
-    $$UPDATE pgfr.samples_ring SET captured_at = now() WHERE slot_id = 0$$,
+    $$UPDATE pgfr_record.samples_ring SET captured_at = now() WHERE slot_id = 0$$,
     'Boundary: slot_id = 0 should be valid (min slot)'
 );
 
 -- Test slot_id wraparound (verify both 0 and 119 exist)
 SELECT ok(
-    (SELECT count(*) FROM pgfr.samples_ring WHERE slot_id IN (0, 119)) = 2,
+    (SELECT count(*) FROM pgfr_record.samples_ring WHERE slot_id IN (0, 119)) = 2,
     'Boundary: Slots 0 and 119 should both exist for wraparound'
 );
 
 -- Test all 120 slots exist
 SELECT is(
-    (SELECT count(DISTINCT slot_id) FROM pgfr.samples_ring),
+    (SELECT count(DISTINCT slot_id) FROM pgfr_record.samples_ring),
     120::bigint,
     'Boundary: Exactly 120 unique slots should exist (0-119)'
 );
@@ -44,61 +44,61 @@ SELECT is(
 
 -- Wait samples: row_num = 99 (should succeed - max valid)
 SELECT lives_ok(
-    $$UPDATE pgfr.wait_samples_ring
+    $$UPDATE pgfr_record.wait_samples_ring
       SET backend_type = 'test' WHERE slot_id = 0 AND row_num = 99$$,
     'Boundary: wait_samples row_num = 99 should be valid (max row)'
 );
 
 -- Wait samples: row_num = 0 (should succeed - min valid)
 SELECT lives_ok(
-    $$UPDATE pgfr.wait_samples_ring
+    $$UPDATE pgfr_record.wait_samples_ring
       SET backend_type = 'test' WHERE slot_id = 0 AND row_num = 0$$,
     'Boundary: wait_samples row_num = 0 should be valid (min row)'
 );
 
 -- Activity samples: row_num = 24 (should succeed - max valid)
 SELECT lives_ok(
-    $$UPDATE pgfr.activity_samples_ring
+    $$UPDATE pgfr_record.activity_samples_ring
       SET pid = 9999 WHERE slot_id = 0 AND row_num = 24$$,
     'Boundary: activity_samples row_num = 24 should be valid (max row)'
 );
 
 -- Activity samples: row_num = 0 (should succeed - min valid)
 SELECT lives_ok(
-    $$UPDATE pgfr.activity_samples_ring
+    $$UPDATE pgfr_record.activity_samples_ring
       SET pid = 9999 WHERE slot_id = 0 AND row_num = 0$$,
     'Boundary: activity_samples row_num = 0 should be valid (min row)'
 );
 
 -- Lock samples: row_num = 99 (should succeed - max valid)
 SELECT lives_ok(
-    $$UPDATE pgfr.lock_samples_ring
+    $$UPDATE pgfr_record.lock_samples_ring
       SET blocked_pid = 9999 WHERE slot_id = 0 AND row_num = 99$$,
     'Boundary: lock_samples row_num = 99 should be valid (max row)'
 );
 
 -- Lock samples: row_num = 0 (should succeed - min valid)
 SELECT lives_ok(
-    $$UPDATE pgfr.lock_samples_ring
+    $$UPDATE pgfr_record.lock_samples_ring
       SET blocked_pid = 9999 WHERE slot_id = 0 AND row_num = 0$$,
     'Boundary: lock_samples row_num = 0 should be valid (min row)'
 );
 
 -- Verify pre-population counts
 SELECT is(
-    (SELECT count(*) FROM pgfr.wait_samples_ring),
+    (SELECT count(*) FROM pgfr_record.wait_samples_ring),
     12000::bigint,
     'Boundary: wait_samples_ring should have 12,000 pre-populated rows (120 slots x 100 rows)'
 );
 
 SELECT is(
-    (SELECT count(*) FROM pgfr.activity_samples_ring),
+    (SELECT count(*) FROM pgfr_record.activity_samples_ring),
     3000::bigint,
     'Boundary: activity_samples_ring should have 3,000 pre-populated rows (120 slots x 25 rows)'
 );
 
 SELECT is(
-    (SELECT count(*) FROM pgfr.lock_samples_ring),
+    (SELECT count(*) FROM pgfr_record.lock_samples_ring),
     12000::bigint,
     'Boundary: lock_samples_ring should have 12,000 pre-populated rows (120 slots x 100 rows)'
 );
@@ -107,121 +107,121 @@ SELECT is(
 
 -- Test sample_interval_seconds = 0 (should be rejected by validation)
 SELECT lives_ok(
-    $$UPDATE pgfr.config SET value = '0' WHERE key = 'sample_interval_seconds'$$,
+    $$UPDATE pgfr_record.config SET value = '0' WHERE key = 'sample_interval_seconds'$$,
     'Boundary: config can store sample_interval_seconds = 0 (validation happens at use time)'
 );
 
 -- Reset to valid value
-UPDATE pgfr.config SET value = '120' WHERE key = 'sample_interval_seconds';
+UPDATE pgfr_record.config SET value = '120' WHERE key = 'sample_interval_seconds';
 
 -- Test sample_interval_seconds = -1
 SELECT lives_ok(
-    $$UPDATE pgfr.config SET value = '-1' WHERE key = 'sample_interval_seconds'$$,
+    $$UPDATE pgfr_record.config SET value = '-1' WHERE key = 'sample_interval_seconds'$$,
     'Boundary: config can store negative sample_interval_seconds (validation happens at use time)'
 );
 
 -- Reset to valid value
-UPDATE pgfr.config SET value = '120' WHERE key = 'sample_interval_seconds';
+UPDATE pgfr_record.config SET value = '120' WHERE key = 'sample_interval_seconds';
 
 -- Test sample_interval_seconds = 59 (below minimum of 60)
 SELECT lives_ok(
-    $$UPDATE pgfr.config SET value = '59' WHERE key = 'sample_interval_seconds'$$,
+    $$UPDATE pgfr_record.config SET value = '59' WHERE key = 'sample_interval_seconds'$$,
     'Boundary: config can store sample_interval_seconds = 59'
 );
 
 -- Reset to valid value
-UPDATE pgfr.config SET value = '120' WHERE key = 'sample_interval_seconds';
+UPDATE pgfr_record.config SET value = '120' WHERE key = 'sample_interval_seconds';
 
 -- Test sample_interval_seconds = 3601 (above maximum of 3600)
 SELECT lives_ok(
-    $$UPDATE pgfr.config SET value = '3601' WHERE key = 'sample_interval_seconds'$$,
+    $$UPDATE pgfr_record.config SET value = '3601' WHERE key = 'sample_interval_seconds'$$,
     'Boundary: config can store sample_interval_seconds = 3601'
 );
 
 -- Reset to valid value
-UPDATE pgfr.config SET value = '120' WHERE key = 'sample_interval_seconds';
+UPDATE pgfr_record.config SET value = '120' WHERE key = 'sample_interval_seconds';
 
 -- Test circuit_breaker_threshold_ms = 0
 SELECT lives_ok(
-    $$UPDATE pgfr.config SET value = '0' WHERE key = 'circuit_breaker_threshold_ms'$$,
+    $$UPDATE pgfr_record.config SET value = '0' WHERE key = 'circuit_breaker_threshold_ms'$$,
     'Boundary: config can store circuit_breaker_threshold_ms = 0'
 );
 
 -- Reset to valid value
-UPDATE pgfr.config SET value = '1000' WHERE key = 'circuit_breaker_threshold_ms';
+UPDATE pgfr_record.config SET value = '1000' WHERE key = 'circuit_breaker_threshold_ms';
 
 -- Test section_timeout_ms = 0
 SELECT lives_ok(
-    $$UPDATE pgfr.config SET value = '0' WHERE key = 'section_timeout_ms'$$,
+    $$UPDATE pgfr_record.config SET value = '0' WHERE key = 'section_timeout_ms'$$,
     'Boundary: config can store section_timeout_ms = 0'
 );
 
 -- Reset to valid value
-UPDATE pgfr.config SET value = '250' WHERE key = 'section_timeout_ms';
+UPDATE pgfr_record.config SET value = '250' WHERE key = 'section_timeout_ms';
 
 -- Test lock_timeout_ms = -1
 SELECT lives_ok(
-    $$UPDATE pgfr.config SET value = '-1' WHERE key = 'lock_timeout_ms'$$,
+    $$UPDATE pgfr_record.config SET value = '-1' WHERE key = 'lock_timeout_ms'$$,
     'Boundary: config can store lock_timeout_ms = -1'
 );
 
 -- Reset to valid value
-UPDATE pgfr.config SET value = '100' WHERE key = 'lock_timeout_ms';
+UPDATE pgfr_record.config SET value = '100' WHERE key = 'lock_timeout_ms';
 
 -- Test schema_size_warning_mb = 0
 SELECT lives_ok(
-    $$UPDATE pgfr.config SET value = '0' WHERE key = 'schema_size_warning_mb'$$,
+    $$UPDATE pgfr_record.config SET value = '0' WHERE key = 'schema_size_warning_mb'$$,
     'Boundary: config can store schema_size_warning_mb = 0'
 );
 
 -- Reset to valid value
-UPDATE pgfr.config SET value = '5000' WHERE key = 'schema_size_warning_mb';
+UPDATE pgfr_record.config SET value = '5000' WHERE key = 'schema_size_warning_mb';
 
 -- Test load_shedding_active_pct = 101 (above 100%)
 SELECT lives_ok(
-    $$UPDATE pgfr.config SET value = '101' WHERE key = 'load_shedding_active_pct'$$,
+    $$UPDATE pgfr_record.config SET value = '101' WHERE key = 'load_shedding_active_pct'$$,
     'Boundary: config can store load_shedding_active_pct = 101'
 );
 
 -- Reset to valid value
-UPDATE pgfr.config SET value = '70' WHERE key = 'load_shedding_active_pct';
+UPDATE pgfr_record.config SET value = '70' WHERE key = 'load_shedding_active_pct';
 
 -- Test load_shedding_active_pct = -1
 SELECT lives_ok(
-    $$UPDATE pgfr.config SET value = '-1' WHERE key = 'load_shedding_active_pct'$$,
+    $$UPDATE pgfr_record.config SET value = '-1' WHERE key = 'load_shedding_active_pct'$$,
     'Boundary: config can store load_shedding_active_pct = -1'
 );
 
 -- Reset to valid value
-UPDATE pgfr.config SET value = '70' WHERE key = 'load_shedding_active_pct';
+UPDATE pgfr_record.config SET value = '70' WHERE key = 'load_shedding_active_pct';
 
 -- Test config with empty string value
 SELECT lives_ok(
-    $$UPDATE pgfr.config SET value = '' WHERE key = 'mode'$$,
+    $$UPDATE pgfr_record.config SET value = '' WHERE key = 'mode'$$,
     'Boundary: config can store empty string value'
 );
 
 -- Reset to valid value
-UPDATE pgfr.config SET value = 'normal' WHERE key = 'mode';
+UPDATE pgfr_record.config SET value = 'normal' WHERE key = 'mode';
 
 -- Test config with very long string value
 SELECT lives_ok(
-    $$UPDATE pgfr.config SET value = repeat('x', 1000) WHERE key = 'mode'$$,
+    $$UPDATE pgfr_record.config SET value = repeat('x', 1000) WHERE key = 'mode'$$,
     'Boundary: config can store very long string (1000 chars)'
 );
 
 -- Reset to valid value
-UPDATE pgfr.config SET value = 'normal' WHERE key = 'mode';
+UPDATE pgfr_record.config SET value = 'normal' WHERE key = 'mode';
 
 -- Test _get_config with NULL key
 SELECT lives_ok(
-    $$SELECT pgfr._get_config(NULL, 'default_value')$$,
+    $$SELECT pgfr_record._get_config(NULL, 'default_value')$$,
     'Boundary: _get_config should handle NULL key gracefully'
 );
 
 -- Test _get_config with empty key
 SELECT lives_ok(
-    $$SELECT pgfr._get_config('', 'default_value')$$,
+    $$SELECT pgfr_record._get_config('', 'default_value')$$,
     'Boundary: _get_config should handle empty key gracefully'
 );
 
@@ -258,7 +258,7 @@ DECLARE
     v_end timestamptz;
 BEGIN
     SELECT min(captured_at), min(captured_at) INTO v_start, v_end
-    FROM pgfr.samples_ring WHERE captured_at IS NOT NULL;
+    FROM pgfr_record.samples_ring WHERE captured_at IS NOT NULL;
 
     IF v_start IS NOT NULL THEN
         PERFORM * FROM pgfr_analyze.wait_summary(v_start, v_end);
@@ -274,7 +274,7 @@ DECLARE
     v_end timestamptz;
 BEGIN
     SELECT max(captured_at), min(captured_at) INTO v_start, v_end
-    FROM pgfr.samples_ring WHERE captured_at IS NOT NULL;
+    FROM pgfr_record.samples_ring WHERE captured_at IS NOT NULL;
 
     IF v_start IS NOT NULL AND v_end IS NOT NULL THEN
         PERFORM * FROM pgfr_analyze.wait_summary(v_start, v_end);
@@ -291,19 +291,19 @@ SELECT lives_ok(
 
 -- Test cleanup() with '0 days' retention
 SELECT lives_ok(
-    $$SELECT pgfr.cleanup('0 days')$$,
+    $$SELECT pgfr_record.cleanup('0 days')$$,
     'Boundary: cleanup(''0 days'') should not crash'
 );
 
 -- Test cleanup() with negative retention
 SELECT lives_ok(
-    $$SELECT pgfr.cleanup('-1 days')$$,
+    $$SELECT pgfr_record.cleanup('-1 days')$$,
     'Boundary: cleanup(''-1 days'') should not crash'
 );
 
 -- Test _pretty_bytes with negative value
 SELECT lives_ok(
-    $$SELECT pgfr._pretty_bytes(-1)$$,
+    $$SELECT pgfr_record._pretty_bytes(-1)$$,
     'Boundary: _pretty_bytes(-1) should not crash'
 );
 
@@ -320,7 +320,7 @@ SELECT lives_ok(
 DO $$
 BEGIN
     -- Temporarily clear collection stats
-    DELETE FROM pgfr.collection_stats;
+    DELETE FROM pgfr_record.collection_stats;
 END $$;
 
 SELECT ok(
@@ -333,7 +333,7 @@ SELECT ok(
 );
 
 -- Restore some collection data for subsequent tests
-INSERT INTO pgfr.collection_stats (collection_type, started_at, duration_ms, skipped)
+INSERT INTO pgfr_record.collection_stats (collection_type, started_at, duration_ms, skipped)
 VALUES ('sample', now() - interval '1 hour', 50, false);
 
 -- Test quarterly_review() with mixed statuses
@@ -360,13 +360,13 @@ SELECT ok(
 
 -- Test health_check() with disabled system
 -- Insert the 'enabled' key if it doesn't exist, then set to 'false'
-INSERT INTO pgfr.config (key, value)
+INSERT INTO pgfr_record.config (key, value)
 VALUES ('enabled', 'false')
 ON CONFLICT (key) DO UPDATE SET value = 'false';
 
 SELECT ok(
     EXISTS(
-        SELECT 1 FROM pgfr.health_check()
+        SELECT 1 FROM pgfr_record.health_check()
         WHERE status = 'DISABLED'
         AND component LIKE '%System%'
     ),
@@ -374,20 +374,20 @@ SELECT ok(
 );
 
 -- Re-enable system
-INSERT INTO pgfr.config (key, value)
+INSERT INTO pgfr_record.config (key, value)
 VALUES ('enabled', 'true')
 ON CONFLICT (key) DO UPDATE SET value = 'true';
 
 -- Test health_check() with stale samples (mock by checking current state)
 SELECT ok(
-    (SELECT count(*) FROM pgfr.health_check()) >= 5,
+    (SELECT count(*) FROM pgfr_record.health_check()) >= 5,
     'Health: health_check() should perform at least 5 checks'
 );
 
 -- Test health_check() schema size check
 SELECT ok(
     EXISTS(
-        SELECT 1 FROM pgfr.health_check()
+        SELECT 1 FROM pgfr_record.health_check()
         WHERE component LIKE '%Schema%'
     ),
     'Health: health_check() should include schema size check'
@@ -396,7 +396,7 @@ SELECT ok(
 -- Test health_check() circuit breaker check
 SELECT ok(
     EXISTS(
-        SELECT 1 FROM pgfr.health_check()
+        SELECT 1 FROM pgfr_record.health_check()
         WHERE component LIKE '%Circuit%'
     ),
     'Health: health_check() should include circuit breaker trip check'
@@ -422,7 +422,7 @@ SELECT lives_ok(
 
 -- Test ring_buffer_health()
 SELECT is(
-    (SELECT count(*) FROM pgfr.ring_buffer_health()),
+    (SELECT count(*) FROM pgfr_record.ring_buffer_health()),
     4::bigint,
     'Health: ring_buffer_health() should check all 4 ring buffer tables'
 );
@@ -430,7 +430,7 @@ SELECT is(
 -- Test ring_buffer_health() returns expected columns
 SELECT ok(
     EXISTS(
-        SELECT 1 FROM pgfr.ring_buffer_health()
+        SELECT 1 FROM pgfr_record.ring_buffer_health()
         WHERE table_name IS NOT NULL
         AND dead_tuples IS NOT NULL
     ),
@@ -454,16 +454,16 @@ SELECT ok(
 
 -- Test validate_config() with current config
 SELECT ok(
-    (SELECT count(*) FROM pgfr.validate_config()) >= 7,
+    (SELECT count(*) FROM pgfr_record.validate_config()) >= 7,
     'Health: validate_config() should perform at least 7 validation checks'
 );
 
 -- Test validate_config() with dangerous timeout
-UPDATE pgfr.config SET value = '2000' WHERE key = 'section_timeout_ms';
+UPDATE pgfr_record.config SET value = '2000' WHERE key = 'section_timeout_ms';
 
 SELECT ok(
     EXISTS(
-        SELECT 1 FROM pgfr.validate_config()
+        SELECT 1 FROM pgfr_record.validate_config()
         WHERE status = 'CRITICAL'
         AND check_name = 'section_timeout_ms'
     ),
@@ -471,14 +471,14 @@ SELECT ok(
 );
 
 -- Reset timeout
-UPDATE pgfr.config SET value = '250' WHERE key = 'section_timeout_ms';
+UPDATE pgfr_record.config SET value = '250' WHERE key = 'section_timeout_ms';
 
 -- Test validate_config() with circuit breaker disabled
-UPDATE pgfr.config SET value = 'false' WHERE key = 'circuit_breaker_enabled';
+UPDATE pgfr_record.config SET value = 'false' WHERE key = 'circuit_breaker_enabled';
 
 SELECT ok(
     EXISTS(
-        SELECT 1 FROM pgfr.validate_config()
+        SELECT 1 FROM pgfr_record.validate_config()
         WHERE status = 'CRITICAL'
         AND check_name = 'circuit_breaker_enabled'
     ),
@@ -486,14 +486,14 @@ SELECT ok(
 );
 
 -- Re-enable circuit breaker
-UPDATE pgfr.config SET value = 'true' WHERE key = 'circuit_breaker_enabled';
+UPDATE pgfr_record.config SET value = 'true' WHERE key = 'circuit_breaker_enabled';
 
 -- Test validate_config() with high lock_timeout (> 500ms)
-UPDATE pgfr.config SET value = '600' WHERE key = 'lock_timeout_ms';
+UPDATE pgfr_record.config SET value = '600' WHERE key = 'lock_timeout_ms';
 
 SELECT ok(
     EXISTS(
-        SELECT 1 FROM pgfr.validate_config()
+        SELECT 1 FROM pgfr_record.validate_config()
         WHERE status = 'WARNING'
         AND check_name = 'lock_timeout_ms'
     ),
@@ -501,7 +501,7 @@ SELECT ok(
 );
 
 -- Reset lock timeout
-UPDATE pgfr.config SET value = '50' WHERE key = 'lock_timeout_ms';
+UPDATE pgfr_record.config SET value = '50' WHERE key = 'lock_timeout_ms';
 
 -- -----------------------------------------------------------------------------
 -- 12.3 Pre-Collection Checks (15 tests)
@@ -509,42 +509,42 @@ UPDATE pgfr.config SET value = '50' WHERE key = 'lock_timeout_ms';
 
 -- Test _check_statements_health() basic execution
 SELECT lives_ok(
-    $$SELECT pgfr._check_statements_health()$$,
+    $$SELECT pgfr_record._check_statements_health()$$,
     'Pre-Collection: _check_statements_health() should execute without error'
 );
 
 -- Test _check_statements_health() return type
 SELECT ok(
-    (SELECT status FROM pgfr._check_statements_health()) IN ('OK', 'HIGH_CHURN', 'UNAVAILABLE', 'DISABLED'),
+    (SELECT status FROM pgfr_record._check_statements_health()) IN ('OK', 'HIGH_CHURN', 'UNAVAILABLE', 'DISABLED'),
     'Pre-Collection: _check_statements_health() should return valid status'
 );
 
 -- Test pre-collection checks don't prevent sample()
 SELECT lives_ok(
-    $$SELECT pgfr.sample()$$,
+    $$SELECT pgfr_record.sample()$$,
     'Pre-Collection: sample() should succeed even with pre-collection checks enabled'
 );
 
 -- Test _check_statements_health() with pg_stat_statements disabled/unavailable
 SELECT ok(
-    (SELECT pgfr._check_statements_health() IS NOT NULL),
+    (SELECT pgfr_record._check_statements_health() IS NOT NULL),
     'Pre-Collection: _check_statements_health() should return status even if pg_stat_statements unavailable'
 );
 
 -- Test pre-collection checks are actually called during sample()
 DO $$ BEGIN
-    PERFORM pgfr.sample();
+    PERFORM pgfr_record.sample();
 END $$;
 
 SELECT ok(
-    (SELECT count(*) FROM pgfr.collection_stats) >= 1,
+    (SELECT count(*) FROM pgfr_record.collection_stats) >= 1,
     'Pre-Collection: sample() should log collection attempt'
 );
 
 -- Test that skip reasons are properly logged
 SELECT ok(
     EXISTS(
-        SELECT 1 FROM pgfr.collection_stats
+        SELECT 1 FROM pgfr_record.collection_stats
         WHERE skipped_reason IS NOT NULL OR skipped_reason IS NULL
     ),
     'Pre-Collection: collection_stats should track skipped_reason column'
@@ -570,7 +570,7 @@ SELECT ok(
 DO $$
 BEGIN
     -- Clear recent collections to trigger stale alert
-    DELETE FROM pgfr.collection_stats
+    DELETE FROM pgfr_record.collection_stats
     WHERE started_at > now() - interval '2 hours';
 END $$;
 
@@ -580,12 +580,12 @@ SELECT ok(
 );
 
 -- Restore a collection stat
-INSERT INTO pgfr.collection_stats (collection_type, started_at, duration_ms, skipped)
+INSERT INTO pgfr_record.collection_stats (collection_type, started_at, duration_ms, skipped)
 VALUES ('sample', now() - interval '5 minutes', 50, false);
 
 -- Test config_recommendations()
 SELECT ok(
-    (SELECT count(*) FROM pgfr.config_recommendations()) >= 0,
+    (SELECT count(*) FROM pgfr_record.config_recommendations()) >= 0,
     'Alerts: config_recommendations() should return recommendations list'
 );
 
@@ -593,36 +593,36 @@ SELECT ok(
 DO $$
 BEGIN
     -- Set all recommended values
-    UPDATE pgfr.config SET value = '120' WHERE key = 'sample_interval_seconds';
-    UPDATE pgfr.config SET value = 'true' WHERE key = 'circuit_breaker_enabled';
-    UPDATE pgfr.config SET value = '50' WHERE key = 'lock_timeout_ms';
+    UPDATE pgfr_record.config SET value = '120' WHERE key = 'sample_interval_seconds';
+    UPDATE pgfr_record.config SET value = 'true' WHERE key = 'circuit_breaker_enabled';
+    UPDATE pgfr_record.config SET value = '50' WHERE key = 'lock_timeout_ms';
 END $$;
 
 SELECT ok(
-    (SELECT count(*) FROM pgfr.config_recommendations()) >= 0,
+    (SELECT count(*) FROM pgfr_record.config_recommendations()) >= 0,
     'Alerts: config_recommendations() should handle optimal config'
 );
 
 -- Test get_current_profile()
 SELECT ok(
-    (SELECT closest_profile FROM pgfr.get_current_profile()) IN ('default', 'production_safe', 'development', 'troubleshooting', 'minimal_overhead', 'custom'),
+    (SELECT closest_profile FROM pgfr_record.get_current_profile()) IN ('default', 'production_safe', 'development', 'troubleshooting', 'minimal_overhead', 'custom'),
     'Alerts: get_current_profile() should return valid profile name'
 );
 
 -- Test get_current_profile() after applying a profile
 DO $$
 BEGIN
-    PERFORM pgfr.apply_profile('production_safe');
+    PERFORM pgfr_record.apply_profile('production_safe');
 END $$;
 
 SELECT is(
-    (SELECT closest_profile FROM pgfr.get_current_profile()),
+    (SELECT closest_profile FROM pgfr_record.get_current_profile()),
     'production_safe',
     'Alerts: get_current_profile() should return last applied profile'
 );
 
 -- Reset to default profile
-SELECT pgfr.apply_profile('default');
+SELECT pgfr_record.apply_profile('default');
 
 -- -----------------------------------------------------------------------------
 -- 12.5 Real-Time View Functions (10 tests)
@@ -677,7 +677,7 @@ SELECT ok(
 );
 
 -- Test mode-aware retention (normal mode = 6h)
-SELECT pgfr.set_mode('normal');
+SELECT pgfr_record.set_mode('normal');
 
 SELECT ok(
     NOT EXISTS(
@@ -688,7 +688,7 @@ SELECT ok(
 );
 
 -- Test mode-aware retention (emergency mode = 10h)
-SELECT pgfr.set_mode('emergency');
+SELECT pgfr_record.set_mode('emergency');
 
 SELECT lives_ok(
     $$SELECT * FROM pgfr_analyze.recent_waits_current()$$,
@@ -696,7 +696,7 @@ SELECT lives_ok(
 );
 
 -- Reset to normal mode
-SELECT pgfr.set_mode('normal');
+SELECT pgfr_record.set_mode('normal');
 
 -- Test all 3 views with concurrent query
 SELECT lives_ok(
@@ -710,7 +710,7 @@ SELECT lives_ok(
 
 -- Test views during sample() execution
 SELECT lives_ok(
-    $$SELECT pgfr.sample()$$,
+    $$SELECT pgfr_record.sample()$$,
     'Real-Time: sample() should not conflict with real-time views'
 );
 

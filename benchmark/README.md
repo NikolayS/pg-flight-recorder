@@ -157,17 +157,17 @@ If collision rate is concerning:
 
 ```sql
 -- Option 1: Use emergency mode (300s intervals = 40% fewer collections)
-SELECT pgfr.set_mode('emergency');
+SELECT pgfr_record.set_mode('emergency');
 
 -- Option 2: Increase lock_timeout (fail faster, less DDL delay)
-UPDATE pgfr.config
+UPDATE pgfr_record.config
 SET value = '50'
 WHERE key = 'lock_timeout_ms';
 
 -- Option 3: Disable during DDL-heavy maintenance
-SELECT pgfr.disable();
+SELECT pgfr_record.disable();
 -- ... run DDL operations ...
-SELECT pgfr.enable();
+SELECT pgfr_record.enable();
 ```
 
 ### When to Run This Test
@@ -290,13 +290,13 @@ Based on your absolute cost measurement:
 
 ```sql
 -- Start conservative
-SELECT pgfr.set_mode('emergency');  -- 300s
+SELECT pgfr_record.set_mode('emergency');  -- 300s
 
 -- Monitor for 24h
-SELECT * FROM pgfr.collection_health;
+SELECT * FROM pgfr_record.collection_health;
 
 -- Upgrade if comfortable
-SELECT pgfr.set_mode('normal');  -- 180s
+SELECT pgfr_record.set_mode('normal');  -- 180s
 ```
 
 ### For 1 vCPU Systems

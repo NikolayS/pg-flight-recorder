@@ -26,7 +26,7 @@ pgfr_control reads the table snapshot data collected by pgfr_record and computes
 ```sql
 -- Install core first if not already installed
 \i _record/install.sql
-SELECT pgfr.enable();
+SELECT pgfr_record.enable();
 
 -- Then install control
 \i _control/install.sql

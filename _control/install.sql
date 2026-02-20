@@ -13,7 +13,7 @@
 -- Verify core is installed
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'schema_version') THEN
+    IF NOT EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'schema_version') THEN
         RAISE EXCEPTION 'Flight Recorder core not installed. Run _record/install.sql first.';
     END IF;
 END $$;
@@ -56,8 +56,8 @@ BEGIN
     -- Get earliest snapshot within window
     SELECT ts.n_dead_tup, s.captured_at
     INTO v_first_snapshot
-    FROM pgfr.table_snapshots ts
-    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr_record.table_snapshots ts
+    JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
       AND s.captured_at >= now() - p_window
     ORDER BY s.captured_at ASC
@@ -66,8 +66,8 @@ BEGIN
     -- Get latest snapshot
     SELECT ts.n_dead_tup, s.captured_at
     INTO v_last_snapshot
-    FROM pgfr.table_snapshots ts
-    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr_record.table_snapshots ts
+    JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
       AND s.captured_at >= now() - p_window
     ORDER BY s.captured_at DESC
@@ -107,8 +107,8 @@ BEGIN
     -- Get current dead tuple count
     SELECT ts.n_dead_tup
     INTO v_current_dead_tuples
-    FROM pgfr.table_snapshots ts
-    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr_record.table_snapshots ts
+    JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
     ORDER BY s.captured_at DESC
     LIMIT 1;
@@ -214,8 +214,8 @@ BEGIN
         count(*),
         regr_slope(n_dead_tup::numeric, EXTRACT(EPOCH FROM s.captured_at))
     INTO v_count, v_slope
-    FROM pgfr.table_snapshots ts
-    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr_record.table_snapshots ts
+    JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
       AND s.captured_at >= now() - p_window
       AND ts.n_dead_tup IS NOT NULL;
@@ -313,7 +313,7 @@ BEGIN
 
     -- Get budget hours config
     v_budget_hours := COALESCE(
-        pgfr._get_config('vacuum_control_catchup_budget_hours', '4')::integer,
+        pgfr_record._get_config('vacuum_control_catchup_budget_hours', '4')::integer,
         4
     );
 
@@ -321,9 +321,9 @@ BEGIN
     v_time_to_exhaust := pgfr_control.time_to_budget_exhaustion(
         p_relid,
         (SELECT COALESCE(ts.reltuples, ts.n_live_tup, 0) *
-                pgfr._get_config('vacuum_control_dead_tuple_budget_pct', '5')::numeric / 100
-         FROM pgfr.table_snapshots ts
-         JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+                pgfr_record._get_config('vacuum_control_dead_tuple_budget_pct', '5')::numeric / 100
+         FROM pgfr_record.table_snapshots ts
+         JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
          WHERE ts.relid = p_relid
          ORDER BY s.captured_at DESC LIMIT 1)::bigint
     );
@@ -388,23 +388,23 @@ BEGIN
 
     -- Get config values
     v_budget_pct := COALESCE(
-        pgfr._get_config('vacuum_control_dead_tuple_budget_pct', '5')::numeric,
+        pgfr_record._get_config('vacuum_control_dead_tuple_budget_pct', '5')::numeric,
         5
     );
     v_min_sf := COALESCE(
-        pgfr._get_config('vacuum_control_min_scale_factor', '0.001')::numeric,
+        pgfr_record._get_config('vacuum_control_min_scale_factor', '0.001')::numeric,
         0.001
     );
     v_max_sf := COALESCE(
-        pgfr._get_config('vacuum_control_max_scale_factor', '0.2')::numeric,
+        pgfr_record._get_config('vacuum_control_max_scale_factor', '0.2')::numeric,
         0.2
     );
 
     -- Get current table stats
     SELECT COALESCE(ts.reltuples, ts.n_live_tup), ts.n_dead_tup
     INTO v_reltuples, v_n_dead_tup
-    FROM pgfr.table_snapshots ts
-    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr_record.table_snapshots ts
+    JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
     ORDER BY s.captured_at DESC
     LIMIT 1;
@@ -502,8 +502,8 @@ BEGIN
     -- Get latest stats
     SELECT ts.n_dead_tup, ts.autovacuum_count, ts.last_autovacuum, ts.vacuum_running
     INTO v_n_dead_tup, v_autovacuum_count, v_last_autovacuum, v_vacuum_running
-    FROM pgfr.table_snapshots ts
-    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr_record.table_snapshots ts
+    JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
     ORDER BY s.captured_at DESC
     LIMIT 1;
@@ -612,7 +612,7 @@ DECLARE
 BEGIN
     -- Check if feature is enabled
     v_enabled := COALESCE(
-        pgfr._get_config('vacuum_control_enabled', 'true')::boolean,
+        pgfr_record._get_config('vacuum_control_enabled', 'true')::boolean,
         true
     );
 
@@ -622,11 +622,11 @@ BEGIN
 
     -- Get config values
     v_hysteresis_pct := COALESCE(
-        pgfr._get_config('vacuum_control_hysteresis_pct', '25')::numeric,
+        pgfr_record._get_config('vacuum_control_hysteresis_pct', '25')::numeric,
         25
     );
     v_rate_limit_minutes := COALESCE(
-        pgfr._get_config('vacuum_control_rate_limit_minutes', '60')::integer,
+        pgfr_record._get_config('vacuum_control_rate_limit_minutes', '60')::integer,
         60
     );
 
@@ -639,8 +639,8 @@ BEGIN
             ts.n_dead_tup,
             ts.reltuples,
             ts.n_live_tup
-        FROM pgfr.table_snapshots ts
-        JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+        FROM pgfr_record.table_snapshots ts
+        JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
         WHERE s.captured_at BETWEEN p_start_time AND p_end_time
         ORDER BY ts.relid, s.captured_at DESC
     ),
@@ -740,8 +740,8 @@ BEGIN
     -- Get earliest snapshot within window
     SELECT ts.n_dead_tup, s.captured_at
     INTO v_first_snapshot
-    FROM pgfr.table_snapshots ts
-    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr_record.table_snapshots ts
+    JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
       AND s.captured_at >= now() - p_window
     ORDER BY s.captured_at ASC
@@ -750,8 +750,8 @@ BEGIN
     -- Get latest snapshot
     SELECT ts.n_dead_tup, s.captured_at
     INTO v_last_snapshot
-    FROM pgfr.table_snapshots ts
-    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr_record.table_snapshots ts
+    JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
       AND s.captured_at >= now() - p_window
     ORDER BY s.captured_at DESC
@@ -792,8 +792,8 @@ BEGIN
     -- Get earliest snapshot within window
     SELECT ts.table_size_bytes, s.captured_at
     INTO v_first_snapshot
-    FROM pgfr.table_snapshots ts
-    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr_record.table_snapshots ts
+    JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
       AND s.captured_at >= now() - p_window
       AND ts.table_size_bytes IS NOT NULL
@@ -803,8 +803,8 @@ BEGIN
     -- Get latest snapshot
     SELECT ts.table_size_bytes, s.captured_at
     INTO v_last_snapshot
-    FROM pgfr.table_snapshots ts
-    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr_record.table_snapshots ts
+    JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
       AND ts.table_size_bytes IS NOT NULL
     ORDER BY s.captured_at DESC
@@ -862,8 +862,8 @@ BEGIN
             ts.indexes_size_bytes,
             ts.n_live_tup,
             ts.n_dead_tup
-        FROM pgfr.table_snapshots ts
-        JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+        FROM pgfr_record.table_snapshots ts
+        JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
         WHERE ts.table_size_bytes IS NOT NULL
           AND (p_relid IS NULL OR ts.relid = p_relid)
         ORDER BY ts.relid, s.captured_at DESC
@@ -956,8 +956,8 @@ BEGIN
             ts.table_size_bytes AS old_size,
             ts.n_dead_tup AS old_dead_tup,
             ts.n_live_tup AS old_live_tup
-        FROM pgfr.table_snapshots ts
-        JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+        FROM pgfr_record.table_snapshots ts
+        JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
         WHERE s.captured_at <= now() - p_window
           AND ts.table_size_bytes IS NOT NULL
         ORDER BY ts.relid, s.captured_at DESC
@@ -1028,8 +1028,8 @@ BEGIN
     -- Get current dead tuple count
     SELECT ts.n_dead_tup
     INTO v_current_dead_tuples
-    FROM pgfr.table_snapshots ts
-    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr_record.table_snapshots ts
+    JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
     ORDER BY s.captured_at DESC
     LIMIT 1;
@@ -1075,7 +1075,7 @@ DECLARE
 BEGIN
     SELECT max_catalog_oid, captured_at
     INTO v_first_snapshot
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at >= now() - p_window
       AND max_catalog_oid IS NOT NULL
     ORDER BY captured_at ASC
@@ -1083,7 +1083,7 @@ BEGIN
 
     SELECT max_catalog_oid, captured_at
     INTO v_last_snapshot
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at >= now() - p_window
       AND max_catalog_oid IS NOT NULL
     ORDER BY captured_at DESC
@@ -1120,7 +1120,7 @@ DECLARE
 BEGIN
     SELECT max_catalog_oid
     INTO v_current_max_oid
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE max_catalog_oid IS NOT NULL
     ORDER BY captured_at DESC
     LIMIT 1;

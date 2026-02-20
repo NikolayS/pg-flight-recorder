@@ -28,60 +28,60 @@ pgfr_record installs a set of tables, views, and pg_cron jobs that continuously 
 
 ```sql
 \i _record/install.sql
-SELECT pgfr.enable();
+SELECT pgfr_record.enable();
 ```
 
 Or from the command line:
 
 ```bash
 psql --single-transaction -f _record/install.sql
-psql -c "SELECT pgfr.enable();"
+psql -c "SELECT pgfr_record.enable();"
 ```
 
 ## Quick start
 
 ```sql
 -- Check health
-SELECT * FROM pgfr.health_check();
+SELECT * FROM pgfr_record.health_check();
 
 -- View recent wait events
-SELECT * FROM pgfr.recent_waits;
+SELECT * FROM pgfr_record.recent_waits;
 
 -- View recent active sessions
-SELECT * FROM pgfr.recent_activity;
+SELECT * FROM pgfr_record.recent_activity;
 
 -- View recent lock contention
-SELECT * FROM pgfr.recent_locks;
+SELECT * FROM pgfr_record.recent_locks;
 
 -- Snapshot-over-snapshot deltas
-SELECT * FROM pgfr.deltas;
+SELECT * FROM pgfr_record.deltas;
 ```
 
 ## Key views
 
 | View                              | Description                      |
 |-----------------------------------|----------------------------------|
-| `pgfr.deltas`                     | Snapshot-over-snapshot changes   |
-| `pgfr.recent_waits`               | Wait events from ring buffer     |
-| `pgfr.recent_activity`            | Active sessions from ring buffer |
-| `pgfr.recent_locks`               | Lock contention from ring buffer |
-| `pgfr.recent_idle_in_transaction` | Idle-in-transaction sessions     |
-| `pgfr.recent_replication`         | Replication status               |
-| `pgfr.recent_vacuum_progress`     | Vacuum operations in progress    |
-| `pgfr.archiver_status`            | WAL archiving status             |
+| `pgfr_record.deltas`                     | Snapshot-over-snapshot changes   |
+| `pgfr_record.recent_waits`               | Wait events from ring buffer     |
+| `pgfr_record.recent_activity`            | Active sessions from ring buffer |
+| `pgfr_record.recent_locks`               | Lock contention from ring buffer |
+| `pgfr_record.recent_idle_in_transaction` | Idle-in-transaction sessions     |
+| `pgfr_record.recent_replication`         | Replication status               |
+| `pgfr_record.recent_vacuum_progress`     | Vacuum operations in progress    |
+| `pgfr_record.archiver_status`            | WAL archiving status             |
 
 ## Key functions
 
 | Function                        | Description                   |
 |---------------------------------|-------------------------------|
-| `pgfr.enable()`                 | Start collection jobs         |
-| `pgfr.disable()`                | Stop collection jobs          |
-| `pgfr.health_check()`           | System health status          |
-| `pgfr.set_mode(mode)`           | Set collection mode           |
-| `pgfr.apply_profile(name)`      | Apply a configuration profile |
-| `pgfr.list_profiles()`          | List available profiles       |
-| `pgfr.ring_buffer_health()`     | Ring buffer status            |
-| `pgfr.cleanup()`                | Manual retention cleanup      |
+| `pgfr_record.enable()`                 | Start collection jobs         |
+| `pgfr_record.disable()`                | Stop collection jobs          |
+| `pgfr_record.health_check()`           | System health status          |
+| `pgfr_record.set_mode(mode)`           | Set collection mode           |
+| `pgfr_record.apply_profile(name)`      | Apply a configuration profile |
+| `pgfr_record.list_profiles()`          | List available profiles       |
+| `pgfr_record.ring_buffer_health()`     | Ring buffer status            |
+| `pgfr_record.cleanup()`                | Manual retention cleanup      |
 
 ## Profiles
 

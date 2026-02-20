@@ -13,7 +13,7 @@ SELECT plan(45);
 -- =============================================================================
 
 SELECT has_function(
-    'pgfr', '_interpolate_metric',
+    'pgfr_record', '_interpolate_metric',
     ARRAY['numeric', 'timestamptz', 'numeric', 'timestamptz', 'timestamptz'],
     '_interpolate_metric function should exist'
 );
@@ -36,7 +36,7 @@ SELECT has_function(
 
 -- Test exact midpoint interpolation
 SELECT is(
-    pgfr._interpolate_metric(
+    pgfr_record._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:05:00'::timestamptz
@@ -47,7 +47,7 @@ SELECT is(
 
 -- Test quarter point interpolation
 SELECT is(
-    pgfr._interpolate_metric(
+    pgfr_record._interpolate_metric(
         0::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         100::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:02:30'::timestamptz
@@ -58,7 +58,7 @@ SELECT is(
 
 -- Test three-quarter point interpolation
 SELECT is(
-    pgfr._interpolate_metric(
+    pgfr_record._interpolate_metric(
         0::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         100::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:07:30'::timestamptz
@@ -69,7 +69,7 @@ SELECT is(
 
 -- Test at start time (should return before value)
 SELECT is(
-    pgfr._interpolate_metric(
+    pgfr_record._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:00:00'::timestamptz
@@ -80,7 +80,7 @@ SELECT is(
 
 -- Test at end time (should return after value)
 SELECT is(
-    pgfr._interpolate_metric(
+    pgfr_record._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:10:00'::timestamptz
@@ -91,7 +91,7 @@ SELECT is(
 
 -- Test before start time (clamped to start)
 SELECT is(
-    pgfr._interpolate_metric(
+    pgfr_record._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 09:55:00'::timestamptz
@@ -102,7 +102,7 @@ SELECT is(
 
 -- Test after end time (clamped to end)
 SELECT is(
-    pgfr._interpolate_metric(
+    pgfr_record._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:15:00'::timestamptz
@@ -113,7 +113,7 @@ SELECT is(
 
 -- Test with same timestamps (should return before value)
 SELECT is(
-    pgfr._interpolate_metric(
+    pgfr_record._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         '2024-01-01 10:00:00'::timestamptz
@@ -124,7 +124,7 @@ SELECT is(
 
 -- Test with NULL value_before
 SELECT is(
-    pgfr._interpolate_metric(
+    pgfr_record._interpolate_metric(
         NULL::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:05:00'::timestamptz
@@ -135,7 +135,7 @@ SELECT is(
 
 -- Test with NULL value_after
 SELECT is(
-    pgfr._interpolate_metric(
+    pgfr_record._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         NULL::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:05:00'::timestamptz
@@ -146,7 +146,7 @@ SELECT is(
 
 -- Test with NULL time_before
 SELECT is(
-    pgfr._interpolate_metric(
+    pgfr_record._interpolate_metric(
         10::NUMERIC, NULL::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:05:00'::timestamptz
@@ -157,7 +157,7 @@ SELECT is(
 
 -- Test with NULL target_time
 SELECT is(
-    pgfr._interpolate_metric(
+    pgfr_record._interpolate_metric(
         10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         20::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         NULL::timestamptz
@@ -168,7 +168,7 @@ SELECT is(
 
 -- Test negative value interpolation
 SELECT is(
-    pgfr._interpolate_metric(
+    pgfr_record._interpolate_metric(
         -10::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         10::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:05:00'::timestamptz
@@ -179,7 +179,7 @@ SELECT is(
 
 -- Test decreasing values
 SELECT is(
-    pgfr._interpolate_metric(
+    pgfr_record._interpolate_metric(
         100::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         0::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:05:00'::timestamptz
@@ -190,7 +190,7 @@ SELECT is(
 
 -- Test with fractional values
 SELECT ok(
-    ABS(pgfr._interpolate_metric(
+    ABS(pgfr_record._interpolate_metric(
         1.5::NUMERIC, '2024-01-01 10:00:00'::timestamptz,
         3.5::NUMERIC, '2024-01-01 10:10:00'::timestamptz,
         '2024-01-01 10:05:00'::timestamptz
@@ -383,7 +383,7 @@ SELECT ok(
 
 -- Test that incident_timeline returns results in chronological order
 -- (Create test data by ensuring snapshots exist)
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 SELECT ok(
     (SELECT COUNT(*) >= 0 FROM pgfr_analyze.incident_timeline(

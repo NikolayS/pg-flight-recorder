@@ -11,7 +11,7 @@ DECLARE
     existing_version TEXT;
 BEGIN
     SELECT value INTO existing_version
-    FROM pgfr.config WHERE key = 'schema_version';
+    FROM pgfr_record.config WHERE key = 'schema_version';
 
     IF existing_version IS NOT NULL THEN
         RAISE NOTICE E'\n=== Existing installation detected (v%) ===', existing_version;
@@ -28,12 +28,12 @@ EXCEPTION
         NULL;
 END $$;
 
-CREATE SCHEMA IF NOT EXISTS pgfr;
+CREATE SCHEMA IF NOT EXISTS pgfr_record;
 
 -- Stores periodic snapshots of PostgreSQL system performance metrics
 -- Captures WAL activity, checkpoint behavior, IO operations, transactions,
 -- and resource utilization to enable performance analysis and historical trending
-CREATE TABLE IF NOT EXISTS pgfr.snapshots (
+CREATE TABLE IF NOT EXISTS pgfr_record.snapshots (
     id              SERIAL PRIMARY KEY,
     captured_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     pg_version      INTEGER NOT NULL,
@@ -102,13 +102,13 @@ CREATE TABLE IF NOT EXISTS pgfr.snapshots (
     max_catalog_oid             BIGINT,
     large_object_count          BIGINT
 );
-CREATE INDEX IF NOT EXISTS snapshots_captured_at_idx ON pgfr.snapshots(captured_at);
+CREATE INDEX IF NOT EXISTS snapshots_captured_at_idx ON pgfr_record.snapshots(captured_at);
 
 -- Captures replication metrics from pg_stat_replication for each snapshot
 -- Tracks streaming replication connection state, LSN positions, and lag for each replica
 -- Each record represents a single replication connection at a point in time
-CREATE TABLE IF NOT EXISTS pgfr.replication_snapshots (
-    snapshot_id             INTEGER REFERENCES pgfr.snapshots(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS pgfr_record.replication_snapshots (
+    snapshot_id             INTEGER REFERENCES pgfr_record.snapshots(id) ON DELETE CASCADE,
     pid                     INTEGER NOT NULL,
     client_addr             INET,
     application_name        TEXT,
@@ -127,8 +127,8 @@ CREATE TABLE IF NOT EXISTS pgfr.replication_snapshots (
 -- Captures vacuum progress from pg_stat_progress_vacuum for each snapshot
 -- Tracks vacuum phase, blocks scanned/vacuumed, dead tuple counts
 -- Each record represents a single vacuum operation at a point in time
-CREATE TABLE IF NOT EXISTS pgfr.vacuum_progress_snapshots (
-    snapshot_id         INTEGER REFERENCES pgfr.snapshots(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS pgfr_record.vacuum_progress_snapshots (
+    snapshot_id         INTEGER REFERENCES pgfr_record.snapshots(id) ON DELETE CASCADE,
     pid                 INTEGER NOT NULL,
     datid               OID,
     datname             TEXT,
@@ -143,13 +143,13 @@ CREATE TABLE IF NOT EXISTS pgfr.vacuum_progress_snapshots (
     num_dead_tuples     BIGINT,
     PRIMARY KEY (snapshot_id, pid)
 );
-COMMENT ON TABLE pgfr.vacuum_progress_snapshots IS 'Vacuum progress snapshots from pg_stat_progress_vacuum for monitoring long-running vacuums';
+COMMENT ON TABLE pgfr_record.vacuum_progress_snapshots IS 'Vacuum progress snapshots from pg_stat_progress_vacuum for monitoring long-running vacuums';
 
 -- Stores execution statistics for SQL statements at specific snapshot points
 -- Captures query performance metrics (timing, I/O, WAL activity) per query/user/database
 -- Linked to snapshots via FK; enables historical analysis and performance trending
-CREATE TABLE IF NOT EXISTS pgfr.statement_snapshots (
-    snapshot_id         INTEGER REFERENCES pgfr.snapshots(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS pgfr_record.statement_snapshots (
+    snapshot_id         INTEGER REFERENCES pgfr_record.snapshots(id) ON DELETE CASCADE,
     queryid             BIGINT NOT NULL,
     userid              OID,
     dbid                OID,
@@ -186,35 +186,35 @@ CREATE TABLE IF NOT EXISTS pgfr.statement_snapshots (
     PRIMARY KEY (snapshot_id, queryid, dbid)
 );
 CREATE INDEX IF NOT EXISTS statement_snapshots_queryid_idx
-    ON pgfr.statement_snapshots(queryid);
+    ON pgfr_record.statement_snapshots(queryid);
 
 -- Add delta columns to existing installations (additive-only upgrade)
 DO $$
 BEGIN
-    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS calls_delta BIGINT;
-    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS total_exec_time_delta DOUBLE PRECISION;
-    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS rows_delta BIGINT;
-    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS shared_blks_hit_delta BIGINT;
-    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS shared_blks_read_delta BIGINT;
-    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS shared_blks_dirtied_delta BIGINT;
-    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS shared_blks_written_delta BIGINT;
-    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS temp_blks_read_delta BIGINT;
-    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS temp_blks_written_delta BIGINT;
-    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS blk_read_time_delta DOUBLE PRECISION;
-    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS blk_write_time_delta DOUBLE PRECISION;
-    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS wal_records_delta BIGINT;
-    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS wal_bytes_delta NUMERIC;
+    ALTER TABLE pgfr_record.statement_snapshots ADD COLUMN IF NOT EXISTS calls_delta BIGINT;
+    ALTER TABLE pgfr_record.statement_snapshots ADD COLUMN IF NOT EXISTS total_exec_time_delta DOUBLE PRECISION;
+    ALTER TABLE pgfr_record.statement_snapshots ADD COLUMN IF NOT EXISTS rows_delta BIGINT;
+    ALTER TABLE pgfr_record.statement_snapshots ADD COLUMN IF NOT EXISTS shared_blks_hit_delta BIGINT;
+    ALTER TABLE pgfr_record.statement_snapshots ADD COLUMN IF NOT EXISTS shared_blks_read_delta BIGINT;
+    ALTER TABLE pgfr_record.statement_snapshots ADD COLUMN IF NOT EXISTS shared_blks_dirtied_delta BIGINT;
+    ALTER TABLE pgfr_record.statement_snapshots ADD COLUMN IF NOT EXISTS shared_blks_written_delta BIGINT;
+    ALTER TABLE pgfr_record.statement_snapshots ADD COLUMN IF NOT EXISTS temp_blks_read_delta BIGINT;
+    ALTER TABLE pgfr_record.statement_snapshots ADD COLUMN IF NOT EXISTS temp_blks_written_delta BIGINT;
+    ALTER TABLE pgfr_record.statement_snapshots ADD COLUMN IF NOT EXISTS blk_read_time_delta DOUBLE PRECISION;
+    ALTER TABLE pgfr_record.statement_snapshots ADD COLUMN IF NOT EXISTS blk_write_time_delta DOUBLE PRECISION;
+    ALTER TABLE pgfr_record.statement_snapshots ADD COLUMN IF NOT EXISTS wal_records_delta BIGINT;
+    ALTER TABLE pgfr_record.statement_snapshots ADD COLUMN IF NOT EXISTS wal_bytes_delta NUMERIC;
 END $$;
 
-CREATE UNLOGGED TABLE IF NOT EXISTS pgfr.samples_ring (
+CREATE UNLOGGED TABLE IF NOT EXISTS pgfr_record.samples_ring (
     slot_id             INTEGER PRIMARY KEY CHECK (slot_id >= 0 AND slot_id < 2880),
     captured_at         TIMESTAMPTZ NOT NULL,
     epoch_seconds       BIGINT NOT NULL
 ) WITH (fillfactor = 70);
-COMMENT ON TABLE pgfr.samples_ring IS 'Ring buffer: Master slot tracker (configurable slots via ring_buffer_slots, default 120). Supports up to 2880 slots for extended retention or fine-grained sampling. Fillfactor 70 enables HOT updates. Use configure_ring_autovacuum(false) to disable autovacuum if desired.';
+COMMENT ON TABLE pgfr_record.samples_ring IS 'Ring buffer: Master slot tracker (configurable slots via ring_buffer_slots, default 120). Supports up to 2880 slots for extended retention or fine-grained sampling. Fillfactor 70 enables HOT updates. Use configure_ring_autovacuum(false) to disable autovacuum if desired.';
 
-CREATE UNLOGGED TABLE IF NOT EXISTS pgfr.wait_samples_ring (
-    slot_id             INTEGER REFERENCES pgfr.samples_ring(slot_id) ON DELETE CASCADE,
+CREATE UNLOGGED TABLE IF NOT EXISTS pgfr_record.wait_samples_ring (
+    slot_id             INTEGER REFERENCES pgfr_record.samples_ring(slot_id) ON DELETE CASCADE,
     row_num             INTEGER NOT NULL CHECK (row_num >= 0 AND row_num < 100),
     backend_type        TEXT,
     wait_event_type     TEXT,
@@ -223,10 +223,10 @@ CREATE UNLOGGED TABLE IF NOT EXISTS pgfr.wait_samples_ring (
     count               INTEGER,
     PRIMARY KEY (slot_id, row_num)
 ) WITH (fillfactor = 90);
-COMMENT ON TABLE pgfr.wait_samples_ring IS 'Ring buffer: Wait events (UPDATE-only pattern). Pre-populated rows (slots × 100 rows, default 12,000). Fillfactor 90 enables HOT updates. Use configure_ring_autovacuum(false) to disable autovacuum if desired. NULLs indicate unused slots.';
+COMMENT ON TABLE pgfr_record.wait_samples_ring IS 'Ring buffer: Wait events (UPDATE-only pattern). Pre-populated rows (slots × 100 rows, default 12,000). Fillfactor 90 enables HOT updates. Use configure_ring_autovacuum(false) to disable autovacuum if desired. NULLs indicate unused slots.';
 
-CREATE UNLOGGED TABLE IF NOT EXISTS pgfr.activity_samples_ring (
-    slot_id             INTEGER REFERENCES pgfr.samples_ring(slot_id) ON DELETE CASCADE,
+CREATE UNLOGGED TABLE IF NOT EXISTS pgfr_record.activity_samples_ring (
+    slot_id             INTEGER REFERENCES pgfr_record.samples_ring(slot_id) ON DELETE CASCADE,
     row_num             INTEGER NOT NULL CHECK (row_num >= 0 AND row_num < 25),
     pid                 INTEGER,
     usename             TEXT,
@@ -243,10 +243,10 @@ CREATE UNLOGGED TABLE IF NOT EXISTS pgfr.activity_samples_ring (
     query_preview       TEXT,
     PRIMARY KEY (slot_id, row_num)
 ) WITH (fillfactor = 90);
-COMMENT ON TABLE pgfr.activity_samples_ring IS 'Ring buffer: Active sessions (UPDATE-only pattern). Pre-populated rows (slots × 25 rows, default 3,000). Top 25 active sessions per sample. Fillfactor 90 enables HOT updates. Use configure_ring_autovacuum(false) to disable autovacuum if desired. NULLs indicate unused slots.';
+COMMENT ON TABLE pgfr_record.activity_samples_ring IS 'Ring buffer: Active sessions (UPDATE-only pattern). Pre-populated rows (slots × 25 rows, default 3,000). Top 25 active sessions per sample. Fillfactor 90 enables HOT updates. Use configure_ring_autovacuum(false) to disable autovacuum if desired. NULLs indicate unused slots.';
 
-CREATE UNLOGGED TABLE IF NOT EXISTS pgfr.lock_samples_ring (
-    slot_id                 INTEGER REFERENCES pgfr.samples_ring(slot_id) ON DELETE CASCADE,
+CREATE UNLOGGED TABLE IF NOT EXISTS pgfr_record.lock_samples_ring (
+    slot_id                 INTEGER REFERENCES pgfr_record.samples_ring(slot_id) ON DELETE CASCADE,
     row_num                 INTEGER NOT NULL CHECK (row_num >= 0 AND row_num < 100),
     blocked_pid             INTEGER,
     blocked_user            TEXT,
@@ -261,26 +261,26 @@ CREATE UNLOGGED TABLE IF NOT EXISTS pgfr.lock_samples_ring (
     locked_relation_oid     OID,
     PRIMARY KEY (slot_id, row_num)
 ) WITH (fillfactor = 90);
-COMMENT ON TABLE pgfr.lock_samples_ring IS 'Ring buffer: Lock contention (UPDATE-only pattern). Pre-populated rows (slots × 100 rows, default 12,000). Max 100 blocked/blocking pairs per sample. Fillfactor 90 enables HOT updates. Use configure_ring_autovacuum(false) to disable autovacuum if desired. NULLs indicate unused slots.';
+COMMENT ON TABLE pgfr_record.lock_samples_ring IS 'Ring buffer: Lock contention (UPDATE-only pattern). Pre-populated rows (slots × 100 rows, default 12,000). Max 100 blocked/blocking pairs per sample. Fillfactor 90 enables HOT updates. Use configure_ring_autovacuum(false) to disable autovacuum if desired. NULLs indicate unused slots.';
 
-INSERT INTO pgfr.samples_ring (slot_id, captured_at, epoch_seconds)
+INSERT INTO pgfr_record.samples_ring (slot_id, captured_at, epoch_seconds)
 SELECT
     generate_series AS slot_id,
     '1970-01-01'::timestamptz,
     0
 FROM generate_series(0, 119)
 ON CONFLICT (slot_id) DO NOTHING;
-INSERT INTO pgfr.wait_samples_ring (slot_id, row_num)
+INSERT INTO pgfr_record.wait_samples_ring (slot_id, row_num)
 SELECT s.slot_id, r.row_num
 FROM generate_series(0, 119) s(slot_id)
 CROSS JOIN generate_series(0, 99) r(row_num)
 ON CONFLICT (slot_id, row_num) DO NOTHING;
-INSERT INTO pgfr.activity_samples_ring (slot_id, row_num)
+INSERT INTO pgfr_record.activity_samples_ring (slot_id, row_num)
 SELECT s.slot_id, r.row_num
 FROM generate_series(0, 119) s(slot_id)
 CROSS JOIN generate_series(0, 24) r(row_num)
 ON CONFLICT (slot_id, row_num) DO NOTHING;
-INSERT INTO pgfr.lock_samples_ring (slot_id, row_num)
+INSERT INTO pgfr_record.lock_samples_ring (slot_id, row_num)
 SELECT s.slot_id, r.row_num
 FROM generate_series(0, 119) s(slot_id)
 CROSS JOIN generate_series(0, 99) r(row_num)
@@ -288,7 +288,7 @@ ON CONFLICT (slot_id, row_num) DO NOTHING;
 -- Aggregates wait event statistics over 5-minute windows, enabling analysis of wait event patterns
 -- Stores metrics like average/max concurrent waiters per event type, state, and backend type
 -- Aggregates: durable and survives crashes, with indexes for efficient time-range and event-type queries
-CREATE TABLE IF NOT EXISTS pgfr.wait_event_aggregates (
+CREATE TABLE IF NOT EXISTS pgfr_record.wait_event_aggregates (
     id              BIGSERIAL PRIMARY KEY,
     start_time      TIMESTAMPTZ NOT NULL,
     end_time        TIMESTAMPTZ NOT NULL,
@@ -303,16 +303,16 @@ CREATE TABLE IF NOT EXISTS pgfr.wait_event_aggregates (
     pct_of_samples  NUMERIC
 );
 CREATE INDEX IF NOT EXISTS wait_aggregates_time_idx
-    ON pgfr.wait_event_aggregates(start_time, end_time);
+    ON pgfr_record.wait_event_aggregates(start_time, end_time);
 CREATE INDEX IF NOT EXISTS wait_aggregates_event_idx
-    ON pgfr.wait_event_aggregates(wait_event_type, wait_event);
-COMMENT ON TABLE pgfr.wait_event_aggregates IS 'Aggregates: Durable wait event summaries (5-min windows, survives crashes)';
+    ON pgfr_record.wait_event_aggregates(wait_event_type, wait_event);
+COMMENT ON TABLE pgfr_record.wait_event_aggregates IS 'Aggregates: Durable wait event summaries (5-min windows, survives crashes)';
 
 
 -- Stores aggregated lock contention patterns within time windows
 -- Tracks which sessions block others, including lock type, affected relation, and duration statistics
 -- Enables forensic analysis of lock conflicts and performance bottlenecks across restarts
-CREATE TABLE IF NOT EXISTS pgfr.lock_aggregates (
+CREATE TABLE IF NOT EXISTS pgfr_record.lock_aggregates (
     id                  BIGSERIAL PRIMARY KEY,
     start_time          TIMESTAMPTZ NOT NULL,
     end_time            TIMESTAMPTZ NOT NULL,
@@ -326,14 +326,14 @@ CREATE TABLE IF NOT EXISTS pgfr.lock_aggregates (
     sample_query        TEXT
 );
 CREATE INDEX IF NOT EXISTS lock_aggregates_time_idx
-    ON pgfr.lock_aggregates(start_time, end_time);
-COMMENT ON TABLE pgfr.lock_aggregates IS 'Aggregates: Durable lock pattern summaries (5-min windows, survives crashes)';
+    ON pgfr_record.lock_aggregates(start_time, end_time);
+COMMENT ON TABLE pgfr_record.lock_aggregates IS 'Aggregates: Durable lock pattern summaries (5-min windows, survives crashes)';
 
 
 -- Aggregates activity samples within 5-minute time windows
 -- Stores query preview, occurrence count, and duration metrics (max/avg)
 -- Provides durable activity summaries that survive database crashes
-CREATE TABLE IF NOT EXISTS pgfr.activity_aggregates (
+CREATE TABLE IF NOT EXISTS pgfr_record.activity_aggregates (
     id                  BIGSERIAL PRIMARY KEY,
     start_time          TIMESTAMPTZ NOT NULL,
     end_time            TIMESTAMPTZ NOT NULL,
@@ -343,14 +343,14 @@ CREATE TABLE IF NOT EXISTS pgfr.activity_aggregates (
     avg_duration        INTERVAL
 );
 CREATE INDEX IF NOT EXISTS activity_aggregates_time_idx
-    ON pgfr.activity_aggregates(start_time, end_time);
-COMMENT ON TABLE pgfr.activity_aggregates IS 'Aggregates: Durable activity summaries (5-min windows, survives crashes)';
+    ON pgfr_record.activity_aggregates(start_time, end_time);
+COMMENT ON TABLE pgfr_record.activity_aggregates IS 'Aggregates: Durable activity summaries (5-min windows, survives crashes)';
 
 
 -- Stores snapshot samples of PostgreSQL backend activity for forensic analysis
 -- Captures session details, query state, and wait events at regular intervals (15-min cadence)
 -- Indexed by timestamp, sample group, and process ID for efficient historical queries
-CREATE TABLE IF NOT EXISTS pgfr.activity_samples_archive (
+CREATE TABLE IF NOT EXISTS pgfr_record.activity_samples_archive (
     id                  BIGSERIAL PRIMARY KEY,
     sample_id           BIGINT NOT NULL,
     captured_at         TIMESTAMPTZ NOT NULL,
@@ -369,18 +369,18 @@ CREATE TABLE IF NOT EXISTS pgfr.activity_samples_archive (
     query_preview       TEXT
 );
 CREATE INDEX IF NOT EXISTS activity_archive_captured_at_idx
-    ON pgfr.activity_samples_archive(captured_at);
+    ON pgfr_record.activity_samples_archive(captured_at);
 CREATE INDEX IF NOT EXISTS activity_archive_sample_id_idx
-    ON pgfr.activity_samples_archive(sample_id);
+    ON pgfr_record.activity_samples_archive(sample_id);
 CREATE INDEX IF NOT EXISTS activity_archive_pid_idx
-    ON pgfr.activity_samples_archive(pid, captured_at);
-COMMENT ON TABLE pgfr.activity_samples_archive IS 'Raw archives: Activity samples for forensic analysis (15-min cadence, full resolution)';
+    ON pgfr_record.activity_samples_archive(pid, captured_at);
+COMMENT ON TABLE pgfr_record.activity_samples_archive IS 'Raw archives: Activity samples for forensic analysis (15-min cadence, full resolution)';
 
 
 -- Archives lock contention incidents with complete blocking chains (blocked and blocking process details)
 -- Captures at 15-minute intervals for forensic analysis of lock conflicts and deadlock relationships
 -- Stores query previews, process info (PID, user, application), lock types, and relation OIDs
-CREATE TABLE IF NOT EXISTS pgfr.lock_samples_archive (
+CREATE TABLE IF NOT EXISTS pgfr_record.lock_samples_archive (
     id                      BIGSERIAL PRIMARY KEY,
     sample_id               BIGINT NOT NULL,
     captured_at             TIMESTAMPTZ NOT NULL,
@@ -397,20 +397,20 @@ CREATE TABLE IF NOT EXISTS pgfr.lock_samples_archive (
     locked_relation_oid     OID
 );
 CREATE INDEX IF NOT EXISTS lock_archive_captured_at_idx
-    ON pgfr.lock_samples_archive(captured_at);
+    ON pgfr_record.lock_samples_archive(captured_at);
 CREATE INDEX IF NOT EXISTS lock_archive_sample_id_idx
-    ON pgfr.lock_samples_archive(sample_id);
+    ON pgfr_record.lock_samples_archive(sample_id);
 CREATE INDEX IF NOT EXISTS lock_archive_blocked_pid_idx
-    ON pgfr.lock_samples_archive(blocked_pid, captured_at);
+    ON pgfr_record.lock_samples_archive(blocked_pid, captured_at);
 CREATE INDEX IF NOT EXISTS lock_archive_blocking_pid_idx
-    ON pgfr.lock_samples_archive(blocking_pid, captured_at);
-COMMENT ON TABLE pgfr.lock_samples_archive IS 'Raw archives: Lock samples for forensic analysis (15-min cadence, full blocking chains)';
+    ON pgfr_record.lock_samples_archive(blocking_pid, captured_at);
+COMMENT ON TABLE pgfr_record.lock_samples_archive IS 'Raw archives: Lock samples for forensic analysis (15-min cadence, full blocking chains)';
 
 
 -- Archives raw wait event samples at full resolution for forensic analysis
 -- Captures backend type, wait event type/name, and state to enable detailed investigation
 -- Linked to parent samples via sample_id; indexed for efficient time-series queries
-CREATE TABLE IF NOT EXISTS pgfr.wait_samples_archive (
+CREATE TABLE IF NOT EXISTS pgfr_record.wait_samples_archive (
     id                  BIGSERIAL PRIMARY KEY,
     sample_id           BIGINT NOT NULL,
     captured_at         TIMESTAMPTZ NOT NULL,
@@ -421,19 +421,19 @@ CREATE TABLE IF NOT EXISTS pgfr.wait_samples_archive (
     count               INTEGER
 );
 CREATE INDEX IF NOT EXISTS wait_archive_captured_at_idx
-    ON pgfr.wait_samples_archive(captured_at);
+    ON pgfr_record.wait_samples_archive(captured_at);
 CREATE INDEX IF NOT EXISTS wait_archive_sample_id_idx
-    ON pgfr.wait_samples_archive(sample_id);
+    ON pgfr_record.wait_samples_archive(sample_id);
 CREATE INDEX IF NOT EXISTS wait_archive_wait_event_idx
-    ON pgfr.wait_samples_archive(wait_event_type, wait_event, captured_at);
-COMMENT ON TABLE pgfr.wait_samples_archive IS 'Raw archives: Wait event samples for forensic analysis (15-min cadence, full resolution)';
+    ON pgfr_record.wait_samples_archive(wait_event_type, wait_event, captured_at);
+COMMENT ON TABLE pgfr_record.wait_samples_archive IS 'Raw archives: Wait event samples for forensic analysis (15-min cadence, full resolution)';
 
 
 -- Captures table-level statistics from pg_stat_user_tables for hotspot tracking
 -- Tracks sequential/index scans, DML activity, dead tuples, and maintenance events
 -- Enables diagnosis of table-level performance issues and bloat detection
-CREATE TABLE IF NOT EXISTS pgfr.table_snapshots (
-    snapshot_id         INTEGER REFERENCES pgfr.snapshots(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS pgfr_record.table_snapshots (
+    snapshot_id         INTEGER REFERENCES pgfr_record.snapshots(id) ON DELETE CASCADE,
     schemaname          TEXT,             -- DEPRECATED: derive via relid::regclass or relation_names
     relname             TEXT,             -- DEPRECATED: derive via relid::regclass or relation_names
     relid               OID NOT NULL,
@@ -467,8 +467,8 @@ CREATE TABLE IF NOT EXISTS pgfr.table_snapshots (
     PRIMARY KEY (snapshot_id, relid)
 );
 CREATE INDEX IF NOT EXISTS table_snapshots_relid_idx
-    ON pgfr.table_snapshots(relid);
-COMMENT ON TABLE pgfr.table_snapshots IS 'Table-level statistics snapshots for hotspot tracking and bloat detection. Includes size metrics for extension-free bloat estimation.';
+    ON pgfr_record.table_snapshots(relid);
+COMMENT ON TABLE pgfr_record.table_snapshots IS 'Table-level statistics snapshots for hotspot tracking and bloat detection. Includes size metrics for extension-free bloat estimation.';
 
 
 
@@ -476,8 +476,8 @@ COMMENT ON TABLE pgfr.table_snapshots IS 'Table-level statistics snapshots for h
 -- Captures index-level statistics from pg_stat_user_indexes
 -- Tracks index usage, tuple reads/fetches, and index sizes
 -- Enables identification of unused indexes and index efficiency analysis
-CREATE TABLE IF NOT EXISTS pgfr.index_snapshots (
-    snapshot_id         INTEGER REFERENCES pgfr.snapshots(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS pgfr_record.index_snapshots (
+    snapshot_id         INTEGER REFERENCES pgfr_record.snapshots(id) ON DELETE CASCADE,
     schemaname          TEXT,             -- DEPRECATED: derive via relid::regclass or relation_names
     relname             TEXT,             -- DEPRECATED: derive via relid::regclass or relation_names
     indexrelname        TEXT,             -- DEPRECATED: derive via indexrelid::regclass or relation_names
@@ -490,17 +490,17 @@ CREATE TABLE IF NOT EXISTS pgfr.index_snapshots (
     PRIMARY KEY (snapshot_id, indexrelid)
 );
 CREATE INDEX IF NOT EXISTS index_snapshots_indexrelid_idx
-    ON pgfr.index_snapshots(indexrelid);
+    ON pgfr_record.index_snapshots(indexrelid);
 CREATE INDEX IF NOT EXISTS index_snapshots_relid_idx
-    ON pgfr.index_snapshots(relid);
-COMMENT ON TABLE pgfr.index_snapshots IS 'Index-level statistics snapshots for usage tracking and efficiency analysis';
+    ON pgfr_record.index_snapshots(relid);
+COMMENT ON TABLE pgfr_record.index_snapshots IS 'Index-level statistics snapshots for usage tracking and efficiency analysis';
 
 
 -- Captures PostgreSQL configuration parameters from pg_settings
 -- Stores relevant settings to provide configuration context during incident analysis
 -- Enables detection of configuration changes over time
-CREATE TABLE IF NOT EXISTS pgfr.config_snapshots (
-    snapshot_id     INTEGER REFERENCES pgfr.snapshots(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS pgfr_record.config_snapshots (
+    snapshot_id     INTEGER REFERENCES pgfr_record.snapshots(id) ON DELETE CASCADE,
     name            TEXT NOT NULL,
     setting         TEXT,
     unit            TEXT,
@@ -509,28 +509,28 @@ CREATE TABLE IF NOT EXISTS pgfr.config_snapshots (
     PRIMARY KEY (snapshot_id, name)
 );
 CREATE INDEX IF NOT EXISTS config_snapshots_name_idx
-    ON pgfr.config_snapshots(name);
-COMMENT ON TABLE pgfr.config_snapshots IS 'PostgreSQL configuration snapshots for change tracking and incident context';
+    ON pgfr_record.config_snapshots(name);
+COMMENT ON TABLE pgfr_record.config_snapshots IS 'PostgreSQL configuration snapshots for change tracking and incident context';
 
 
 -- Stores relation OID to name mappings for offline analysis
 -- Populated by _populate_relation_names() before data export
 -- Enables analysis functions to resolve OIDs without access to pg_class
-CREATE TABLE IF NOT EXISTS pgfr.relation_names (
+CREATE TABLE IF NOT EXISTS pgfr_record.relation_names (
     oid             OID PRIMARY KEY,
     nspname         TEXT NOT NULL,
     relname         TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS relation_names_name_idx
-    ON pgfr.relation_names(nspname, relname);
-COMMENT ON TABLE pgfr.relation_names IS 'OID to relation name mappings for offline analysis. Populated at export time, not during collection.';
+    ON pgfr_record.relation_names(nspname, relname);
+COMMENT ON TABLE pgfr_record.relation_names IS 'OID to relation name mappings for offline analysis. Populated at export time, not during collection.';
 
 
 -- Captures database-level and role-level configuration overrides from pg_db_role_setting
 -- These settings override global GUCs and are often overlooked during incident analysis
 -- Complementary to config_snapshots which tracks global settings
-CREATE TABLE IF NOT EXISTS pgfr.db_role_config_snapshots (
-    snapshot_id     INTEGER REFERENCES pgfr.snapshots(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS pgfr_record.db_role_config_snapshots (
+    snapshot_id     INTEGER REFERENCES pgfr_record.snapshots(id) ON DELETE CASCADE,
     database_name   TEXT NOT NULL DEFAULT '',  -- Empty string = applies to all databases (role-level only)
     role_name       TEXT NOT NULL DEFAULT '',  -- Empty string = applies to all roles (database-level only)
     parameter_name  TEXT NOT NULL,
@@ -538,12 +538,12 @@ CREATE TABLE IF NOT EXISTS pgfr.db_role_config_snapshots (
     PRIMARY KEY (snapshot_id, database_name, role_name, parameter_name)
 );
 CREATE INDEX IF NOT EXISTS db_role_config_snapshots_param_idx
-    ON pgfr.db_role_config_snapshots(parameter_name);
-COMMENT ON TABLE pgfr.db_role_config_snapshots IS 'Database and role-level configuration overrides (ALTER DATABASE/ROLE SET) for change tracking';
+    ON pgfr_record.db_role_config_snapshots(parameter_name);
+COMMENT ON TABLE pgfr_record.db_role_config_snapshots IS 'Database and role-level configuration overrides (ALTER DATABASE/ROLE SET) for change tracking';
 
 
 -- Formats byte values as human-readable strings with appropriate units (GB, MB, KB, B)
-CREATE OR REPLACE FUNCTION pgfr._pretty_bytes(bytes BIGINT)
+CREATE OR REPLACE FUNCTION pgfr_record._pretty_bytes(bytes BIGINT)
 RETURNS TEXT
 LANGUAGE sql IMMUTABLE AS $$
     SELECT CASE
@@ -560,7 +560,7 @@ $$;
 -- Calculates estimated value at target time between two known data points
 -- Input: Values and timestamps at two points, target timestamp
 -- Output: Linearly interpolated value at target time
-CREATE OR REPLACE FUNCTION pgfr._interpolate_metric(
+CREATE OR REPLACE FUNCTION pgfr_record._interpolate_metric(
     p_value_before NUMERIC,
     p_time_before TIMESTAMPTZ,
     p_value_after NUMERIC,
@@ -607,23 +607,23 @@ BEGIN
     RETURN round(p_value_before + v_ratio * (p_value_after - p_value_before), 4);
 END;
 $$;
-COMMENT ON FUNCTION pgfr._interpolate_metric IS
+COMMENT ON FUNCTION pgfr_record._interpolate_metric IS
 'Linear interpolation helper for time-travel debugging. Calculates estimated metric value at a target timestamp between two known data points. Returns rounded value (4 decimal places). Handles edge cases: NULL inputs, same timestamps, and clamps ratio to [0,1] to prevent extrapolation.';
 
 
 -- Populates relation_names table from pg_class for offline analysis
 -- Run this before exporting data for offline analysis tools
 -- This is an EXPORT-TIME operation, not a collection-time operation
-CREATE OR REPLACE FUNCTION pgfr._populate_relation_names()
+CREATE OR REPLACE FUNCTION pgfr_record._populate_relation_names()
 RETURNS INTEGER
 LANGUAGE plpgsql AS $$
 DECLARE
     v_count INTEGER;
 BEGIN
     -- Truncate and repopulate to ensure consistency
-    TRUNCATE pgfr.relation_names;
+    TRUNCATE pgfr_record.relation_names;
 
-    INSERT INTO pgfr.relation_names (oid, nspname, relname)
+    INSERT INTO pgfr_record.relation_names (oid, nspname, relname)
     SELECT c.oid, n.nspname, c.relname
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -634,28 +634,28 @@ BEGIN
     RETURN v_count;
 END;
 $$;
-COMMENT ON FUNCTION pgfr._populate_relation_names IS
+COMMENT ON FUNCTION pgfr_record._populate_relation_names IS
 'Populates relation_names lookup table for offline analysis. Run before pg_dump when exporting data. Returns count of relations captured.';
 
 
 -- Resolves OID to schema-qualified relation name using relation_names lookup table
 -- Falls back to OID string if not found (for offline analysis compatibility)
-CREATE OR REPLACE FUNCTION pgfr._safe_relname(p_oid OID)
+CREATE OR REPLACE FUNCTION pgfr_record._safe_relname(p_oid OID)
 RETURNS TEXT
 LANGUAGE sql STABLE AS $$
     SELECT COALESCE(
-        (SELECT nspname || '.' || relname FROM pgfr.relation_names WHERE oid = p_oid),
+        (SELECT nspname || '.' || relname FROM pgfr_record.relation_names WHERE oid = p_oid),
         'OID:' || p_oid::text
     )
 $$;
-COMMENT ON FUNCTION pgfr._safe_relname IS
+COMMENT ON FUNCTION pgfr_record._safe_relname IS
 'Resolves OID to relation name using relation_names table. Returns OID:nnn if not found. For offline analysis where pg_class is unavailable.';
 
 
 -- Retrieves a PostgreSQL setting from config_snapshots history
 -- For offline analysis where pg_settings is unavailable
 -- Returns most recent captured value, or default if not found
-CREATE OR REPLACE FUNCTION pgfr._get_setting_from_snapshots(
+CREATE OR REPLACE FUNCTION pgfr_record._get_setting_from_snapshots(
     p_name TEXT,
     p_default TEXT DEFAULT NULL
 )
@@ -664,8 +664,8 @@ LANGUAGE sql STABLE AS $$
     SELECT COALESCE(
         (
             SELECT cs.setting
-            FROM pgfr.config_snapshots cs
-            JOIN pgfr.snapshots s ON s.id = cs.snapshot_id
+            FROM pgfr_record.config_snapshots cs
+            JOIN pgfr_record.snapshots s ON s.id = cs.snapshot_id
             WHERE cs.name = p_name
             ORDER BY s.captured_at DESC
             LIMIT 1
@@ -673,22 +673,22 @@ LANGUAGE sql STABLE AS $$
         p_default
     )
 $$;
-COMMENT ON FUNCTION pgfr._get_setting_from_snapshots IS
+COMMENT ON FUNCTION pgfr_record._get_setting_from_snapshots IS
 'Retrieves PostgreSQL setting from config_snapshots for offline analysis. Returns most recent captured value or default if not found.';
 
 
 -- Returns the PostgreSQL major version number
 -- Extracts major version by dividing server_version_num by 10000
-CREATE OR REPLACE FUNCTION pgfr._pg_version()
+CREATE OR REPLACE FUNCTION pgfr_record._pg_version()
 RETURNS INTEGER
 LANGUAGE sql STABLE AS $$
     SELECT current_setting('server_version_num')::integer / 10000
 $$;
 
--- Configuration key-value store for pgfr extension
+-- Configuration key-value store for pgfr_record extension
 -- Manages tuning parameters, thresholds, timeouts, and feature flags
 -- Tracks when each setting was last modified via updated_at timestamp
-CREATE TABLE IF NOT EXISTS pgfr.config (
+CREATE TABLE IF NOT EXISTS pgfr_record.config (
     key         TEXT PRIMARY KEY,
     value       TEXT NOT NULL,
     updated_at  TIMESTAMPTZ DEFAULT now()
@@ -696,7 +696,7 @@ CREATE TABLE IF NOT EXISTS pgfr.config (
 
 -- Single source of truth for profile settings
 -- Profiles define behavioral presets for different environments
-CREATE OR REPLACE FUNCTION pgfr._profile_settings()
+CREATE OR REPLACE FUNCTION pgfr_record._profile_settings()
 RETURNS TABLE(
     profile     TEXT,
     key         TEXT,
@@ -842,7 +842,7 @@ LANGUAGE sql STABLE AS $$
 $$;
 
 -- Non-profile settings (system defaults that profiles don't manage)
-INSERT INTO pgfr.config (key, value) VALUES
+INSERT INTO pgfr_record.config (key, value) VALUES
     ('schema_version', '2.28'),
     ('mode', 'normal'),
     ('statements_enabled', 'auto'),
@@ -905,13 +905,13 @@ INSERT INTO pgfr.config (key, value) VALUES
 ON CONFLICT (key) DO NOTHING;
 
 -- Profile-managed defaults (from 'default' profile)
-INSERT INTO pgfr.config (key, value)
+INSERT INTO pgfr_record.config (key, value)
 SELECT ps.key, ps.value
-FROM pgfr._profile_settings() ps
+FROM pgfr_record._profile_settings() ps
 WHERE ps.profile = 'default'
 ON CONFLICT (key) DO NOTHING;
 
-CREATE UNLOGGED TABLE IF NOT EXISTS pgfr.collection_stats (
+CREATE UNLOGGED TABLE IF NOT EXISTS pgfr_record.collection_stats (
     id              SERIAL PRIMARY KEY,
     collection_type TEXT NOT NULL,
     started_at      TIMESTAMPTZ NOT NULL,
@@ -925,11 +925,11 @@ CREATE UNLOGGED TABLE IF NOT EXISTS pgfr.collection_stats (
     sections_succeeded INTEGER
 );
 CREATE INDEX IF NOT EXISTS collection_stats_type_started_idx
-    ON pgfr.collection_stats(collection_type, started_at DESC);
+    ON pgfr_record.collection_stats(collection_type, started_at DESC);
 
 -- Checks if circuit breaker conditions are met (excessive errors or collection failures)
 -- Returns TRUE if circuit breaker is tripped and collection should be skipped
-CREATE OR REPLACE FUNCTION pgfr._check_circuit_breaker(p_collection_type TEXT)
+CREATE OR REPLACE FUNCTION pgfr_record._check_circuit_breaker(p_collection_type TEXT)
 RETURNS BOOLEAN
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -939,24 +939,24 @@ DECLARE
     v_window_minutes INTEGER;
 BEGIN
     v_enabled := COALESCE(
-        pgfr._get_config('circuit_breaker_enabled', 'true')::boolean,
+        pgfr_record._get_config('circuit_breaker_enabled', 'true')::boolean,
         true
     );
     IF NOT v_enabled THEN
         RETURN false;
     END IF;
     v_threshold_ms := COALESCE(
-        pgfr._get_config('circuit_breaker_threshold_ms', '1000')::integer,
+        pgfr_record._get_config('circuit_breaker_threshold_ms', '1000')::integer,
         1000
     );
     v_window_minutes := COALESCE(
-        pgfr._get_config('circuit_breaker_window_minutes', '15')::integer,
+        pgfr_record._get_config('circuit_breaker_window_minutes', '15')::integer,
         15
     );
     SELECT avg(duration_ms) INTO v_avg_duration_ms
     FROM (
         SELECT duration_ms
-        FROM pgfr.collection_stats
+        FROM pgfr_record.collection_stats
         WHERE collection_type = p_collection_type
           AND success = true
           AND skipped = false
@@ -974,27 +974,27 @@ $$;
 
 -- Records the start of a collection operation and creates a tracking entry in collection_stats
 -- Returns the ID of the new record to track subsequent collection progress
-CREATE OR REPLACE FUNCTION pgfr._record_collection_start(
+CREATE OR REPLACE FUNCTION pgfr_record._record_collection_start(
     p_collection_type TEXT,
     p_sections_total INTEGER DEFAULT NULL
 )
 RETURNS INTEGER
 LANGUAGE sql AS $$
-    INSERT INTO pgfr.collection_stats (collection_type, started_at, sections_total)
+    INSERT INTO pgfr_record.collection_stats (collection_type, started_at, sections_total)
     VALUES (p_collection_type, now(), p_sections_total)
     RETURNING id
 $$;
 
 -- Records collection completion with timing and success/failure status
 -- Updates collection_stats with end time, duration, and error details if applicable
-CREATE OR REPLACE FUNCTION pgfr._record_collection_end(
+CREATE OR REPLACE FUNCTION pgfr_record._record_collection_end(
     p_stat_id INTEGER,
     p_success BOOLEAN,
     p_error_message TEXT DEFAULT NULL
 )
 RETURNS VOID
 LANGUAGE sql AS $$
-    UPDATE pgfr.collection_stats
+    UPDATE pgfr_record.collection_stats
     SET completed_at = now(),
         duration_ms = EXTRACT(EPOCH FROM (now() - started_at)) * 1000,
         success = p_success,
@@ -1003,67 +1003,67 @@ LANGUAGE sql AS $$
 $$;
 
 -- Records a skipped collection event with the reason for skipping
-CREATE OR REPLACE FUNCTION pgfr._record_collection_skip(
+CREATE OR REPLACE FUNCTION pgfr_record._record_collection_skip(
     p_collection_type TEXT,
     p_reason TEXT
 )
 RETURNS VOID
 LANGUAGE sql AS $$
-    INSERT INTO pgfr.collection_stats (
+    INSERT INTO pgfr_record.collection_stats (
         collection_type, started_at, completed_at, skipped, skipped_reason
     )
     VALUES (p_collection_type, now(), now(), true, p_reason)
 $$;
 
 -- Increments the sections_succeeded counter to record successful section completion
-CREATE OR REPLACE FUNCTION pgfr._record_section_success(p_stat_id INTEGER)
+CREATE OR REPLACE FUNCTION pgfr_record._record_section_success(p_stat_id INTEGER)
 RETURNS VOID
 LANGUAGE sql AS $$
-    UPDATE pgfr.collection_stats
+    UPDATE pgfr_record.collection_stats
     SET sections_succeeded = COALESCE(sections_succeeded, 0) + 1
     WHERE id = p_stat_id
 $$;
 
 -- Retrieves configuration values by key from the config table with optional fallback
 -- Returns the provided default value if the key does not exist
-CREATE OR REPLACE FUNCTION pgfr._get_config(p_key TEXT, p_default TEXT DEFAULT NULL)
+CREATE OR REPLACE FUNCTION pgfr_record._get_config(p_key TEXT, p_default TEXT DEFAULT NULL)
 RETURNS TEXT
 LANGUAGE sql STABLE AS $$
     SELECT COALESCE(
-        (SELECT value FROM pgfr.config WHERE key = p_key),
+        (SELECT value FROM pgfr_record.config WHERE key = p_key),
         p_default
     )
 $$;
 
 -- Returns the configured ring buffer slot count, clamped to valid range (72-2880)
 -- Default is 120 slots for backwards compatibility
-CREATE OR REPLACE FUNCTION pgfr._get_ring_buffer_slots()
+CREATE OR REPLACE FUNCTION pgfr_record._get_ring_buffer_slots()
 RETURNS INTEGER
 LANGUAGE sql STABLE AS $$
     SELECT GREATEST(72, LEAST(2880,
-        COALESCE(pgfr._get_config('ring_buffer_slots', '120')::integer, 120)
+        COALESCE(pgfr_record._get_config('ring_buffer_slots', '120')::integer, 120)
     ))
 $$;
-COMMENT ON FUNCTION pgfr._get_ring_buffer_slots() IS 'Returns configured ring buffer slot count (72-2880 range). Default 120 for backwards compatibility. Use ring_buffer_slots config to change.';
+COMMENT ON FUNCTION pgfr_record._get_ring_buffer_slots() IS 'Returns configured ring buffer slot count (72-2880 range). Default 120 for backwards compatibility. Use ring_buffer_slots config to change.';
 
 -- Sets statement timeout for section recording based on configuration, defaulting to 250ms
-CREATE OR REPLACE FUNCTION pgfr._set_section_timeout()
+CREATE OR REPLACE FUNCTION pgfr_record._set_section_timeout()
 RETURNS VOID
 LANGUAGE plpgsql AS $$
 DECLARE
     v_timeout_ms INTEGER;
 BEGIN
     v_timeout_ms := COALESCE(
-        pgfr._get_config('section_timeout_ms', '250')::integer,
+        pgfr_record._get_config('section_timeout_ms', '250')::integer,
         250
     );
     PERFORM set_config('statement_timeout', v_timeout_ms::text, true);
 END;
 $$;
 
--- Validates pgfr configuration parameters and system health
+-- Validates pgfr_record configuration parameters and system health
 -- Returns diagnostic checks with status levels (OK, WARNING, CRITICAL) for configuration values, thresholds, and recent operational errors
-CREATE OR REPLACE FUNCTION pgfr.validate_config()
+CREATE OR REPLACE FUNCTION pgfr_record.validate_config()
 RETURNS TABLE(
     check_name TEXT,
     status TEXT,
@@ -1076,7 +1076,7 @@ DECLARE
     v_circuit_breaker_enabled BOOLEAN;
     v_schema_size_mb NUMERIC;
 BEGIN
-    v_section_timeout := pgfr._get_config('section_timeout_ms', '250')::integer;
+    v_section_timeout := pgfr_record._get_config('section_timeout_ms', '250')::integer;
     RETURN QUERY SELECT
         'section_timeout_ms'::text,
         CASE
@@ -1089,7 +1089,7 @@ BEGIN
                round((v_section_timeout * 4.0 / 60000.0) * 100, 1),
                v_section_timeout);
     v_circuit_breaker_enabled := COALESCE(
-        pgfr._get_config('circuit_breaker_enabled', 'true')::boolean,
+        pgfr_record._get_config('circuit_breaker_enabled', 'true')::boolean,
         true
     );
     RETURN QUERY SELECT
@@ -1097,7 +1097,7 @@ BEGIN
         CASE WHEN v_circuit_breaker_enabled THEN 'OK' ELSE 'CRITICAL' END::text,
         format('Current: %s. Circuit breaker provides automatic protection under load',
                v_circuit_breaker_enabled);
-    v_lock_timeout := pgfr._get_config('lock_timeout_ms', '100')::integer;
+    v_lock_timeout := pgfr_record._get_config('lock_timeout_ms', '100')::integer;
     RETURN QUERY SELECT
         'lock_timeout_ms'::text,
         CASE
@@ -1108,7 +1108,7 @@ BEGIN
         format('Current: %s ms. Recommended: <= 100ms to fail fast on catalog lock contention',
                v_lock_timeout);
     SELECT schema_size_mb INTO v_schema_size_mb
-    FROM pgfr._check_schema_size();
+    FROM pgfr_record._check_schema_size();
     RETURN QUERY SELECT
         'schema_size'::text,
         CASE
@@ -1116,24 +1116,24 @@ BEGIN
             WHEN v_schema_size_mb > 5000 THEN 'WARNING'
             ELSE 'OK'
         END::text,
-        format('pgfr schema: %s MB (warning: 5000 MB, critical: 10000 MB, auto-disable at critical)',
+        format('pgfr_record schema: %s MB (warning: 5000 MB, critical: 10000 MB, auto-disable at critical)',
                round(v_schema_size_mb, 0));
     RETURN QUERY SELECT
         'skip_thresholds'::text,
         CASE
-            WHEN pgfr._get_config('skip_activity_conn_threshold')::integer > 200
-                OR pgfr._get_config('skip_locks_threshold')::integer > 100
+            WHEN pgfr_record._get_config('skip_activity_conn_threshold')::integer > 200
+                OR pgfr_record._get_config('skip_locks_threshold')::integer > 100
             THEN 'WARNING'
             ELSE 'OK'
         END::text,
         format('Activity threshold: %s, Locks threshold: %s. Recommended: 100/50 for early protection',
-               pgfr._get_config('skip_activity_conn_threshold'),
-               pgfr._get_config('skip_locks_threshold'));
+               pgfr_record._get_config('skip_activity_conn_threshold'),
+               pgfr_record._get_config('skip_locks_threshold'));
     DECLARE
         v_recent_failures INTEGER;
     BEGIN
         SELECT count(*) INTO v_recent_failures
-        FROM pgfr.collection_stats
+        FROM pgfr_record.collection_stats
         WHERE success = false
           AND started_at > now() - interval '1 hour';
         RETURN QUERY SELECT
@@ -1150,7 +1150,7 @@ BEGIN
         v_lock_timeouts INTEGER;
     BEGIN
         SELECT count(*) INTO v_lock_timeouts
-        FROM pgfr.collection_stats
+        FROM pgfr_record.collection_stats
         WHERE error_message LIKE '%lock_timeout%'
           AND started_at > now() - interval '1 hour';
         RETURN QUERY SELECT
@@ -1168,7 +1168,7 @@ $$;
 
 -- Validates ring buffer configuration and returns diagnostic checks
 -- Checks retention, batching efficiency, CPU overhead, and memory usage
-CREATE OR REPLACE FUNCTION pgfr.validate_ring_configuration()
+CREATE OR REPLACE FUNCTION pgfr_record.validate_ring_configuration()
 RETURNS TABLE(
     check_name TEXT,
     status TEXT,
@@ -1186,13 +1186,13 @@ DECLARE
     v_cpu_pct NUMERIC;
 BEGIN
     -- Get current configuration
-    v_slots := pgfr._get_ring_buffer_slots();
+    v_slots := pgfr_record._get_ring_buffer_slots();
     v_sample_interval := COALESCE(
-        pgfr._get_config('sample_interval_seconds', '180')::integer,
+        pgfr_record._get_config('sample_interval_seconds', '180')::integer,
         180
     );
     v_archive_interval := COALESCE(
-        pgfr._get_config('archive_sample_frequency_minutes', '15')::integer,
+        pgfr_record._get_config('archive_sample_frequency_minutes', '15')::integer,
         15
     );
 
@@ -1268,11 +1268,11 @@ BEGIN
         END::text;
 END;
 $$;
-COMMENT ON FUNCTION pgfr.validate_ring_configuration() IS 'Validates ring buffer configuration and returns diagnostic checks for retention, batching efficiency, CPU overhead, and memory usage.';
+COMMENT ON FUNCTION pgfr_record.validate_ring_configuration() IS 'Validates ring buffer configuration and returns diagnostic checks for retention, batching efficiency, CPU overhead, and memory usage.';
 
 -- Check if the pg_stat_statements extension is installed
 -- Returns TRUE if available, FALSE otherwise
-CREATE OR REPLACE FUNCTION pgfr._has_pg_stat_statements()
+CREATE OR REPLACE FUNCTION pgfr_record._has_pg_stat_statements()
 RETURNS BOOLEAN
 LANGUAGE sql STABLE AS $$
     SELECT EXISTS (
@@ -1282,7 +1282,7 @@ $$;
 
 -- Monitors pg_stat_statements table health by checking current statement count against configured max capacity
 -- Returns utilization percentage and status (OK, WARNING, HIGH_CHURN) to detect statement table churn
-CREATE OR REPLACE FUNCTION pgfr._check_statements_health()
+CREATE OR REPLACE FUNCTION pgfr_record._check_statements_health()
 RETURNS TABLE(
     current_statements BIGINT,
     max_statements INTEGER,
@@ -1296,7 +1296,7 @@ DECLARE
     v_max INTEGER;
     v_dealloc BIGINT;
 BEGIN
-    IF NOT pgfr._has_pg_stat_statements() THEN
+    IF NOT pgfr_record._has_pg_stat_statements() THEN
         RETURN QUERY SELECT 0::bigint, 0::integer, 0::numeric, 0::bigint, 'DISABLED'::text;
         RETURN;
     END IF;
@@ -1332,9 +1332,9 @@ BEGIN
 END;
 $$;
 
--- Monitor pgfr schema size and automatically manage collection state (cleanup, disable, re-enable) to prevent unbounded growth
+-- Monitor pgfr_record schema size and automatically manage collection state (cleanup, disable, re-enable) to prevent unbounded growth
 -- Returns current size, thresholds, status, and actions taken based on configurable warning/critical thresholds
-CREATE OR REPLACE FUNCTION pgfr._check_schema_size()
+CREATE OR REPLACE FUNCTION pgfr_record._check_schema_size()
 RETURNS TABLE(
     schema_size_mb NUMERIC,
     warning_threshold_mb INTEGER,
@@ -1354,7 +1354,7 @@ DECLARE
     v_action TEXT := '';
 BEGIN
     v_check_enabled := COALESCE(
-        pgfr._get_config('schema_size_check_enabled', 'true')::boolean,
+        pgfr_record._get_config('schema_size_check_enabled', 'true')::boolean,
         true
     );
     IF NOT v_check_enabled THEN
@@ -1369,7 +1369,7 @@ BEGIN
         v_max_mb INTEGER;
     BEGIN
         v_use_percentage := COALESCE(
-            pgfr._get_config('schema_size_use_percentage', 'true')::boolean,
+            pgfr_record._get_config('schema_size_use_percentage', 'true')::boolean,
             true
         );
         IF v_use_percentage THEN
@@ -1379,26 +1379,26 @@ BEGIN
             WHERE relkind IN ('r', 't', 'i', 'm')
               AND relpages > 0;
             v_percentage := COALESCE(
-                pgfr._get_config('schema_size_percentage', '5.0')::numeric,
+                pgfr_record._get_config('schema_size_percentage', '5.0')::numeric,
                 5.0
             );
             v_min_mb := COALESCE(
-                pgfr._get_config('schema_size_min_mb', '1000')::integer,
+                pgfr_record._get_config('schema_size_min_mb', '1000')::integer,
                 1000
             );
             v_max_mb := COALESCE(
-                pgfr._get_config('schema_size_max_mb', '10000')::integer,
+                pgfr_record._get_config('schema_size_max_mb', '10000')::integer,
                 10000
             );
             v_critical_mb := GREATEST(v_min_mb, LEAST(v_max_mb, (v_db_size_mb * v_percentage / 100.0)::integer));
             v_warning_mb := (v_critical_mb * 0.5)::integer;
         ELSE
             v_warning_mb := COALESCE(
-                pgfr._get_config('schema_size_warning_mb', '5000')::integer,
+                pgfr_record._get_config('schema_size_warning_mb', '5000')::integer,
                 5000
             );
             v_critical_mb := COALESCE(
-                pgfr._get_config('schema_size_critical_mb', '10000')::integer,
+                pgfr_record._get_config('schema_size_critical_mb', '10000')::integer,
                 10000
             );
         END IF;
@@ -1407,7 +1407,7 @@ BEGIN
     INTO v_size_bytes
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'pgfr'
+    WHERE n.nspname = 'pgfr_record'
       AND c.relkind IN ('r', 'i', 't');
     v_size_mb := round(v_size_bytes / 1024.0 / 1024.0, 2);
     SELECT EXISTS (
@@ -1417,18 +1417,18 @@ BEGIN
     ) INTO v_enabled;
     IF v_size_mb >= v_critical_mb AND v_enabled THEN
         BEGIN
-            PERFORM pgfr.cleanup('3 days'::interval);
+            PERFORM pgfr_record.cleanup('3 days'::interval);
             v_cleanup_performed := true;
             v_action := 'Aggressive cleanup (3 days retention)';
             SELECT COALESCE(sum(pg_total_relation_size(c.oid)), 0)
             INTO v_size_bytes
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = 'pgfr'
+            WHERE n.nspname = 'pgfr_record'
               AND c.relkind IN ('r', 'i', 't');
             v_size_mb := round(v_size_bytes / 1024.0 / 1024.0, 2);
             IF v_size_mb >= v_critical_mb THEN
-                PERFORM pgfr.disable();
+                PERFORM pgfr_record.disable();
                 v_action := v_action || '; Collection disabled (still > 10GB after cleanup)';
                 RETURN QUERY SELECT
                     v_size_mb,
@@ -1459,7 +1459,7 @@ BEGIN
     END IF;
     IF NOT v_enabled AND v_size_mb < (v_critical_mb * 0.8) THEN
         BEGIN
-            PERFORM pgfr.enable();
+            PERFORM pgfr_record.enable();
             v_action := format('Auto-recovery: collection re-enabled (size dropped to %s MB, below 8GB threshold)', v_size_mb);
             RETURN QUERY SELECT
                 v_size_mb,
@@ -1481,13 +1481,13 @@ BEGIN
     IF v_size_mb >= v_warning_mb AND v_size_mb < v_critical_mb THEN
         IF NOT v_cleanup_performed THEN
             BEGIN
-                PERFORM pgfr.cleanup('5 days'::interval);
+                PERFORM pgfr_record.cleanup('5 days'::interval);
                 v_action := 'Proactive cleanup at 5GB (5 days retention)';
                 SELECT COALESCE(sum(pg_total_relation_size(c.oid)), 0)
                 INTO v_size_bytes
                 FROM pg_class c
                 JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE n.nspname = 'pgfr'
+                WHERE n.nspname = 'pgfr_record'
                   AND c.relkind IN ('r', 'i', 't');
                 v_size_mb := round(v_size_bytes / 1024.0 / 1024.0, 2);
                 v_action := v_action || format(' (reduced to %s MB)', v_size_mb);
@@ -1518,7 +1518,7 @@ $$;
 -- Returns skip reason message or NULL if collection can proceed
 -- Sampled activity: Collect performance samples (wait events, active sessions, locks) into ring buffers
 -- Applies load shedding and circuit breaker before collection
-CREATE OR REPLACE FUNCTION pgfr.sample()
+CREATE OR REPLACE FUNCTION pgfr_record.sample()
 RETURNS TIMESTAMPTZ
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -1534,7 +1534,7 @@ DECLARE
     v_should_skip BOOLEAN;
 BEGIN
     v_sample_interval_seconds := COALESCE(
-        pgfr._get_config('sample_interval_seconds', '60')::integer,
+        pgfr_record._get_config('sample_interval_seconds', '60')::integer,
         60
     );
     IF v_sample_interval_seconds < 60 THEN
@@ -1542,20 +1542,20 @@ BEGIN
     ELSIF v_sample_interval_seconds > 3600 THEN
         v_sample_interval_seconds := 3600;
     END IF;
-    v_slot_id := (v_epoch / v_sample_interval_seconds) % pgfr._get_ring_buffer_slots();
-    v_should_skip := pgfr._check_circuit_breaker('sample');
+    v_slot_id := (v_epoch / v_sample_interval_seconds) % pgfr_record._get_ring_buffer_slots();
+    v_should_skip := pgfr_record._check_circuit_breaker('sample');
     IF v_should_skip THEN
-        PERFORM pgfr._record_collection_skip('sample', 'Circuit breaker tripped - last run exceeded threshold');
+        PERFORM pgfr_record._record_collection_skip('sample', 'Circuit breaker tripped - last run exceeded threshold');
         RAISE NOTICE 'pgfr_record: Skipping sample collection due to circuit breaker';
         RETURN v_captured_at;
     END IF;
-    v_stat_id := pgfr._record_collection_start('sample', 3);
+    v_stat_id := pgfr_record._record_collection_start('sample', 3);
     DECLARE
         v_lock_strategy TEXT;
         v_lock_timeout_ms INTEGER;
     BEGIN
         v_lock_strategy := COALESCE(
-            pgfr._get_config('lock_timeout_strategy', 'fail_fast'),
+            pgfr_record._get_config('lock_timeout_strategy', 'fail_fast'),
             'fail_fast'
         );
         v_lock_timeout_ms := CASE v_lock_strategy
@@ -1566,7 +1566,7 @@ BEGIN
         PERFORM set_config('lock_timeout', v_lock_timeout_ms::text, true);
     END;
     PERFORM set_config('work_mem',
-        COALESCE(pgfr._get_config('work_mem_kb', '2048'), '2048') || 'kB',
+        COALESCE(pgfr_record._get_config('work_mem_kb', '2048'), '2048') || 'kB',
         true);
     DECLARE
         v_load_shedding_enabled BOOLEAN;
@@ -1578,12 +1578,12 @@ BEGIN
         v_stmt_status TEXT;
     BEGIN
         v_load_shedding_enabled := COALESCE(
-            pgfr._get_config('load_shedding_enabled', 'true')::boolean,
+            pgfr_record._get_config('load_shedding_enabled', 'true')::boolean,
             true
         );
         IF v_load_shedding_enabled THEN
             v_load_threshold_pct := COALESCE(
-                pgfr._get_config('load_shedding_active_pct', '70')::integer,
+                pgfr_record._get_config('load_shedding_active_pct', '70')::integer,
                 70
             );
             SELECT setting::integer INTO v_max_connections
@@ -1593,19 +1593,19 @@ BEGIN
             WHERE state = 'active' AND backend_type = 'client backend';
             v_active_pct := (v_active_count::numeric / NULLIF(v_max_connections, 0)) * 100;
             IF v_active_pct >= v_load_threshold_pct THEN
-                PERFORM pgfr._record_collection_skip('sample',
+                PERFORM pgfr_record._record_collection_skip('sample',
                     format('Load shedding: high load (%s active / %s max = %s%% >= %s%% threshold)',
                            v_active_count, v_max_connections, round(v_active_pct, 1), v_load_threshold_pct));
                 PERFORM set_config('statement_timeout', '0', true);
                 RETURN v_captured_at;
             END IF;
         END IF;
-        IF pgfr._has_pg_stat_statements() THEN
+        IF pgfr_record._has_pg_stat_statements() THEN
             SELECT utilization_pct, status
             INTO v_stmt_utilization, v_stmt_status
-            FROM pgfr._check_statements_health();
+            FROM pgfr_record._check_statements_health();
             IF v_stmt_status IN ('WARNING', 'HIGH_CHURN') THEN
-                PERFORM pgfr._record_collection_skip('sample',
+                PERFORM pgfr_record._record_collection_skip('sample',
                     format('pg_stat_statements overhead: %s utilization (%s%%), skipping to reduce hash table pressure',
                            v_stmt_status, round(v_stmt_utilization, 1)));
                 PERFORM set_config('statement_timeout', '0', true);
@@ -1614,28 +1614,28 @@ BEGIN
         END IF;
     END;
     v_enable_locks := COALESCE(
-        pgfr._get_config('enable_locks', 'true')::boolean,
+        pgfr_record._get_config('enable_locks', 'true')::boolean,
         TRUE
     );
     v_snapshot_based := COALESCE(
-        pgfr._get_config('snapshot_based_collection', 'true')::boolean,
+        pgfr_record._get_config('snapshot_based_collection', 'true')::boolean,
         true
     );
-    INSERT INTO pgfr.samples_ring (slot_id, captured_at, epoch_seconds)
+    INSERT INTO pgfr_record.samples_ring (slot_id, captured_at, epoch_seconds)
     VALUES (v_slot_id, v_captured_at, v_epoch)
     ON CONFLICT (slot_id) DO UPDATE SET
         captured_at = EXCLUDED.captured_at,
         epoch_seconds = EXCLUDED.epoch_seconds;
-    UPDATE pgfr.wait_samples_ring SET
+    UPDATE pgfr_record.wait_samples_ring SET
         backend_type = NULL, wait_event_type = NULL, wait_event = NULL, state = NULL, count = NULL
     WHERE slot_id = v_slot_id;
-    UPDATE pgfr.activity_samples_ring SET
+    UPDATE pgfr_record.activity_samples_ring SET
         pid = NULL, usename = NULL, application_name = NULL, backend_type = NULL,
         state = NULL, wait_event_type = NULL, wait_event = NULL,
         backend_start = NULL, xact_start = NULL,
         query_start = NULL, state_change = NULL, query_preview = NULL
     WHERE slot_id = v_slot_id;
-    UPDATE pgfr.lock_samples_ring SET
+    UPDATE pgfr_record.lock_samples_ring SET
         blocked_pid = NULL, blocked_user = NULL, blocked_app = NULL,
         blocked_query_preview = NULL, blocked_duration = NULL, blocking_pid = NULL,
         blocking_user = NULL, blocking_app = NULL, blocking_query_preview = NULL,
@@ -1650,9 +1650,9 @@ BEGIN
         SELECT * FROM pg_stat_activity WHERE pid != pg_backend_pid();
     END IF;
     BEGIN
-        PERFORM pgfr._set_section_timeout();
+        PERFORM pgfr_record._set_section_timeout();
         IF v_snapshot_based THEN
-            INSERT INTO pgfr.wait_samples_ring (slot_id, row_num, backend_type, wait_event_type, wait_event, state, count)
+            INSERT INTO pgfr_record.wait_samples_ring (slot_id, row_num, backend_type, wait_event_type, wait_event, state, count)
             SELECT
                 v_slot_id,
                 (ROW_NUMBER() OVER () - 1)::integer AS row_num,
@@ -1671,7 +1671,7 @@ BEGIN
                 state = EXCLUDED.state,
                 count = EXCLUDED.count;
         ELSE
-            INSERT INTO pgfr.wait_samples_ring (slot_id, row_num, backend_type, wait_event_type, wait_event, state, count)
+            INSERT INTO pgfr_record.wait_samples_ring (slot_id, row_num, backend_type, wait_event_type, wait_event, state, count)
             SELECT
                 v_slot_id,
                 (ROW_NUMBER() OVER () - 1)::integer AS row_num,
@@ -1691,14 +1691,14 @@ BEGIN
                 state = EXCLUDED.state,
                 count = EXCLUDED.count;
         END IF;
-        PERFORM pgfr._record_section_success(v_stat_id);
+        PERFORM pgfr_record._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'pgfr_record: Wait events collection failed: %', SQLERRM;
     END;
     BEGIN
-        PERFORM pgfr._set_section_timeout();
+        PERFORM pgfr_record._set_section_timeout();
         IF v_snapshot_based THEN
-            INSERT INTO pgfr.activity_samples_ring (
+            INSERT INTO pgfr_record.activity_samples_ring (
                 slot_id, row_num, pid, usename, application_name, client_addr, backend_type,
                 state, wait_event_type, wait_event, backend_start, xact_start,
                 query_start, state_change, query_preview
@@ -1737,7 +1737,7 @@ BEGIN
                 state_change = EXCLUDED.state_change,
                 query_preview = EXCLUDED.query_preview;
         ELSE
-            INSERT INTO pgfr.activity_samples_ring (
+            INSERT INTO pgfr_record.activity_samples_ring (
                 slot_id, row_num, pid, usename, application_name, client_addr, backend_type,
                 state, wait_event_type, wait_event, backend_start, xact_start,
                 query_start, state_change, query_preview
@@ -1776,19 +1776,19 @@ BEGIN
                 state_change = EXCLUDED.state_change,
                 query_preview = EXCLUDED.query_preview;
         END IF;
-        PERFORM pgfr._record_section_success(v_stat_id);
+        PERFORM pgfr_record._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'pgfr_record: Activity samples collection failed: %', SQLERRM;
     END;
     IF v_enable_locks THEN
     BEGIN
-        PERFORM pgfr._set_section_timeout();
+        PERFORM pgfr_record._set_section_timeout();
         DECLARE
             v_blocked_count INTEGER;
             v_skip_locks_threshold INTEGER;
         BEGIN
             v_skip_locks_threshold := COALESCE(
-                pgfr._get_config('skip_locks_threshold', '50')::integer,
+                pgfr_record._get_config('skip_locks_threshold', '50')::integer,
                 50
             );
             IF v_snapshot_based THEN
@@ -1824,7 +1824,7 @@ BEGIN
                 RAISE NOTICE 'pgfr_record: Skipping lock collection - % blocked sessions exceeds threshold %',
                     v_blocked_count, v_skip_locks_threshold;
             ELSE
-                INSERT INTO pgfr.lock_samples_ring (
+                INSERT INTO pgfr_record.lock_samples_ring (
                     slot_id, row_num, blocked_pid, blocked_user, blocked_app,
                     blocked_query_preview, blocked_duration, blocking_pid, blocking_user,
                     blocking_app, blocking_query_preview, lock_type, locked_relation_oid
@@ -1877,27 +1877,27 @@ BEGIN
                     locked_relation_oid = EXCLUDED.locked_relation_oid;
             END IF;
         END;
-        PERFORM pgfr._record_section_success(v_stat_id);
+        PERFORM pgfr_record._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'pgfr_record: Lock sampling collection failed: %', SQLERRM;
     END;
     END IF;
-    PERFORM pgfr._record_collection_end(v_stat_id, true, NULL);
+    PERFORM pgfr_record._record_collection_end(v_stat_id, true, NULL);
     PERFORM set_config('statement_timeout', '0', true);
     RETURN v_captured_at;
 EXCEPTION
     WHEN OTHERS THEN
-        PERFORM pgfr._record_collection_end(v_stat_id, false, SQLERRM);
+        PERFORM pgfr_record._record_collection_end(v_stat_id, false, SQLERRM);
         PERFORM set_config('statement_timeout', '0', true);
         RAISE WARNING 'pgfr_record: Sample collection failed: %', SQLERRM;
         RETURN v_captured_at;
 END;
 $$;
-COMMENT ON FUNCTION pgfr.sample() IS 'Sampled activity: Collect samples into ring buffer (60s intervals, 3 sections: waits, activity, locks)';
+COMMENT ON FUNCTION pgfr_record.sample() IS 'Sampled activity: Collect samples into ring buffer (60s intervals, 3 sections: waits, activity, locks)';
 
 
 -- Aggregates: Aggregate wait events, lock conflicts, and query activity from ring buffers into durable aggregate tables
-CREATE OR REPLACE FUNCTION pgfr.flush_ring_to_aggregates()
+CREATE OR REPLACE FUNCTION pgfr_record.flush_ring_to_aggregates()
 RETURNS VOID
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -1908,15 +1908,15 @@ DECLARE
 BEGIN
     SELECT COALESCE(max(end_time), '1970-01-01')
     INTO v_last_flush
-    FROM pgfr.wait_event_aggregates;
+    FROM pgfr_record.wait_event_aggregates;
     SELECT min(captured_at), max(captured_at), count(*)
     INTO v_start_time, v_end_time, v_total_samples
-    FROM pgfr.samples_ring
+    FROM pgfr_record.samples_ring
     WHERE captured_at > v_last_flush;
     IF v_start_time IS NULL OR v_total_samples = 0 THEN
         RETURN;
     END IF;
-    INSERT INTO pgfr.wait_event_aggregates (
+    INSERT INTO pgfr_record.wait_event_aggregates (
         start_time, end_time, backend_type, wait_event_type, wait_event, state,
         sample_count, total_waiters, avg_waiters, max_waiters, pct_of_samples
     )
@@ -1932,12 +1932,12 @@ BEGIN
         round(avg(w.count), 2) AS avg_waiters,
         max(w.count) AS max_waiters,
         round(100.0 * count(DISTINCT w.slot_id) / NULLIF(v_total_samples, 0), 1) AS pct_of_samples
-    FROM pgfr.wait_samples_ring w
-    JOIN pgfr.samples_ring s ON s.slot_id = w.slot_id
+    FROM pgfr_record.wait_samples_ring w
+    JOIN pgfr_record.samples_ring s ON s.slot_id = w.slot_id
     WHERE s.captured_at BETWEEN v_start_time AND v_end_time
       AND w.backend_type IS NOT NULL
     GROUP BY w.backend_type, w.wait_event_type, w.wait_event, w.state;
-    INSERT INTO pgfr.lock_aggregates (
+    INSERT INTO pgfr_record.lock_aggregates (
         start_time, end_time, blocked_user, blocking_user, lock_type,
         locked_relation_oid, occurrence_count, max_duration, avg_duration, sample_query
     )
@@ -1952,12 +1952,12 @@ BEGIN
         max(l.blocked_duration) AS max_duration,
         avg(l.blocked_duration) AS avg_duration,
         min(l.blocked_query_preview) AS sample_query
-    FROM pgfr.lock_samples_ring l
-    JOIN pgfr.samples_ring s ON s.slot_id = l.slot_id
+    FROM pgfr_record.lock_samples_ring l
+    JOIN pgfr_record.samples_ring s ON s.slot_id = l.slot_id
     WHERE s.captured_at BETWEEN v_start_time AND v_end_time
       AND l.blocked_pid IS NOT NULL
     GROUP BY l.blocked_user, l.blocking_user, l.lock_type, l.locked_relation_oid;
-    INSERT INTO pgfr.activity_aggregates (
+    INSERT INTO pgfr_record.activity_aggregates (
         start_time, end_time, query_preview, occurrence_count, max_duration, avg_duration
     )
     SELECT
@@ -1967,8 +1967,8 @@ BEGIN
         count(*) AS occurrence_count,
         max(s.captured_at - a.query_start) AS max_duration,
         avg(s.captured_at - a.query_start) AS avg_duration
-    FROM pgfr.activity_samples_ring a
-    JOIN pgfr.samples_ring s ON s.slot_id = a.slot_id
+    FROM pgfr_record.activity_samples_ring a
+    JOIN pgfr_record.samples_ring s ON s.slot_id = a.slot_id
     WHERE s.captured_at BETWEEN v_start_time AND v_end_time
       AND a.pid IS NOT NULL
       AND a.query_start IS NOT NULL
@@ -1977,12 +1977,12 @@ BEGIN
         v_start_time, v_end_time, v_total_samples;
 END;
 $$;
-COMMENT ON FUNCTION pgfr.flush_ring_to_aggregates() IS 'Aggregates: Flush ring buffer to durable aggregates every 5 minutes';
+COMMENT ON FUNCTION pgfr_record.flush_ring_to_aggregates() IS 'Aggregates: Flush ring buffer to durable aggregates every 5 minutes';
 
 
 -- Archives activity, lock, and wait samples from ring buffers to persistent storage for forensic analysis
 -- Executes periodically (default every 15 minutes) based on configuration settings
-CREATE OR REPLACE FUNCTION pgfr.archive_ring_samples()
+CREATE OR REPLACE FUNCTION pgfr_record.archive_ring_samples()
 RETURNS VOID
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -1999,48 +1999,48 @@ DECLARE
     v_wait_rows INTEGER := 0;
 BEGIN
     v_enabled := COALESCE(
-        (SELECT value::boolean FROM pgfr.config WHERE key = 'archive_samples_enabled'),
+        (SELECT value::boolean FROM pgfr_record.config WHERE key = 'archive_samples_enabled'),
         true
     );
     IF NOT v_enabled THEN
         RETURN;
     END IF;
     v_archive_activity := COALESCE(
-        (SELECT value::boolean FROM pgfr.config WHERE key = 'archive_activity_samples'),
+        (SELECT value::boolean FROM pgfr_record.config WHERE key = 'archive_activity_samples'),
         true
     );
     v_archive_locks := COALESCE(
-        (SELECT value::boolean FROM pgfr.config WHERE key = 'archive_lock_samples'),
+        (SELECT value::boolean FROM pgfr_record.config WHERE key = 'archive_lock_samples'),
         true
     );
     v_archive_waits := COALESCE(
-        (SELECT value::boolean FROM pgfr.config WHERE key = 'archive_wait_samples'),
+        (SELECT value::boolean FROM pgfr_record.config WHERE key = 'archive_wait_samples'),
         true
     );
     v_frequency_minutes := COALESCE(
-        (SELECT value::integer FROM pgfr.config WHERE key = 'archive_sample_frequency_minutes'),
+        (SELECT value::integer FROM pgfr_record.config WHERE key = 'archive_sample_frequency_minutes'),
         15
     );
     SELECT GREATEST(
         COALESCE(MAX(captured_at), '1970-01-01'::timestamptz),
-        COALESCE((SELECT MAX(captured_at) FROM pgfr.lock_samples_archive), '1970-01-01'::timestamptz),
-        COALESCE((SELECT MAX(captured_at) FROM pgfr.wait_samples_archive), '1970-01-01'::timestamptz)
+        COALESCE((SELECT MAX(captured_at) FROM pgfr_record.lock_samples_archive), '1970-01-01'::timestamptz),
+        COALESCE((SELECT MAX(captured_at) FROM pgfr_record.wait_samples_archive), '1970-01-01'::timestamptz)
     )
     INTO v_last_archive
-    FROM pgfr.activity_samples_archive;
+    FROM pgfr_record.activity_samples_archive;
     v_next_archive_due := v_last_archive + (v_frequency_minutes || ' minutes')::interval;
     IF now() < v_next_archive_due THEN
         RETURN;
     END IF;
     SELECT count(DISTINCT slot_id)
     INTO v_samples_to_archive
-    FROM pgfr.samples_ring
+    FROM pgfr_record.samples_ring
     WHERE captured_at > v_last_archive;
     IF v_samples_to_archive = 0 THEN
         RETURN;
     END IF;
     IF v_archive_activity THEN
-        INSERT INTO pgfr.activity_samples_archive (
+        INSERT INTO pgfr_record.activity_samples_archive (
             sample_id, captured_at, pid, usename, application_name, client_addr, backend_type,
             state, wait_event_type, wait_event, backend_start, xact_start,
             query_start, state_change, query_preview
@@ -2061,14 +2061,14 @@ BEGIN
             a.query_start,
             a.state_change,
             a.query_preview
-        FROM pgfr.activity_samples_ring a
-        JOIN pgfr.samples_ring s ON s.slot_id = a.slot_id
+        FROM pgfr_record.activity_samples_ring a
+        JOIN pgfr_record.samples_ring s ON s.slot_id = a.slot_id
         WHERE s.captured_at > v_last_archive
           AND a.pid IS NOT NULL;
         GET DIAGNOSTICS v_activity_rows = ROW_COUNT;
     END IF;
     IF v_archive_locks THEN
-        INSERT INTO pgfr.lock_samples_archive (
+        INSERT INTO pgfr_record.lock_samples_archive (
             sample_id, captured_at, blocked_pid, blocked_user, blocked_app,
             blocked_query_preview, blocked_duration, blocking_pid, blocking_user,
             blocking_app, blocking_query_preview, lock_type, locked_relation_oid
@@ -2087,14 +2087,14 @@ BEGIN
             l.blocking_query_preview,
             l.lock_type,
             l.locked_relation_oid
-        FROM pgfr.lock_samples_ring l
-        JOIN pgfr.samples_ring s ON s.slot_id = l.slot_id
+        FROM pgfr_record.lock_samples_ring l
+        JOIN pgfr_record.samples_ring s ON s.slot_id = l.slot_id
         WHERE s.captured_at > v_last_archive
           AND l.blocked_pid IS NOT NULL;
         GET DIAGNOSTICS v_lock_rows = ROW_COUNT;
     END IF;
     IF v_archive_waits THEN
-        INSERT INTO pgfr.wait_samples_archive (
+        INSERT INTO pgfr_record.wait_samples_archive (
             sample_id, captured_at, backend_type, wait_event_type, wait_event, state, count
         )
         SELECT
@@ -2105,8 +2105,8 @@ BEGIN
             w.wait_event,
             w.state,
             w.count
-        FROM pgfr.wait_samples_ring w
-        JOIN pgfr.samples_ring s ON s.slot_id = w.slot_id
+        FROM pgfr_record.wait_samples_ring w
+        JOIN pgfr_record.samples_ring s ON s.slot_id = w.slot_id
         WHERE s.captured_at > v_last_archive
           AND w.backend_type IS NOT NULL;
         GET DIAGNOSTICS v_wait_rows = ROW_COUNT;
@@ -2115,12 +2115,12 @@ BEGIN
         v_samples_to_archive, v_activity_rows, v_lock_rows, v_wait_rows;
 END;
 $$;
-COMMENT ON FUNCTION pgfr.archive_ring_samples() IS 'Raw archives: Archive raw samples for high-resolution forensic analysis (default: every 15 minutes)';
+COMMENT ON FUNCTION pgfr_record.archive_ring_samples() IS 'Raw archives: Archive raw samples for high-resolution forensic analysis (default: every 15 minutes)';
 
 
 -- Removes aged aggregate and archived sample data based on configured retention periods
 -- Deletes expired records from wait_event_aggregates, lock_aggregates, activity_aggregates, and all *_samples_archive tables
-CREATE OR REPLACE FUNCTION pgfr.cleanup_aggregates()
+CREATE OR REPLACE FUNCTION pgfr_record.cleanup_aggregates()
 RETURNS VOID
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -2134,29 +2134,29 @@ DECLARE
     v_deleted_wait_archive INTEGER;
 BEGIN
     v_aggregate_retention := COALESCE(
-        (SELECT value || ' days' FROM pgfr.config WHERE key = 'aggregate_retention_days')::interval,
+        (SELECT value || ' days' FROM pgfr_record.config WHERE key = 'aggregate_retention_days')::interval,
         '7 days'::interval
     );
     v_archive_retention := COALESCE(
-        (SELECT value || ' days' FROM pgfr.config WHERE key = 'archive_retention_days')::interval,
+        (SELECT value || ' days' FROM pgfr_record.config WHERE key = 'archive_retention_days')::interval,
         '7 days'::interval
     );
-    DELETE FROM pgfr.wait_event_aggregates
+    DELETE FROM pgfr_record.wait_event_aggregates
     WHERE start_time < now() - v_aggregate_retention;
     GET DIAGNOSTICS v_deleted_waits = ROW_COUNT;
-    DELETE FROM pgfr.lock_aggregates
+    DELETE FROM pgfr_record.lock_aggregates
     WHERE start_time < now() - v_aggregate_retention;
     GET DIAGNOSTICS v_deleted_locks = ROW_COUNT;
-    DELETE FROM pgfr.activity_aggregates
+    DELETE FROM pgfr_record.activity_aggregates
     WHERE start_time < now() - v_aggregate_retention;
     GET DIAGNOSTICS v_deleted_queries = ROW_COUNT;
-    DELETE FROM pgfr.activity_samples_archive
+    DELETE FROM pgfr_record.activity_samples_archive
     WHERE captured_at < now() - v_archive_retention;
     GET DIAGNOSTICS v_deleted_activity_archive = ROW_COUNT;
-    DELETE FROM pgfr.lock_samples_archive
+    DELETE FROM pgfr_record.lock_samples_archive
     WHERE captured_at < now() - v_archive_retention;
     GET DIAGNOSTICS v_deleted_lock_archive = ROW_COUNT;
-    DELETE FROM pgfr.wait_samples_archive
+    DELETE FROM pgfr_record.wait_samples_archive
     WHERE captured_at < now() - v_archive_retention;
     GET DIAGNOSTICS v_deleted_wait_archive = ROW_COUNT;
     IF v_deleted_waits > 0 OR v_deleted_locks > 0 OR v_deleted_queries > 0 OR
@@ -2166,12 +2166,12 @@ BEGIN
     END IF;
 END;
 $$;
-COMMENT ON FUNCTION pgfr.cleanup_aggregates() IS 'Cleanup: Remove old aggregate and archive data based on retention periods';
+COMMENT ON FUNCTION pgfr_record.cleanup_aggregates() IS 'Cleanup: Remove old aggregate and archive data based on retention periods';
 
 
 -- Collects table-level statistics from pg_stat_user_tables
 -- Captures tables based on configurable sampling mode: top_n, all, or threshold
-CREATE OR REPLACE FUNCTION pgfr._collect_table_stats(p_snapshot_id INTEGER)
+CREATE OR REPLACE FUNCTION pgfr_record._collect_table_stats(p_snapshot_id INTEGER)
 RETURNS void
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -2181,7 +2181,7 @@ DECLARE
     v_threshold BIGINT;
 BEGIN
     v_enabled := COALESCE(
-        pgfr._get_config('table_stats_enabled', 'true')::boolean,
+        pgfr_record._get_config('table_stats_enabled', 'true')::boolean,
         true
     );
 
@@ -2190,17 +2190,17 @@ BEGIN
     END IF;
 
     v_top_n := COALESCE(
-        pgfr._get_config('table_stats_top_n', '50')::integer,
+        pgfr_record._get_config('table_stats_top_n', '50')::integer,
         50
     );
 
     v_mode := COALESCE(
-        pgfr._get_config('table_stats_mode', 'top_n'),
+        pgfr_record._get_config('table_stats_mode', 'top_n'),
         'top_n'
     );
 
     v_threshold := COALESCE(
-        pgfr._get_config('table_stats_activity_threshold', '0')::bigint,
+        pgfr_record._get_config('table_stats_activity_threshold', '0')::bigint,
         0
     );
 
@@ -2208,7 +2208,7 @@ BEGIN
     IF v_mode = 'all' THEN
         -- Collect all user tables
         -- Note: schemaname/relname are deprecated; derive via relation_names or ::regclass
-        INSERT INTO pgfr.table_snapshots (
+        INSERT INTO pgfr_record.table_snapshots (
             snapshot_id, schemaname, relname, relid,
             seq_scan, seq_tup_read, idx_scan, idx_tup_fetch,
             n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd,
@@ -2254,7 +2254,7 @@ BEGIN
     ELSIF v_mode = 'threshold' THEN
         -- Collect tables with activity score above threshold
         -- Note: schemaname/relname are deprecated; derive via relation_names or ::regclass
-        INSERT INTO pgfr.table_snapshots (
+        INSERT INTO pgfr_record.table_snapshots (
             snapshot_id, schemaname, relname, relid,
             seq_scan, seq_tup_read, idx_scan, idx_tup_fetch,
             n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd,
@@ -2302,7 +2302,7 @@ BEGIN
     ELSE
         -- Default: top_n mode (also handles invalid mode values)
         -- Note: schemaname/relname are deprecated; derive via relation_names or ::regclass
-        INSERT INTO pgfr.table_snapshots (
+        INSERT INTO pgfr_record.table_snapshots (
             snapshot_id, schemaname, relname, relid,
             seq_scan, seq_tup_read, idx_scan, idx_tup_fetch,
             n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd,
@@ -2355,14 +2355,14 @@ $$;
 
 -- Collects index-level statistics from pg_stat_user_indexes
 -- Captures all user indexes with their usage metrics and sizes
-CREATE OR REPLACE FUNCTION pgfr._collect_index_stats(p_snapshot_id INTEGER)
+CREATE OR REPLACE FUNCTION pgfr_record._collect_index_stats(p_snapshot_id INTEGER)
 RETURNS void
 LANGUAGE plpgsql AS $$
 DECLARE
     v_enabled BOOLEAN;
 BEGIN
     v_enabled := COALESCE(
-        pgfr._get_config('index_stats_enabled', 'true')::boolean,
+        pgfr_record._get_config('index_stats_enabled', 'true')::boolean,
         true
     );
 
@@ -2371,7 +2371,7 @@ BEGIN
     END IF;
 
     -- Note: schemaname/relname/indexrelname are deprecated; derive via relation_names or ::regclass
-    INSERT INTO pgfr.index_snapshots (
+    INSERT INTO pgfr_record.index_snapshots (
         snapshot_id, schemaname, relname, indexrelname, relid, indexrelid,
         idx_scan, idx_tup_read, idx_tup_fetch, index_size_bytes
     )
@@ -2393,7 +2393,7 @@ $$;
 
 -- Collects PostgreSQL configuration snapshot from pg_settings
 -- Captures relevant settings for incident analysis and change tracking
-CREATE OR REPLACE FUNCTION pgfr._collect_config_snapshot(p_snapshot_id INTEGER)
+CREATE OR REPLACE FUNCTION pgfr_record._collect_config_snapshot(p_snapshot_id INTEGER)
 RETURNS void
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -2464,7 +2464,7 @@ DECLARE
     ];
 BEGIN
     v_enabled := COALESCE(
-        pgfr._get_config('config_snapshots_enabled', 'true')::boolean,
+        pgfr_record._get_config('config_snapshots_enabled', 'true')::boolean,
         true
     );
 
@@ -2475,7 +2475,7 @@ BEGIN
     -- Only insert parameters that have changed since the most recent snapshot
     -- This reduces storage by 99%+ in stable environments while maintaining
     -- full point-in-time query capability via DISTINCT ON (cs.name) pattern
-    INSERT INTO pgfr.config_snapshots (
+    INSERT INTO pgfr_record.config_snapshots (
         snapshot_id, name, setting, unit, source, sourcefile
     )
     WITH latest_config AS (
@@ -2485,8 +2485,8 @@ BEGIN
             cs.unit,
             cs.source,
             cs.sourcefile
-        FROM pgfr.config_snapshots cs
-        JOIN pgfr.snapshots s ON s.id = cs.snapshot_id
+        FROM pgfr_record.config_snapshots cs
+        JOIN pgfr_record.snapshots s ON s.id = cs.snapshot_id
         WHERE s.id < p_snapshot_id  -- Previous snapshots only
         ORDER BY cs.name, s.id DESC
     )
@@ -2523,14 +2523,14 @@ $$;
 
 -- Collects database-level and role-level configuration overrides from pg_db_role_setting
 -- These overrides (ALTER DATABASE/ROLE SET) can significantly impact performance but are easily overlooked
-CREATE OR REPLACE FUNCTION pgfr._collect_db_role_config_snapshot(p_snapshot_id INTEGER)
+CREATE OR REPLACE FUNCTION pgfr_record._collect_db_role_config_snapshot(p_snapshot_id INTEGER)
 RETURNS void
 LANGUAGE plpgsql AS $$
 DECLARE
     v_enabled BOOLEAN;
 BEGIN
     v_enabled := COALESCE(
-        pgfr._get_config('db_role_config_snapshots_enabled', 'true')::boolean,
+        pgfr_record._get_config('db_role_config_snapshots_enabled', 'true')::boolean,
         true
     );
 
@@ -2540,7 +2540,7 @@ BEGIN
 
     -- Only insert database/role config overrides that have changed since the most recent snapshot
     -- This reduces storage significantly in stable environments
-    INSERT INTO pgfr.db_role_config_snapshots (
+    INSERT INTO pgfr_record.db_role_config_snapshots (
         snapshot_id, database_name, role_name, parameter_name, parameter_value
     )
     WITH latest_db_role_config AS (
@@ -2549,8 +2549,8 @@ BEGIN
             drc.role_name,
             drc.parameter_name,
             drc.parameter_value
-        FROM pgfr.db_role_config_snapshots drc
-        JOIN pgfr.snapshots s ON s.id = drc.snapshot_id
+        FROM pgfr_record.db_role_config_snapshots drc
+        JOIN pgfr_record.snapshots s ON s.id = drc.snapshot_id
         WHERE s.id < p_snapshot_id  -- Previous snapshots only
         ORDER BY drc.database_name, drc.role_name, drc.parameter_name, s.id DESC
     ),
@@ -2616,7 +2616,7 @@ $$;
 
 -- Snapshots: Collect comprehensive snapshot of PostgreSQL system metrics (WAL, checkpoints, I/O, replication, statements)
 -- Returns the captured timestamp for downstream processing and analysis
-CREATE OR REPLACE FUNCTION pgfr.snapshot()
+CREATE OR REPLACE FUNCTION pgfr_record.snapshot()
 RETURNS TIMESTAMPTZ
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -2677,20 +2677,20 @@ DECLARE
     v_max_catalog_oid BIGINT;
     v_large_object_count BIGINT;
 BEGIN
-    v_should_skip := pgfr._check_circuit_breaker('snapshot');
+    v_should_skip := pgfr_record._check_circuit_breaker('snapshot');
     IF v_should_skip THEN
-        PERFORM pgfr._record_collection_skip('snapshot', 'Circuit breaker tripped - last run exceeded threshold');
+        PERFORM pgfr_record._record_collection_skip('snapshot', 'Circuit breaker tripped - last run exceeded threshold');
         RAISE NOTICE 'pgfr_record: Skipping snapshot collection due to circuit breaker';
         RETURN v_captured_at;
     END IF;
-    PERFORM pgfr._check_schema_size();
-    v_stat_id := pgfr._record_collection_start('snapshot', 7);
+    PERFORM pgfr_record._check_schema_size();
+    v_stat_id := pgfr_record._record_collection_start('snapshot', 7);
     DECLARE
         v_lock_strategy TEXT;
         v_lock_timeout_ms INTEGER;
     BEGIN
         v_lock_strategy := COALESCE(
-            pgfr._get_config('lock_timeout_strategy', 'fail_fast'),
+            pgfr_record._get_config('lock_timeout_strategy', 'fail_fast'),
             'fail_fast'
         );
         v_lock_timeout_ms := CASE v_lock_strategy
@@ -2701,11 +2701,11 @@ BEGIN
         PERFORM set_config('lock_timeout', v_lock_timeout_ms::text, true);
     END;
     PERFORM set_config('work_mem',
-        COALESCE(pgfr._get_config('work_mem_kb', '2048'), '2048') || 'kB',
+        COALESCE(pgfr_record._get_config('work_mem_kb', '2048'), '2048') || 'kB',
         true);
-    v_pg_version := pgfr._pg_version();
+    v_pg_version := pgfr_record._pg_version();
     BEGIN
-        PERFORM pgfr._set_section_timeout();
+        PERFORM pgfr_record._set_section_timeout();
         SELECT count(*)::integer INTO v_autovacuum_workers
         FROM pg_stat_activity
         WHERE backend_type = 'autovacuum worker';
@@ -2719,7 +2719,7 @@ BEGIN
         FROM pg_stat_database
         WHERE datname = current_database();
         v_checkpoint_info := pg_control_checkpoint();
-        PERFORM pgfr._record_section_success(v_stat_id);
+        PERFORM pgfr_record._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'pgfr_record: System stats collection failed: %', SQLERRM;
         v_autovacuum_workers := 0;
@@ -2730,7 +2730,7 @@ BEGIN
     END;
     IF v_pg_version >= 16 THEN
     BEGIN
-        PERFORM pgfr._set_section_timeout();
+        PERFORM pgfr_record._set_section_timeout();
         SELECT
             COALESCE(sum(reads) FILTER (WHERE backend_type = 'checkpointer'), 0),
             COALESCE(sum(read_time) FILTER (WHERE backend_type = 'checkpointer'), 0),
@@ -2779,13 +2779,13 @@ BEGIN
     END;
     END IF;
     v_capacity_enabled := COALESCE(
-        pgfr._get_config('capacity_planning_enabled', 'true')::boolean,
+        pgfr_record._get_config('capacity_planning_enabled', 'true')::boolean,
         true
     );
     IF v_capacity_enabled THEN
     BEGIN
-        PERFORM pgfr._set_section_timeout();
-        IF COALESCE(pgfr._get_config('collect_connection_metrics', 'true')::boolean, true) THEN
+        PERFORM pgfr_record._set_section_timeout();
+        IF COALESCE(pgfr_record._get_config('collect_connection_metrics', 'true')::boolean, true) THEN
             SELECT
                 xact_commit,
                 xact_rollback,
@@ -2795,7 +2795,7 @@ BEGIN
             FROM pg_stat_database
             WHERE datname = current_database();
         END IF;
-        IF COALESCE(pgfr._get_config('collect_connection_metrics', 'true')::boolean, true) THEN
+        IF COALESCE(pgfr_record._get_config('collect_connection_metrics', 'true')::boolean, true) THEN
             v_connections_max := current_setting('max_connections')::integer;
             SELECT
                 count(*) FILTER (WHERE state NOT IN ('idle')),
@@ -2803,7 +2803,7 @@ BEGIN
             INTO v_connections_active, v_connections_total
             FROM pg_stat_activity;
         END IF;
-        IF COALESCE(pgfr._get_config('collect_database_size', 'true')::boolean, true) THEN
+        IF COALESCE(pgfr_record._get_config('collect_database_size', 'true')::boolean, true) THEN
             SELECT sum(relpages::bigint * current_setting('block_size')::bigint)
             INTO v_db_size_bytes
             FROM pg_class
@@ -2817,7 +2817,7 @@ BEGIN
         -- Collect OID exhaustion metrics
         SELECT max(oid)::bigint INTO v_max_catalog_oid FROM pg_class;
         SELECT count(*)::bigint INTO v_large_object_count FROM pg_largeobject_metadata;
-        PERFORM pgfr._record_section_success(v_stat_id);
+        PERFORM pgfr_record._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'pgfr_record: Capacity planning metrics collection failed: %', SQLERRM;
         v_xact_commit := NULL;
@@ -2835,7 +2835,7 @@ BEGIN
     END IF;
     -- Collect archiver stats (conditional on archive_mode != 'off')
     BEGIN
-        PERFORM pgfr._set_section_timeout();
+        PERFORM pgfr_record._set_section_timeout();
         v_archive_mode := current_setting('archive_mode', true);
         IF v_archive_mode IS NOT NULL AND v_archive_mode != 'off' THEN
             SELECT
@@ -2856,13 +2856,13 @@ BEGIN
                 v_archiver_stats_reset
             FROM pg_stat_archiver;
         END IF;
-        PERFORM pgfr._record_section_success(v_stat_id);
+        PERFORM pgfr_record._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'pgfr_record: Archiver stats collection failed: %', SQLERRM;
     END;
     -- Collect database conflict stats (only populated on standby servers)
     BEGIN
-        PERFORM pgfr._set_section_timeout();
+        PERFORM pgfr_record._set_section_timeout();
         v_is_standby := pg_is_in_recovery();
         IF v_is_standby THEN
             IF v_pg_version >= 16 THEN
@@ -2899,12 +2899,12 @@ BEGIN
                 WHERE datname = current_database();
             END IF;
         END IF;
-        PERFORM pgfr._record_section_success(v_stat_id);
+        PERFORM pgfr_record._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'pgfr_record: Database conflict stats collection failed: %', SQLERRM;
     END;
     IF v_pg_version = 17 THEN
-        INSERT INTO pgfr.snapshots (
+        INSERT INTO pgfr_record.snapshots (
             captured_at, pg_version,
             wal_records, wal_fpi, wal_bytes, wal_write_time, wal_sync_time,
             checkpoint_lsn, checkpoint_time,
@@ -2959,7 +2959,7 @@ BEGIN
         CROSS JOIN pg_stat_bgwriter b
         RETURNING id INTO v_snapshot_id;
     ELSIF v_pg_version = 16 THEN
-        INSERT INTO pgfr.snapshots (
+        INSERT INTO pgfr_record.snapshots (
             captured_at, pg_version,
             wal_records, wal_fpi, wal_bytes, wal_write_time, wal_sync_time,
             checkpoint_lsn, checkpoint_time,
@@ -3013,7 +3013,7 @@ BEGIN
         CROSS JOIN pg_stat_bgwriter b
         RETURNING id INTO v_snapshot_id;
     ELSIF v_pg_version = 15 THEN
-        INSERT INTO pgfr.snapshots (
+        INSERT INTO pgfr_record.snapshots (
             captured_at, pg_version,
             wal_records, wal_fpi, wal_bytes, wal_write_time, wal_sync_time,
             checkpoint_lsn, checkpoint_time,
@@ -3053,10 +3053,10 @@ BEGIN
     ELSE
         RAISE EXCEPTION 'Unsupported PostgreSQL version: %. Requires 15, 16, or 17.', v_pg_version;
     END IF;
-    PERFORM pgfr._record_section_success(v_stat_id);
+    PERFORM pgfr_record._record_section_success(v_stat_id);
     BEGIN
-        PERFORM pgfr._set_section_timeout();
-        INSERT INTO pgfr.replication_snapshots (
+        PERFORM pgfr_record._set_section_timeout();
+        INSERT INTO pgfr_record.replication_snapshots (
             snapshot_id, pid, client_addr, application_name, state, sync_state,
             sent_lsn, write_lsn, flush_lsn, replay_lsn,
             write_lag, flush_lag, replay_lag
@@ -3076,12 +3076,12 @@ BEGIN
             flush_lag,
             replay_lag
         FROM pg_stat_replication;
-        PERFORM pgfr._record_section_success(v_stat_id);
+        PERFORM pgfr_record._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'pgfr_record: Replication stats collection failed: %', SQLERRM;
     END;
-    IF pgfr._has_pg_stat_statements()
-       AND pgfr._get_config('statements_enabled', 'auto') != 'false'
+    IF pgfr_record._has_pg_stat_statements()
+       AND pgfr_record._get_config('statements_enabled', 'auto') != 'false'
     THEN
         DECLARE
             v_stmt_status TEXT;
@@ -3091,14 +3091,14 @@ BEGIN
             v_prev_snapshot_id INTEGER;
         BEGIN
             v_statements_interval_minutes := COALESCE(
-                pgfr._get_config('statements_interval_minutes', '5')::integer,
+                pgfr_record._get_config('statements_interval_minutes', '5')::integer,
                 5
             );
             SELECT s.id, s.captured_at
               INTO v_prev_snapshot_id, v_last_statements_collection
-            FROM pgfr.snapshots s
+            FROM pgfr_record.snapshots s
             WHERE EXISTS (
-                SELECT 1 FROM pgfr.statement_snapshots ss
+                SELECT 1 FROM pgfr_record.statement_snapshots ss
                 WHERE ss.snapshot_id = s.id
             )
             ORDER BY s.captured_at DESC
@@ -3109,13 +3109,13 @@ BEGIN
                 v_should_collect := FALSE;
             END IF;
             IF v_should_collect THEN
-                PERFORM pgfr._set_section_timeout();
+                PERFORM pgfr_record._set_section_timeout();
                 DECLARE
                     v_check_conflicts BOOLEAN;
                     v_pss_conflict BOOLEAN;
                 BEGIN
                     v_check_conflicts := COALESCE(
-                        pgfr._get_config('check_pss_conflicts', 'true')::boolean,
+                        pgfr_record._get_config('check_pss_conflicts', 'true')::boolean,
                         true
                     );
                     IF v_check_conflicts THEN
@@ -3134,7 +3134,7 @@ BEGIN
                 END;
                 IF v_should_collect THEN
                     SELECT status INTO v_stmt_status
-                    FROM pgfr._check_statements_health();
+                    FROM pgfr_record._check_statements_health();
                     IF v_stmt_status = 'HIGH_CHURN' THEN
                         RAISE WARNING 'pgfr_record: Skipping pg_stat_statements collection - high churn detected (>95%% utilization)';
                     ELSE
@@ -3162,15 +3162,15 @@ BEGIN
                         s.wal_bytes
                     FROM pg_stat_statements s
                     WHERE s.dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
-                      AND s.calls >= COALESCE(pgfr._get_config('statements_min_calls', '1')::integer, 1)
+                      AND s.calls >= COALESCE(pgfr_record._get_config('statements_min_calls', '1')::integer, 1)
                     ORDER BY CASE
-                        WHEN pgfr._get_config('statements_ranking_metric', 'buffers') = 'time'
+                        WHEN pgfr_record._get_config('statements_ranking_metric', 'buffers') = 'time'
                         THEN s.total_exec_time
                         ELSE s.shared_blks_hit + s.shared_blks_read + s.temp_blks_read + s.temp_blks_written
                     END DESC
-                    LIMIT COALESCE(pgfr._get_config('statements_top_n', '50')::integer, 50)
+                    LIMIT COALESCE(pgfr_record._get_config('statements_top_n', '50')::integer, 50)
                 )
-                INSERT INTO pgfr.statement_snapshots (
+                INSERT INTO pgfr_record.statement_snapshots (
                     snapshot_id, queryid, userid, dbid, query_preview,
                     calls, total_exec_time, min_exec_time, max_exec_time,
                     mean_exec_time, rows,
@@ -3221,11 +3221,11 @@ BEGIN
                     CASE WHEN prev.wal_records IS NOT NULL AND c.wal_records >= prev.wal_records THEN c.wal_records - prev.wal_records ELSE NULL END,
                     CASE WHEN prev.wal_bytes IS NOT NULL AND c.wal_bytes >= prev.wal_bytes THEN c.wal_bytes - prev.wal_bytes ELSE NULL END
                 FROM current_stmts c
-                LEFT JOIN pgfr.statement_snapshots prev
+                LEFT JOIN pgfr_record.statement_snapshots prev
                     ON prev.snapshot_id = v_prev_snapshot_id
                    AND prev.queryid = c.queryid
                    AND prev.dbid = c.dbid;
-                    PERFORM pgfr._record_section_success(v_stat_id);
+                    PERFORM pgfr_record._record_section_success(v_stat_id);
                     END IF;
                 END IF;
             END IF;
@@ -3238,33 +3238,33 @@ BEGIN
     END IF;
     -- Collect table stats
     BEGIN
-        PERFORM pgfr._set_section_timeout();
-        PERFORM pgfr._collect_table_stats(v_snapshot_id);
-        PERFORM pgfr._record_section_success(v_stat_id);
+        PERFORM pgfr_record._set_section_timeout();
+        PERFORM pgfr_record._collect_table_stats(v_snapshot_id);
+        PERFORM pgfr_record._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'pgfr_record: Table stats collection failed: %', SQLERRM;
     END;
     -- Collect index stats
     BEGIN
-        PERFORM pgfr._set_section_timeout();
-        PERFORM pgfr._collect_index_stats(v_snapshot_id);
-        PERFORM pgfr._record_section_success(v_stat_id);
+        PERFORM pgfr_record._set_section_timeout();
+        PERFORM pgfr_record._collect_index_stats(v_snapshot_id);
+        PERFORM pgfr_record._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'pgfr_record: Index stats collection failed: %', SQLERRM;
     END;
     -- Collect config snapshot
     BEGIN
-        PERFORM pgfr._set_section_timeout();
-        PERFORM pgfr._collect_config_snapshot(v_snapshot_id);
-        PERFORM pgfr._record_section_success(v_stat_id);
+        PERFORM pgfr_record._set_section_timeout();
+        PERFORM pgfr_record._collect_config_snapshot(v_snapshot_id);
+        PERFORM pgfr_record._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'pgfr_record: Config snapshot collection failed: %', SQLERRM;
     END;
     -- Collect database/role config overrides
     BEGIN
-        PERFORM pgfr._set_section_timeout();
-        PERFORM pgfr._collect_db_role_config_snapshot(v_snapshot_id);
-        PERFORM pgfr._record_section_success(v_stat_id);
+        PERFORM pgfr_record._set_section_timeout();
+        PERFORM pgfr_record._collect_db_role_config_snapshot(v_snapshot_id);
+        PERFORM pgfr_record._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'pgfr_record: Database/role config collection failed: %', SQLERRM;
     END;
@@ -3272,9 +3272,9 @@ BEGIN
     -- Note: In PG17, max_dead_tuples was renamed to max_dead_tuple_bytes
     --       and num_dead_tuples was renamed to num_dead_item_ids
     BEGIN
-        PERFORM pgfr._set_section_timeout();
+        PERFORM pgfr_record._set_section_timeout();
         IF v_pg_version >= 17 THEN
-            INSERT INTO pgfr.vacuum_progress_snapshots (
+            INSERT INTO pgfr_record.vacuum_progress_snapshots (
                 snapshot_id, pid, datid, datname, relid, relname, phase,
                 heap_blks_total, heap_blks_scanned, heap_blks_vacuumed,
                 index_vacuum_count, max_dead_tuples, num_dead_tuples
@@ -3297,7 +3297,7 @@ BEGIN
             LEFT JOIN pg_database d ON d.oid = p.datid
             LEFT JOIN pg_class c ON c.oid = p.relid;
         ELSE
-            INSERT INTO pgfr.vacuum_progress_snapshots (
+            INSERT INTO pgfr_record.vacuum_progress_snapshots (
                 snapshot_id, pid, datid, datname, relid, relname, phase,
                 heap_blks_total, heap_blks_scanned, heap_blks_vacuumed,
                 index_vacuum_count, max_dead_tuples, num_dead_tuples
@@ -3320,21 +3320,21 @@ BEGIN
             LEFT JOIN pg_database d ON d.oid = p.datid
             LEFT JOIN pg_class c ON c.oid = p.relid;
         END IF;
-        PERFORM pgfr._record_section_success(v_stat_id);
+        PERFORM pgfr_record._record_section_success(v_stat_id);
     EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'pgfr_record: Vacuum progress collection failed: %', SQLERRM;
     END;
-    PERFORM pgfr._record_collection_end(v_stat_id, true, NULL);
+    PERFORM pgfr_record._record_collection_end(v_stat_id, true, NULL);
     PERFORM set_config('statement_timeout', '0', true);
     RETURN v_captured_at;
 EXCEPTION
     WHEN OTHERS THEN
-        PERFORM pgfr._record_collection_end(v_stat_id, false, SQLERRM);
+        PERFORM pgfr_record._record_collection_end(v_stat_id, false, SQLERRM);
         PERFORM set_config('statement_timeout', '0', true);
         RAISE;
 END;
 $$;
-CREATE OR REPLACE VIEW pgfr.deltas AS
+CREATE OR REPLACE VIEW pgfr_record.deltas AS
 SELECT
     s.id,
     s.captured_at,
@@ -3347,7 +3347,7 @@ SELECT
     (s.ckpt_sync_time - prev.ckpt_sync_time)::numeric AS ckpt_sync_time_ms,
     s.ckpt_buffers - prev.ckpt_buffers AS ckpt_buffers_delta,
     s.wal_bytes - prev.wal_bytes AS wal_bytes_delta,
-    pgfr._pretty_bytes(s.wal_bytes - prev.wal_bytes) AS wal_bytes_pretty,
+    pgfr_record._pretty_bytes(s.wal_bytes - prev.wal_bytes) AS wal_bytes_pretty,
     (s.wal_write_time - prev.wal_write_time)::numeric AS wal_write_time_ms,
     (s.wal_sync_time - prev.wal_sync_time)::numeric AS wal_sync_time_ms,
     s.bgw_buffers_clean - prev.bgw_buffers_clean AS bgw_buffers_clean_delta,
@@ -3357,7 +3357,7 @@ SELECT
     s.autovacuum_workers AS autovacuum_workers_active,
     s.slots_count,
     s.slots_max_retained_wal,
-    pgfr._pretty_bytes(s.slots_max_retained_wal) AS slots_max_retained_pretty,
+    pgfr_record._pretty_bytes(s.slots_max_retained_wal) AS slots_max_retained_pretty,
     s.io_checkpointer_reads - prev.io_checkpointer_reads AS io_ckpt_reads_delta,
     (s.io_checkpointer_read_time - prev.io_checkpointer_read_time)::numeric AS io_ckpt_read_time_ms,
     s.io_checkpointer_writes - prev.io_checkpointer_writes AS io_ckpt_writes_delta,
@@ -3378,24 +3378,24 @@ SELECT
     (s.io_bgwriter_write_time - prev.io_bgwriter_write_time)::numeric AS io_bgwriter_write_time_ms,
     s.temp_files - prev.temp_files AS temp_files_delta,
     s.temp_bytes - prev.temp_bytes AS temp_bytes_delta,
-    pgfr._pretty_bytes(s.temp_bytes - prev.temp_bytes) AS temp_bytes_pretty
-FROM pgfr.snapshots s
-JOIN pgfr.snapshots prev ON prev.id = (
-    SELECT MAX(id) FROM pgfr.snapshots WHERE id < s.id
+    pgfr_record._pretty_bytes(s.temp_bytes - prev.temp_bytes) AS temp_bytes_pretty
+FROM pgfr_record.snapshots s
+JOIN pgfr_record.snapshots prev ON prev.id = (
+    SELECT MAX(id) FROM pgfr_record.snapshots WHERE id < s.id
 )
 ORDER BY s.captured_at DESC;
 -- Returns the ring buffer retention interval based on configured sample interval
 -- Used by recent_* views and recent_*_current() functions to determine query window
-CREATE OR REPLACE FUNCTION pgfr._get_ring_retention_interval()
+CREATE OR REPLACE FUNCTION pgfr_record._get_ring_retention_interval()
 RETURNS INTERVAL
 LANGUAGE sql STABLE AS $$
     SELECT ((120 * COALESCE(
-        pgfr._get_config('sample_interval_seconds', '60')::integer,
+        pgfr_record._get_config('sample_interval_seconds', '60')::integer,
         60
     ))::text || ' seconds')::interval;
 $$;
 
-CREATE OR REPLACE VIEW pgfr.recent_waits AS
+CREATE OR REPLACE VIEW pgfr_record.recent_waits AS
 SELECT
     sr.captured_at,
     w.backend_type,
@@ -3403,12 +3403,12 @@ SELECT
     w.wait_event,
     w.state,
     w.count
-FROM pgfr.samples_ring sr
-JOIN pgfr.wait_samples_ring w ON w.slot_id = sr.slot_id
-WHERE sr.captured_at > now() - pgfr._get_ring_retention_interval()
+FROM pgfr_record.samples_ring sr
+JOIN pgfr_record.wait_samples_ring w ON w.slot_id = sr.slot_id
+WHERE sr.captured_at > now() - pgfr_record._get_ring_retention_interval()
   AND w.backend_type IS NOT NULL
 ORDER BY sr.captured_at DESC, w.count DESC;
-CREATE OR REPLACE VIEW pgfr.recent_activity AS
+CREATE OR REPLACE VIEW pgfr_record.recent_activity AS
 SELECT
     sr.captured_at,
     a.pid,
@@ -3426,12 +3426,12 @@ SELECT
     sr.captured_at - a.xact_start AS xact_age,
     sr.captured_at - a.query_start AS running_for,
     a.query_preview
-FROM pgfr.samples_ring sr
-JOIN pgfr.activity_samples_ring a ON a.slot_id = sr.slot_id
-WHERE sr.captured_at > now() - pgfr._get_ring_retention_interval()
+FROM pgfr_record.samples_ring sr
+JOIN pgfr_record.activity_samples_ring a ON a.slot_id = sr.slot_id
+WHERE sr.captured_at > now() - pgfr_record._get_ring_retention_interval()
   AND a.pid IS NOT NULL
 ORDER BY sr.captured_at DESC, a.query_start ASC;
-CREATE OR REPLACE VIEW pgfr.recent_locks AS
+CREATE OR REPLACE VIEW pgfr_record.recent_locks AS
 SELECT
     sr.captured_at,
     l.blocked_pid,
@@ -3445,15 +3445,15 @@ SELECT
     COALESCE(l.locked_relation_oid::regclass::text, 'OID:' || l.locked_relation_oid::text) AS locked_relation,
     l.blocked_query_preview,
     l.blocking_query_preview
-FROM pgfr.samples_ring sr
-JOIN pgfr.lock_samples_ring l ON l.slot_id = sr.slot_id
-WHERE sr.captured_at > now() - pgfr._get_ring_retention_interval()
+FROM pgfr_record.samples_ring sr
+JOIN pgfr_record.lock_samples_ring l ON l.slot_id = sr.slot_id
+WHERE sr.captured_at > now() - pgfr_record._get_ring_retention_interval()
   AND l.blocked_pid IS NOT NULL
 ORDER BY sr.captured_at DESC, l.blocked_duration DESC;
 
 -- Shows sessions currently idle in transaction, ordered by how long they have been idle
 -- Used for quick visibility into problem sessions that may be blocking vacuum or holding locks
-CREATE OR REPLACE VIEW pgfr.recent_idle_in_transaction AS
+CREATE OR REPLACE VIEW pgfr_record.recent_idle_in_transaction AS
 SELECT
     sr.captured_at,
     a.pid,
@@ -3463,17 +3463,17 @@ SELECT
     a.xact_start,
     sr.captured_at - a.xact_start AS idle_duration,
     a.query_preview
-FROM pgfr.samples_ring sr
-JOIN pgfr.activity_samples_ring a ON a.slot_id = sr.slot_id
-WHERE sr.captured_at > now() - pgfr._get_ring_retention_interval()
+FROM pgfr_record.samples_ring sr
+JOIN pgfr_record.activity_samples_ring a ON a.slot_id = sr.slot_id
+WHERE sr.captured_at > now() - pgfr_record._get_ring_retention_interval()
   AND a.pid IS NOT NULL
   AND a.state = 'idle in transaction'
 ORDER BY a.xact_start ASC NULLS LAST;
 
-COMMENT ON VIEW pgfr.recent_idle_in_transaction IS
+COMMENT ON VIEW pgfr_record.recent_idle_in_transaction IS
 'Sessions currently idle in transaction, ordered by how long they have been idle';
 
-CREATE OR REPLACE VIEW pgfr.recent_replication AS
+CREATE OR REPLACE VIEW pgfr_record.recent_replication AS
 SELECT
     sn.captured_at,
     r.pid,
@@ -3486,17 +3486,17 @@ SELECT
     r.flush_lsn,
     r.replay_lsn,
     pg_wal_lsn_diff(r.sent_lsn, r.replay_lsn)::bigint AS replay_lag_bytes,
-    pgfr._pretty_bytes(pg_wal_lsn_diff(r.sent_lsn, r.replay_lsn)::bigint) AS replay_lag_pretty,
+    pgfr_record._pretty_bytes(pg_wal_lsn_diff(r.sent_lsn, r.replay_lsn)::bigint) AS replay_lag_pretty,
     r.write_lag,
     r.flush_lag,
     r.replay_lag
-FROM pgfr.snapshots sn
-JOIN pgfr.replication_snapshots r ON r.snapshot_id = sn.id
+FROM pgfr_record.snapshots sn
+JOIN pgfr_record.replication_snapshots r ON r.snapshot_id = sn.id
 WHERE sn.captured_at > now() - interval '2 hours'
 ORDER BY sn.captured_at DESC, r.application_name;
 
 -- Shows vacuum progress from recent snapshots with percentage calculations
-CREATE OR REPLACE VIEW pgfr.recent_vacuum_progress AS
+CREATE OR REPLACE VIEW pgfr_record.recent_vacuum_progress AS
 SELECT
     sn.captured_at,
     v.pid,
@@ -3517,14 +3517,14 @@ SELECT
     v.index_vacuum_count,
     v.max_dead_tuples,
     v.num_dead_tuples
-FROM pgfr.snapshots sn
-JOIN pgfr.vacuum_progress_snapshots v ON v.snapshot_id = sn.id
+FROM pgfr_record.snapshots sn
+JOIN pgfr_record.vacuum_progress_snapshots v ON v.snapshot_id = sn.id
 WHERE sn.captured_at > now() - interval '2 hours'
 ORDER BY sn.captured_at DESC, v.pid;
-COMMENT ON VIEW pgfr.recent_vacuum_progress IS 'Recent vacuum progress with percentage scanned/vacuumed calculations';
+COMMENT ON VIEW pgfr_record.recent_vacuum_progress IS 'Recent vacuum progress with percentage scanned/vacuumed calculations';
 
 -- Shows archiver status with delta calculations between snapshots
-CREATE OR REPLACE VIEW pgfr.archiver_status AS
+CREATE OR REPLACE VIEW pgfr_record.archiver_status AS
 SELECT
     s.id AS snapshot_id,
     s.captured_at,
@@ -3537,18 +3537,18 @@ SELECT
     s.archiver_stats_reset,
     s.archived_count - prev.archived_count AS archived_delta,
     s.failed_count - prev.failed_count AS failed_delta
-FROM pgfr.snapshots s
-JOIN pgfr.snapshots prev ON prev.id = (
-    SELECT MAX(id) FROM pgfr.snapshots WHERE id < s.id
+FROM pgfr_record.snapshots s
+JOIN pgfr_record.snapshots prev ON prev.id = (
+    SELECT MAX(id) FROM pgfr_record.snapshots WHERE id < s.id
 )
 WHERE s.captured_at > now() - interval '24 hours'
   AND s.archived_count IS NOT NULL
 ORDER BY s.captured_at DESC;
-COMMENT ON VIEW pgfr.archiver_status IS 'WAL archiver status with delta calculations between snapshots';
+COMMENT ON VIEW pgfr_record.archiver_status IS 'WAL archiver status with delta calculations between snapshots';
 
 -- Switches flight recorder to specified mode (normal/light/emergency) with different overhead and retention trade-offs
 -- Validates mode and configures sampling interval and collector enablement accordingly
-CREATE OR REPLACE FUNCTION pgfr.set_mode(p_mode TEXT)
+CREATE OR REPLACE FUNCTION pgfr_record.set_mode(p_mode TEXT)
 RETURNS TEXT
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -3564,7 +3564,7 @@ BEGIN
         RAISE EXCEPTION 'Invalid mode: %. Must be normal, light, or emergency.', p_mode;
     END IF;
     v_current_interval := COALESCE(
-        pgfr._get_config('sample_interval_seconds', '60')::integer,
+        pgfr_record._get_config('sample_interval_seconds', '60')::integer,
         60
     );
     CASE p_mode
@@ -3584,16 +3584,16 @@ BEGIN
             v_sample_interval_seconds := 300;
             v_description := 'Emergency mode: 300s sampling, locks/progress disabled (10h retention, 60% less overhead)';
     END CASE;
-    INSERT INTO pgfr.config (key, value, updated_at)
+    INSERT INTO pgfr_record.config (key, value, updated_at)
     VALUES ('mode', p_mode, now())
     ON CONFLICT (key) DO UPDATE SET value = p_mode, updated_at = now();
-    INSERT INTO pgfr.config (key, value, updated_at)
+    INSERT INTO pgfr_record.config (key, value, updated_at)
     VALUES ('enable_locks', v_enable_locks::text, now())
     ON CONFLICT (key) DO UPDATE SET value = v_enable_locks::text, updated_at = now();
-    INSERT INTO pgfr.config (key, value, updated_at)
+    INSERT INTO pgfr_record.config (key, value, updated_at)
     VALUES ('enable_progress', v_enable_progress::text, now())
     ON CONFLICT (key) DO UPDATE SET value = v_enable_progress::text, updated_at = now();
-    INSERT INTO pgfr.config (key, value, updated_at)
+    INSERT INTO pgfr_record.config (key, value, updated_at)
     VALUES ('sample_interval_seconds', v_sample_interval_seconds::text, now())
     ON CONFLICT (key) DO UPDATE SET value = v_sample_interval_seconds::text, updated_at = now();
     BEGIN
@@ -3608,7 +3608,7 @@ BEGIN
         -- Only reschedule if the job exists (i.e., collection is enabled)
         IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr_sample') THEN
             PERFORM cron.unschedule('pgfr_sample');
-            PERFORM cron.schedule('pgfr_sample', v_cron_expression, 'SET statement_timeout = ''5s''; SELECT pgfr.sample()');
+            PERFORM cron.schedule('pgfr_sample', v_cron_expression, 'SET statement_timeout = ''5s''; SELECT pgfr_record.sample()');
         END IF;
     EXCEPTION
         WHEN undefined_table THEN NULL;
@@ -3620,7 +3620,7 @@ $$;
 
 -- Retrieve the current flight recorder operating mode and its associated configuration
 -- Returns mode, sample interval, and feature flags for locks, progress, and statement tracking
-CREATE OR REPLACE FUNCTION pgfr.get_mode()
+CREATE OR REPLACE FUNCTION pgfr_record.get_mode()
 RETURNS TABLE(
     mode                TEXT,
     sample_interval     TEXT,
@@ -3630,20 +3630,20 @@ RETURNS TABLE(
 )
 LANGUAGE sql STABLE AS $$
     SELECT
-        pgfr._get_config('mode', 'normal') AS mode,
-        CASE pgfr._get_config('mode', 'normal')
+        pgfr_record._get_config('mode', 'normal') AS mode,
+        CASE pgfr_record._get_config('mode', 'normal')
             WHEN 'normal' THEN '* * * * *'
             WHEN 'light' THEN '* * * * *'
             WHEN 'emergency' THEN '120 seconds'
             ELSE 'unknown'
         END AS sample_interval,
-        COALESCE(pgfr._get_config('enable_locks', 'true')::boolean, true) AS locks_enabled,
-        COALESCE(pgfr._get_config('enable_progress', 'true')::boolean, true) AS progress_enabled,
-        pgfr._get_config('statements_enabled', 'auto') AS statements_enabled
+        COALESCE(pgfr_record._get_config('enable_locks', 'true')::boolean, true) AS locks_enabled,
+        COALESCE(pgfr_record._get_config('enable_progress', 'true')::boolean, true) AS progress_enabled,
+        pgfr_record._get_config('statements_enabled', 'auto') AS statements_enabled
 $$;
 
 -- Lists the available monitoring profiles for flight recorder with their configurations, use cases, and overhead levels
-CREATE OR REPLACE FUNCTION pgfr.list_profiles()
+CREATE OR REPLACE FUNCTION pgfr_record.list_profiles()
 RETURNS TABLE(
     profile_name        TEXT,
     description         TEXT,
@@ -3683,7 +3683,7 @@ $$;
 
 -- Returns ring buffer optimization profiles for different use cases
 -- Profiles provide pre-configured ring_buffer_slots, sample_interval, and archive settings
-CREATE OR REPLACE FUNCTION pgfr.get_optimization_profiles()
+CREATE OR REPLACE FUNCTION pgfr_record.get_optimization_profiles()
 RETURNS TABLE(
     profile_name            TEXT,
     slots                   INTEGER,
@@ -3720,11 +3720,11 @@ LANGUAGE sql STABLE AS $$
          'Forensic: 6h retention, 15s granularity, 0.167% CPU (temporary use only)')
     ) AS t(profile_name, slots, sample_interval_seconds, archive_frequency_min, retention_hours, description)
 $$;
-COMMENT ON FUNCTION pgfr.get_optimization_profiles() IS 'Returns ring buffer optimization profiles for different use cases. Profiles configure ring_buffer_slots, sample_interval_seconds, and archive_sample_frequency_minutes for specific monitoring scenarios.';
+COMMENT ON FUNCTION pgfr_record.get_optimization_profiles() IS 'Returns ring buffer optimization profiles for different use cases. Profiles configure ring_buffer_slots, sample_interval_seconds, and archive_sample_frequency_minutes for specific monitoring scenarios.';
 
 -- Applies a ring buffer optimization profile
 -- Updates config values and warns if rebuild is needed
-CREATE OR REPLACE FUNCTION pgfr.apply_optimization_profile(p_profile TEXT)
+CREATE OR REPLACE FUNCTION pgfr_record.apply_optimization_profile(p_profile TEXT)
 RETURNS TABLE(
     setting_key     TEXT,
     old_value       TEXT,
@@ -3742,7 +3742,7 @@ DECLARE
 BEGIN
     -- Validate profile exists
     SELECT * INTO v_profile
-    FROM pgfr.get_optimization_profiles()
+    FROM pgfr_record.get_optimization_profiles()
     WHERE profile_name = p_profile;
 
     IF NOT FOUND THEN
@@ -3750,18 +3750,18 @@ BEGIN
     END IF;
 
     -- Get current values
-    v_old_slots := pgfr._get_config('ring_buffer_slots', '120');
-    v_old_interval := pgfr._get_config('sample_interval_seconds', '180');
-    v_old_archive := pgfr._get_config('archive_sample_frequency_minutes', '15');
+    v_old_slots := pgfr_record._get_config('ring_buffer_slots', '120');
+    v_old_interval := pgfr_record._get_config('sample_interval_seconds', '180');
+    v_old_archive := pgfr_record._get_config('archive_sample_frequency_minutes', '15');
 
     -- Check if rebuild will be needed
-    SELECT COUNT(*) INTO v_current_slots FROM pgfr.samples_ring;
+    SELECT COUNT(*) INTO v_current_slots FROM pgfr_record.samples_ring;
     IF v_current_slots != v_profile.slots THEN
         v_rebuild_needed := true;
     END IF;
 
     -- Update ring_buffer_slots
-    INSERT INTO pgfr.config (key, value, updated_at)
+    INSERT INTO pgfr_record.config (key, value, updated_at)
     VALUES ('ring_buffer_slots', v_profile.slots::text, now())
     ON CONFLICT (key) DO UPDATE SET value = v_profile.slots::text, updated_at = now();
 
@@ -3772,7 +3772,7 @@ BEGIN
         (v_old_slots IS DISTINCT FROM v_profile.slots::text);
 
     -- Update sample_interval_seconds
-    INSERT INTO pgfr.config (key, value, updated_at)
+    INSERT INTO pgfr_record.config (key, value, updated_at)
     VALUES ('sample_interval_seconds', v_profile.sample_interval_seconds::text, now())
     ON CONFLICT (key) DO UPDATE SET value = v_profile.sample_interval_seconds::text, updated_at = now();
 
@@ -3783,7 +3783,7 @@ BEGIN
         (v_old_interval IS DISTINCT FROM v_profile.sample_interval_seconds::text);
 
     -- Update archive_sample_frequency_minutes
-    INSERT INTO pgfr.config (key, value, updated_at)
+    INSERT INTO pgfr_record.config (key, value, updated_at)
     VALUES ('archive_sample_frequency_minutes', v_profile.archive_frequency_min::text, now())
     ON CONFLICT (key) DO UPDATE SET value = v_profile.archive_frequency_min::text, updated_at = now();
 
@@ -3795,17 +3795,17 @@ BEGIN
 
     -- Warn if rebuild is needed
     IF v_rebuild_needed THEN
-        RAISE WARNING 'Ring buffer slot count changed. Run pgfr.rebuild_ring_buffers() to resize. Data in ring buffers will be lost.';
+        RAISE WARNING 'Ring buffer slot count changed. Run pgfr_record.rebuild_ring_buffers() to resize. Data in ring buffers will be lost.';
     END IF;
 
     RAISE NOTICE 'Applied optimization profile: % (%)', p_profile, v_profile.description;
 END;
 $$;
-COMMENT ON FUNCTION pgfr.apply_optimization_profile(TEXT) IS 'Applies a ring buffer optimization profile. Updates ring_buffer_slots, sample_interval_seconds, and archive_sample_frequency_minutes. Call rebuild_ring_buffers() after if slot count changed.';
+COMMENT ON FUNCTION pgfr_record.apply_optimization_profile(TEXT) IS 'Applies a ring buffer optimization profile. Updates ring_buffer_slots, sample_interval_seconds, and archive_sample_frequency_minutes. Call rebuild_ring_buffers() after if slot count changed.';
 
 -- Preview the configuration changes from applying a specified profile
 -- Compares current settings against profile values to show impact before applying
-CREATE OR REPLACE FUNCTION pgfr.explain_profile(p_profile_name TEXT)
+CREATE OR REPLACE FUNCTION pgfr_record.explain_profile(p_profile_name TEXT)
 RETURNS TABLE(
     setting_key         TEXT,
     current_value       TEXT,
@@ -3815,8 +3815,8 @@ RETURNS TABLE(
 )
 LANGUAGE plpgsql STABLE AS $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pgfr.list_profiles() WHERE profile_name = p_profile_name) THEN
-        RAISE EXCEPTION 'Unknown profile: %. Run pgfr.list_profiles() to see available profiles.', p_profile_name;
+    IF NOT EXISTS (SELECT 1 FROM pgfr_record.list_profiles() WHERE profile_name = p_profile_name) THEN
+        RAISE EXCEPTION 'Unknown profile: %. Run pgfr_record.list_profiles() to see available profiles.', p_profile_name;
     END IF;
     RETURN QUERY
     SELECT
@@ -3825,15 +3825,15 @@ BEGIN
         ps.value::text AS profile_value,
         (c.value IS DISTINCT FROM ps.value)::boolean AS will_change,
         ps.description::text AS description
-    FROM pgfr._profile_settings() ps
-    LEFT JOIN pgfr.config c ON c.key = ps.key
+    FROM pgfr_record._profile_settings() ps
+    LEFT JOIN pgfr_record.config c ON c.key = ps.key
     WHERE ps.profile = p_profile_name
     ORDER BY will_change DESC, ps.key;
 END $$;
 
--- Applies a named configuration profile to pgfr by upserting configuration settings
+-- Applies a named configuration profile to pgfr_record by upserting configuration settings
 -- Returns details of changed settings and adjusts recording mode based on the profile
-CREATE OR REPLACE FUNCTION pgfr.apply_profile(p_profile_name TEXT)
+CREATE OR REPLACE FUNCTION pgfr_record.apply_profile(p_profile_name TEXT)
 RETURNS TABLE(
     setting_key     TEXT,
     old_value       TEXT,
@@ -3845,23 +3845,23 @@ DECLARE
     v_mode TEXT;
     v_changes_made INTEGER := 0;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pgfr.list_profiles() WHERE profile_name = p_profile_name) THEN
-        RAISE EXCEPTION 'Unknown profile: %. Run pgfr.list_profiles() to see available profiles.', p_profile_name;
+    IF NOT EXISTS (SELECT 1 FROM pgfr_record.list_profiles() WHERE profile_name = p_profile_name) THEN
+        RAISE EXCEPTION 'Unknown profile: %. Run pgfr_record.list_profiles() to see available profiles.', p_profile_name;
     END IF;
     RAISE NOTICE 'Applying profile: %', p_profile_name;
     RETURN QUERY
     WITH profile_settings AS (
         SELECT ps.profile, ps.key, ps.value
-        FROM pgfr._profile_settings() ps
+        FROM pgfr_record._profile_settings() ps
         WHERE ps.profile = p_profile_name
     ),
     updates AS (
-        INSERT INTO pgfr.config (key, value, updated_at)
+        INSERT INTO pgfr_record.config (key, value, updated_at)
         SELECT ps.key, ps.value, now()
         FROM profile_settings ps
         ON CONFLICT (key) DO UPDATE
         SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
-        WHERE pgfr.config.value IS DISTINCT FROM EXCLUDED.value
+        WHERE pgfr_record.config.value IS DISTINCT FROM EXCLUDED.value
         RETURNING key, value
     )
     SELECT
@@ -3871,7 +3871,7 @@ BEGIN
         (u.key IS NOT NULL)::boolean AS changed
     FROM profile_settings ps
     LEFT JOIN updates u ON u.key = ps.key
-    LEFT JOIN pgfr.config c ON c.key = ps.key
+    LEFT JOIN pgfr_record.config c ON c.key = ps.key
     ORDER BY changed DESC, setting_key;
     GET DIAGNOSTICS v_changes_made = ROW_COUNT;
     v_mode := CASE p_profile_name
@@ -3880,14 +3880,14 @@ BEGIN
         WHEN 'troubleshooting' THEN 'normal'
         ELSE 'normal'
     END;
-    PERFORM pgfr.set_mode(v_mode);
+    PERFORM pgfr_record.set_mode(v_mode);
     RAISE NOTICE 'Profile "%" applied: % settings changed, mode set to %',
         p_profile_name, v_changes_made, v_mode;
 END $$;
 
 -- Identifies the closest matching predefined profile for current configuration and returns match percentage with differences
 -- Helps users understand their configuration state relative to available profiles
-CREATE OR REPLACE FUNCTION pgfr.get_current_profile()
+CREATE OR REPLACE FUNCTION pgfr_record.get_current_profile()
 RETURNS TABLE(
     closest_profile     TEXT,
     match_percentage    NUMERIC,
@@ -3902,17 +3902,17 @@ DECLARE
     v_current_pct NUMERIC;
     v_diffs TEXT[];
 BEGIN
-    FOR v_profile IN SELECT profile_name FROM pgfr.list_profiles() LOOP
+    FOR v_profile IN SELECT profile_name FROM pgfr_record.list_profiles() LOOP
         WITH profile_settings AS (
             SELECT setting_key, profile_value
-            FROM pgfr.explain_profile(v_profile.profile_name)
+            FROM pgfr_record.explain_profile(v_profile.profile_name)
         ),
         matches AS (
             SELECT
                 count(*) FILTER (WHERE NOT will_change) AS matched,
                 count(*) AS total,
                 array_agg(setting_key) FILTER (WHERE will_change) AS diff_keys
-            FROM pgfr.explain_profile(v_profile.profile_name)
+            FROM pgfr_record.explain_profile(v_profile.profile_name)
         )
         SELECT
             (matched::numeric / NULLIF(total, 0) * 100)::numeric(5,1),
@@ -3928,7 +3928,7 @@ BEGIN
     SELECT
         COALESCE(v_best_match, 'custom')::text,
         COALESCE(v_best_pct, 0)::numeric,
-        (SELECT array_agg(setting_key) FROM pgfr.explain_profile(v_best_match) WHERE will_change)::text[],
+        (SELECT array_agg(setting_key) FROM pgfr_record.explain_profile(v_best_match) WHERE will_change)::text[],
         CASE
             WHEN v_best_pct = 100 THEN 'Configuration matches "' || v_best_match || '" profile perfectly'
             WHEN v_best_pct >= 80 THEN 'Configuration is close to "' || v_best_match || '" profile'
@@ -3936,11 +3936,11 @@ BEGIN
             ELSE 'Configuration appears to be custom (not matching any profile)'
         END::text;
 END $$;
-DROP FUNCTION IF EXISTS pgfr.cleanup(INTERVAL);
+DROP FUNCTION IF EXISTS pgfr_record.cleanup(INTERVAL);
 
 -- Removes old snapshot and sample data based on configured retention periods
 -- Cleans up snapshots, statement_snapshots, replication_snapshots tables
-CREATE OR REPLACE FUNCTION pgfr.cleanup(p_retain_interval INTERVAL DEFAULT NULL)
+CREATE OR REPLACE FUNCTION pgfr_record.cleanup(p_retain_interval INTERVAL DEFAULT NULL)
 RETURNS TABLE(
     deleted_snapshots   BIGINT,
     deleted_samples     BIGINT,
@@ -3969,19 +3969,19 @@ BEGIN
         v_stats_cutoff := now() - p_retain_interval;
     ELSE
         v_samples_retention_days := COALESCE(
-            pgfr._get_config('retention_samples_days', '7')::integer,
+            pgfr_record._get_config('retention_samples_days', '7')::integer,
             7
         );
         v_snapshots_retention_days := COALESCE(
-            pgfr._get_config('retention_snapshots_days', '30')::integer,
+            pgfr_record._get_config('retention_snapshots_days', '30')::integer,
             30
         );
         v_statements_retention_days := COALESCE(
-            pgfr._get_config('retention_statements_days', '30')::integer,
+            pgfr_record._get_config('retention_statements_days', '30')::integer,
             30
         );
         v_stats_retention_days := COALESCE(
-            pgfr._get_config('retention_collection_stats_days', '30')::integer,
+            pgfr_record._get_config('retention_collection_stats_days', '30')::integer,
             30
         );
         v_samples_cutoff := now() - (v_samples_retention_days || ' days')::interval;
@@ -3991,28 +3991,28 @@ BEGIN
     END IF;
     v_deleted_samples := 0;
     WITH deleted AS (
-        DELETE FROM pgfr.snapshots WHERE captured_at < v_snapshots_cutoff RETURNING 1
+        DELETE FROM pgfr_record.snapshots WHERE captured_at < v_snapshots_cutoff RETURNING 1
     )
     SELECT count(*) INTO v_deleted_snapshots FROM deleted;
     WITH deleted AS (
-        DELETE FROM pgfr.statement_snapshots
+        DELETE FROM pgfr_record.statement_snapshots
         WHERE snapshot_id IN (
-            SELECT id FROM pgfr.snapshots WHERE captured_at < v_statements_cutoff
+            SELECT id FROM pgfr_record.snapshots WHERE captured_at < v_statements_cutoff
         )
         RETURNING 1
     )
     SELECT count(*) INTO v_deleted_statements FROM deleted;
     WITH deleted AS (
-        DELETE FROM pgfr.collection_stats WHERE started_at < v_stats_cutoff RETURNING 1
+        DELETE FROM pgfr_record.collection_stats WHERE started_at < v_stats_cutoff RETURNING 1
     )
     SELECT count(*) INTO v_deleted_stats FROM deleted;
     RETURN QUERY SELECT v_deleted_snapshots, v_deleted_samples, v_deleted_statements, v_deleted_stats;
 END;
 $$;
-DROP FUNCTION IF EXISTS pgfr.ring_buffer_health();
+DROP FUNCTION IF EXISTS pgfr_record.ring_buffer_health();
 
 -- Monitor ring buffer health: XID age, dead tuple bloat, HOT update effectiveness, and autovacuum status
-CREATE OR REPLACE FUNCTION pgfr.ring_buffer_health()
+CREATE OR REPLACE FUNCTION pgfr_record.ring_buffer_health()
 RETURNS TABLE(
     table_name              TEXT,
     row_count               BIGINT,
@@ -4058,16 +4058,16 @@ LANGUAGE sql STABLE AS $$
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
     LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
-    WHERE n.nspname = 'pgfr'
+    WHERE n.nspname = 'pgfr_record'
       AND c.relkind = 'r'
       AND c.relname IN ('samples_ring', 'wait_samples_ring', 'activity_samples_ring', 'lock_samples_ring')
     ORDER BY c.relname;
 $$;
-COMMENT ON FUNCTION pgfr.ring_buffer_health() IS
+COMMENT ON FUNCTION pgfr_record.ring_buffer_health() IS
 
 'Monitor ring buffer XID age, dead tuple bloat, and HOT update effectiveness. samples_ring uses UPSERT (1,440x/day) and should achieve >90% HOT update ratio with fillfactor=70. Child tables use DELETE/INSERT so HOT updates are N/A.';
 -- Disable Flight Recorder by unscheduling all cron jobs and updating the enabled configuration flag to false
-CREATE OR REPLACE FUNCTION pgfr.disable()
+CREATE OR REPLACE FUNCTION pgfr_record.disable()
 RETURNS TEXT
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -4089,10 +4089,10 @@ BEGIN
         PERFORM cron.unschedule('pgfr_archive')
         WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr_archive');
         IF FOUND THEN v_unscheduled := v_unscheduled + 1; END IF;
-        INSERT INTO pgfr.config (key, value, updated_at)
+        INSERT INTO pgfr_record.config (key, value, updated_at)
         VALUES ('enabled', 'false', now())
         ON CONFLICT (key) DO UPDATE SET value = 'false', updated_at = now();
-        RETURN format('Flight Recorder collection stopped. Unscheduled %s cron jobs. Use pgfr.enable() to restart.', v_unscheduled);
+        RETURN format('Flight Recorder collection stopped. Unscheduled %s cron jobs. Use pgfr_record.enable() to restart.', v_unscheduled);
     EXCEPTION
         WHEN undefined_table THEN
             RETURN 'pg_cron extension not found. No jobs to unschedule.';
@@ -4109,16 +4109,16 @@ $$;
 -- form within pages. Autovacuum collapses these chains. Since ring buffers are fixed-size UNLOGGED
 -- tables with bounded bloat, autovacuum is optional - page pruning during UPSERTs provides cleanup.
 -- Autovacuum enabled by default; disable for minimal observer effect if desired.
-CREATE OR REPLACE FUNCTION pgfr.configure_ring_autovacuum(p_enabled BOOLEAN DEFAULT true)
+CREATE OR REPLACE FUNCTION pgfr_record.configure_ring_autovacuum(p_enabled BOOLEAN DEFAULT true)
 RETURNS TEXT
 LANGUAGE plpgsql AS $$
 DECLARE
     v_status TEXT;
 BEGIN
-    EXECUTE format('ALTER TABLE pgfr.samples_ring SET (autovacuum_enabled = %L)', p_enabled);
-    EXECUTE format('ALTER TABLE pgfr.wait_samples_ring SET (autovacuum_enabled = %L)', p_enabled);
-    EXECUTE format('ALTER TABLE pgfr.activity_samples_ring SET (autovacuum_enabled = %L)', p_enabled);
-    EXECUTE format('ALTER TABLE pgfr.lock_samples_ring SET (autovacuum_enabled = %L)', p_enabled);
+    EXECUTE format('ALTER TABLE pgfr_record.samples_ring SET (autovacuum_enabled = %L)', p_enabled);
+    EXECUTE format('ALTER TABLE pgfr_record.wait_samples_ring SET (autovacuum_enabled = %L)', p_enabled);
+    EXECUTE format('ALTER TABLE pgfr_record.activity_samples_ring SET (autovacuum_enabled = %L)', p_enabled);
+    EXECUTE format('ALTER TABLE pgfr_record.lock_samples_ring SET (autovacuum_enabled = %L)', p_enabled);
 
     IF p_enabled THEN
         v_status := 'Autovacuum ENABLED on ring buffer tables. Autovacuum will periodically collapse HOT chains.';
@@ -4130,12 +4130,12 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION pgfr.configure_ring_autovacuum(BOOLEAN) IS
+COMMENT ON FUNCTION pgfr_record.configure_ring_autovacuum(BOOLEAN) IS
 'Toggle autovacuum on ring buffer tables. Enabled by default (PostgreSQL standard behavior). Ring buffers are fixed-size UNLOGGED tables with bounded bloat, so autovacuum can be disabled to minimize observer effect if desired.';
 
 -- Rebuilds ring buffers to match configured slot count
 -- WARNING: This clears all data in ring buffers (archives and aggregates are preserved)
-CREATE OR REPLACE FUNCTION pgfr.rebuild_ring_buffers(p_slots INTEGER DEFAULT NULL)
+CREATE OR REPLACE FUNCTION pgfr_record.rebuild_ring_buffers(p_slots INTEGER DEFAULT NULL)
 RETURNS TEXT
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -4144,7 +4144,7 @@ DECLARE
     v_autovacuum_enabled BOOLEAN := true;
 BEGIN
     -- Get target slot count from param or config
-    v_target_slots := COALESCE(p_slots, pgfr._get_ring_buffer_slots());
+    v_target_slots := COALESCE(p_slots, pgfr_record._get_ring_buffer_slots());
 
     -- Validate range
     IF v_target_slots < 72 OR v_target_slots > 2880 THEN
@@ -4152,7 +4152,7 @@ BEGIN
     END IF;
 
     -- Get current slot count
-    SELECT COUNT(*) INTO v_current_slots FROM pgfr.samples_ring;
+    SELECT COUNT(*) INTO v_current_slots FROM pgfr_record.samples_ring;
 
     -- Check if resize is needed
     IF v_current_slots = v_target_slots THEN
@@ -4162,7 +4162,7 @@ BEGIN
     -- Preserve autovacuum setting
     SELECT COALESCE(
         (SELECT reloptions::text LIKE '%autovacuum_enabled=false%'
-         FROM pg_class WHERE relname = 'samples_ring' AND relnamespace = 'pgfr'::regnamespace),
+         FROM pg_class WHERE relname = 'samples_ring' AND relnamespace = 'pgfr_record'::regnamespace),
         false
     ) INTO v_autovacuum_enabled;
     v_autovacuum_enabled := NOT v_autovacuum_enabled;  -- Invert because we checked for false
@@ -4170,10 +4170,10 @@ BEGIN
     RAISE NOTICE 'Rebuilding ring buffers from % to % slots...', v_current_slots, v_target_slots;
 
     -- TRUNCATE CASCADE clears all child tables via FK
-    TRUNCATE pgfr.samples_ring CASCADE;
+    TRUNCATE pgfr_record.samples_ring CASCADE;
 
     -- Rebuild samples_ring
-    INSERT INTO pgfr.samples_ring (slot_id, captured_at, epoch_seconds)
+    INSERT INTO pgfr_record.samples_ring (slot_id, captured_at, epoch_seconds)
     SELECT
         generate_series AS slot_id,
         '1970-01-01'::timestamptz,
@@ -4181,31 +4181,31 @@ BEGIN
     FROM generate_series(0, v_target_slots - 1);
 
     -- Rebuild wait_samples_ring
-    INSERT INTO pgfr.wait_samples_ring (slot_id, row_num)
+    INSERT INTO pgfr_record.wait_samples_ring (slot_id, row_num)
     SELECT s.slot_id, r.row_num
     FROM generate_series(0, v_target_slots - 1) s(slot_id)
     CROSS JOIN generate_series(0, 99) r(row_num);
 
     -- Rebuild activity_samples_ring
-    INSERT INTO pgfr.activity_samples_ring (slot_id, row_num)
+    INSERT INTO pgfr_record.activity_samples_ring (slot_id, row_num)
     SELECT s.slot_id, r.row_num
     FROM generate_series(0, v_target_slots - 1) s(slot_id)
     CROSS JOIN generate_series(0, 24) r(row_num);
 
     -- Rebuild lock_samples_ring
-    INSERT INTO pgfr.lock_samples_ring (slot_id, row_num)
+    INSERT INTO pgfr_record.lock_samples_ring (slot_id, row_num)
     SELECT s.slot_id, r.row_num
     FROM generate_series(0, v_target_slots - 1) s(slot_id)
     CROSS JOIN generate_series(0, 99) r(row_num);
 
     -- Restore autovacuum setting
     IF NOT v_autovacuum_enabled THEN
-        PERFORM pgfr.configure_ring_autovacuum(false);
+        PERFORM pgfr_record.configure_ring_autovacuum(false);
     END IF;
 
     -- Update config if p_slots was provided
     IF p_slots IS NOT NULL THEN
-        INSERT INTO pgfr.config (key, value, updated_at)
+        INSERT INTO pgfr_record.config (key, value, updated_at)
         VALUES ('ring_buffer_slots', p_slots::text, now())
         ON CONFLICT (key) DO UPDATE SET value = p_slots::text, updated_at = now();
     END IF;
@@ -4218,11 +4218,11 @@ BEGIN
         v_target_slots * 100);
 END;
 $$;
-COMMENT ON FUNCTION pgfr.rebuild_ring_buffers(INTEGER) IS 'Rebuilds ring buffers to match configured slot count (72-2880). WARNING: Clears all ring buffer data. Archives and aggregates are preserved. Pass slot count as parameter or use ring_buffer_slots config.';
+COMMENT ON FUNCTION pgfr_record.rebuild_ring_buffers(INTEGER) IS 'Rebuilds ring buffers to match configured slot count (72-2880). WARNING: Clears all ring buffer data. Archives and aggregates are preserved. Pass slot count as parameter or use ring_buffer_slots config.';
 
 -- Enables flight recorder by scheduling periodic cron jobs for collection, archival, and cleanup
 -- Requires pg_cron extension; returns status message on success
-CREATE OR REPLACE FUNCTION pgfr.enable()
+CREATE OR REPLACE FUNCTION pgfr_record.enable()
 RETURNS TEXT
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -4235,9 +4235,9 @@ DECLARE
     v_sample_interval_minutes INTEGER;
     v_cron_expression TEXT;
 BEGIN
-    v_mode := pgfr._get_config('mode', 'normal');
+    v_mode := pgfr_record._get_config('mode', 'normal');
     v_sample_interval_seconds := COALESCE(
-        pgfr._get_config('sample_interval_seconds', '60')::integer,
+        pgfr_record._get_config('sample_interval_seconds', '60')::integer,
         60
     );
     BEGIN
@@ -4254,7 +4254,7 @@ BEGIN
              split_part(v_pgcron_version, '.', 2)::int = 4 AND
              COALESCE(NULLIF(split_part(v_pgcron_version, '.', 3), '')::int, 0) >= 1)
         );
-        PERFORM cron.schedule('pgfr_snapshot', '*/5 * * * *', 'SET statement_timeout = ''10s''; SELECT pgfr.snapshot()');
+        PERFORM cron.schedule('pgfr_snapshot', '*/5 * * * *', 'SET statement_timeout = ''10s''; SELECT pgfr_record.snapshot()');
         v_scheduled := v_scheduled + 1;
         IF v_sample_interval_seconds <= 60 THEN
             v_cron_expression := '* * * * *';
@@ -4268,16 +4268,16 @@ BEGIN
             v_cron_expression := format('*/%s * * * *', v_sample_interval_minutes);
             v_sample_schedule := format('approximately every %s seconds', v_sample_interval_seconds);
         END IF;
-        PERFORM cron.schedule('pgfr_sample', v_cron_expression, 'SET statement_timeout = ''5s''; SELECT pgfr.sample()');
+        PERFORM cron.schedule('pgfr_sample', v_cron_expression, 'SET statement_timeout = ''5s''; SELECT pgfr_record.sample()');
         v_scheduled := v_scheduled + 1;
-        PERFORM cron.schedule('pgfr_flush', '*/5 * * * *', 'SET statement_timeout = ''10s''; SELECT pgfr.flush_ring_to_aggregates()');
+        PERFORM cron.schedule('pgfr_flush', '*/5 * * * *', 'SET statement_timeout = ''10s''; SELECT pgfr_record.flush_ring_to_aggregates()');
         v_scheduled := v_scheduled + 1;
-        PERFORM cron.schedule('pgfr_archive', '*/15 * * * *', 'SET statement_timeout = ''10s''; SELECT pgfr.archive_ring_samples()');
+        PERFORM cron.schedule('pgfr_archive', '*/15 * * * *', 'SET statement_timeout = ''10s''; SELECT pgfr_record.archive_ring_samples()');
         v_scheduled := v_scheduled + 1;
         PERFORM cron.schedule('pgfr_cleanup', '0 3 * * *',
-            'SET statement_timeout = ''60s''; SELECT pgfr.cleanup_aggregates(); SELECT * FROM pgfr.cleanup(''30 days''::interval);');
+            'SET statement_timeout = ''60s''; SELECT pgfr_record.cleanup_aggregates(); SELECT * FROM pgfr_record.cleanup(''30 days''::interval);');
         v_scheduled := v_scheduled + 1;
-        INSERT INTO pgfr.config (key, value, updated_at)
+        INSERT INTO pgfr_record.config (key, value, updated_at)
         VALUES ('enabled', 'true', now())
         ON CONFLICT (key) DO UPDATE SET value = 'true', updated_at = now();
         -- Emit warnings for suboptimal ring buffer configuration
@@ -4285,7 +4285,7 @@ BEGIN
             v_check RECORD;
         BEGIN
             FOR v_check IN
-                SELECT * FROM pgfr.validate_ring_configuration()
+                SELECT * FROM pgfr_record.validate_ring_configuration()
                 WHERE status IN ('WARNING', 'ERROR')
             LOOP
                 RAISE WARNING '% [%]: % - %', v_check.check_name, v_check.status, v_check.message, v_check.recommendation;
@@ -4330,7 +4330,7 @@ BEGIN
         WHEN undefined_function THEN NULL;
     END;
     SELECT value::integer INTO v_sample_interval_seconds
-    FROM pgfr.config
+    FROM pgfr_record.config
     WHERE key = 'sample_interval_seconds';
     v_sample_interval_seconds := COALESCE(v_sample_interval_seconds, 120);
     SELECT extversion INTO v_pgcron_version
@@ -4347,41 +4347,41 @@ BEGIN
     PERFORM cron.schedule(
         'pgfr_snapshot',
         '*/5 * * * *',
-        'SET statement_timeout = ''10s''; SELECT pgfr.snapshot()'
+        'SET statement_timeout = ''10s''; SELECT pgfr_record.snapshot()'
     );
     PERFORM cron.schedule(
         'pgfr_sample',
         '*/2 * * * *',
-        'SET statement_timeout = ''5s''; SELECT pgfr.sample()'
+        'SET statement_timeout = ''5s''; SELECT pgfr_record.sample()'
     );
     v_sample_schedule := 'every 120 seconds (ring buffer)';
     RAISE NOTICE 'Flight Recorder installed. Sampling %', v_sample_schedule;
     PERFORM cron.schedule(
         'pgfr_flush',
         '*/5 * * * *',
-        'SET statement_timeout = ''10s''; SELECT pgfr.flush_ring_to_aggregates()'
+        'SET statement_timeout = ''10s''; SELECT pgfr_record.flush_ring_to_aggregates()'
     );
     PERFORM cron.schedule(
         'pgfr_archive',
         '*/15 * * * *',
-        'SET statement_timeout = ''10s''; SELECT pgfr.archive_ring_samples()'
+        'SET statement_timeout = ''10s''; SELECT pgfr_record.archive_ring_samples()'
     );
     PERFORM cron.schedule(
         'pgfr_cleanup',
         '0 3 * * *',
-        'SET statement_timeout = ''60s''; SELECT pgfr.cleanup_aggregates(); SELECT * FROM pgfr.cleanup(''30 days''::interval);'
+        'SET statement_timeout = ''60s''; SELECT pgfr_record.cleanup_aggregates(); SELECT * FROM pgfr_record.cleanup(''30 days''::interval);'
     );
 EXCEPTION
     WHEN undefined_table THEN
-        RAISE NOTICE 'pg_cron extension not found. Automatic scheduling disabled. Run pgfr.snapshot() and pgfr.sample() manually or via external scheduler.';
+        RAISE NOTICE 'pg_cron extension not found. Automatic scheduling disabled. Run pgfr_record.snapshot() and pgfr_record.sample() manually or via external scheduler.';
     WHEN undefined_function THEN
-        RAISE NOTICE 'pg_cron extension not found. Automatic scheduling disabled. Run pgfr.snapshot() and pgfr.sample() manually or via external scheduler.';
+        RAISE NOTICE 'pg_cron extension not found. Automatic scheduling disabled. Run pgfr_record.snapshot() and pgfr_record.sample() manually or via external scheduler.';
 END;
 $$;
 
 -- Performs comprehensive health check of Flight Recorder system components
 -- Reports status, metrics, and recommended actions for critical subsystems
-CREATE OR REPLACE FUNCTION pgfr.health_check()
+CREATE OR REPLACE FUNCTION pgfr_record.health_check()
 RETURNS TABLE(
     component TEXT,
     status TEXT,
@@ -4399,23 +4399,23 @@ DECLARE
     v_sample_count INTEGER;
     v_snapshot_count INTEGER;
 BEGIN
-    v_enabled := pgfr._get_config('enabled', 'true');
+    v_enabled := pgfr_record._get_config('enabled', 'true');
     IF v_enabled = 'false' THEN
         RETURN QUERY SELECT
             'Flight Recorder System'::text,
             'DISABLED'::text,
             'Collection is disabled'::text,
-            'Run pgfr.enable() to restart'::text;
+            'Run pgfr_record.enable() to restart'::text;
         RETURN;
     END IF;
     RETURN QUERY SELECT
         'Flight Recorder System'::text,
         'ENABLED'::text,
-        format('Mode: %s', pgfr._get_config('mode', 'normal')),
+        format('Mode: %s', pgfr_record._get_config('mode', 'normal')),
         NULL::text;
     SELECT s.schema_size_mb, s.critical_threshold_mb, s.status
     INTO v_schema_size_mb, v_schema_critical_mb, v_enabled
-    FROM pgfr._check_schema_size() s;
+    FROM pgfr_record._check_schema_size() s;
     RETURN QUERY SELECT
         'Schema Size'::text,
         v_enabled::text,
@@ -4430,7 +4430,7 @@ BEGIN
         END::text;
     SELECT count(*)
     INTO v_recent_trips
-    FROM pgfr.collection_stats
+    FROM pgfr_record.collection_stats
     WHERE skipped = true
       AND started_at > now() - interval '1 hour'
       AND skipped_reason LIKE '%Circuit breaker%';
@@ -4446,8 +4446,8 @@ BEGIN
             WHEN v_recent_trips >= 3 THEN 'System under stress - consider emergency mode'
             ELSE NULL
         END::text;
-    SELECT max(captured_at) INTO v_last_sample FROM pgfr.samples_ring;
-    SELECT max(captured_at) INTO v_last_snapshot FROM pgfr.snapshots;
+    SELECT max(captured_at) INTO v_last_sample FROM pgfr_record.samples_ring;
+    SELECT max(captured_at) INTO v_last_snapshot FROM pgfr_record.snapshots;
     RETURN QUERY SELECT
         'Sample Collection'::text,
         CASE
@@ -4482,8 +4482,8 @@ BEGIN
             THEN 'Check pg_cron jobs'
             ELSE NULL
         END::text;
-    SELECT count(*) INTO v_sample_count FROM pgfr.samples_ring;
-    SELECT count(*) INTO v_snapshot_count FROM pgfr.snapshots;
+    SELECT count(*) INTO v_sample_count FROM pgfr_record.samples_ring;
+    SELECT count(*) INTO v_snapshot_count FROM pgfr_record.snapshots;
     RETURN QUERY SELECT
         'Data Volume'::text,
         'INFO'::text,
@@ -4510,7 +4510,7 @@ BEGIN
             WHEN h.status = 'WARNING' THEN 'Monitor for increased churn'
             ELSE NULL
         END::text
-    FROM pgfr._check_statements_health() h;
+    FROM pgfr_record._check_statements_health() h;
     DECLARE
         v_job_count INTEGER;
         v_active_jobs INTEGER;
@@ -4550,7 +4550,7 @@ BEGIN
             END,
             CASE
                 WHEN v_job_count > 0 OR v_active_jobs < 4 THEN
-                    'Run pgfr.enable() to restore missing/inactive jobs'
+                    'Run pgfr_record.enable() to restore missing/inactive jobs'
                 ELSE NULL
             END::text;
     EXCEPTION WHEN OTHERS THEN
@@ -4566,7 +4566,7 @@ $$;
 
 -- Exports all data before an upgrade, saving to a file for backup
 -- Returns summary of what was exported and the recommended restore command
-CREATE OR REPLACE FUNCTION pgfr.export_for_upgrade()
+CREATE OR REPLACE FUNCTION pgfr_record.export_for_upgrade()
 RETURNS TABLE(
     data_type TEXT,
     row_count BIGINT,
@@ -4576,80 +4576,80 @@ LANGUAGE plpgsql AS $$
 DECLARE
     v_version TEXT;
 BEGIN
-    SELECT value INTO v_version FROM pgfr.config WHERE key = 'schema_version';
+    SELECT value INTO v_version FROM pgfr_record.config WHERE key = 'schema_version';
 
     RAISE NOTICE '';
     RAISE NOTICE '=== Flight Recorder Export for Upgrade ===';
     RAISE NOTICE 'Current version: %', COALESCE(v_version, 'unknown');
     RAISE NOTICE '';
     RAISE NOTICE 'To export all data, run:';
-    RAISE NOTICE '  psql -At -c "SELECT pgfr.report(now() - interval ''30 days'', now())" > backup.md';
+    RAISE NOTICE '  psql -At -c "SELECT pgfr_record.report(now() - interval ''30 days'', now())" > backup.md';
     RAISE NOTICE '';
     RAISE NOTICE 'Or for specific tables:';
-    RAISE NOTICE '  pg_dump -t pgfr.snapshots -t pgfr.statement_snapshots ... > backup.sql';
+    RAISE NOTICE '  pg_dump -t pgfr_record.snapshots -t pgfr_record.statement_snapshots ... > backup.sql';
     RAISE NOTICE '';
 
     -- Return summary of data that would be exported
     RETURN QUERY
     SELECT 'snapshots'::TEXT, count(*)::BIGINT,
            min(captured_at)::TEXT || ' to ' || max(captured_at)::TEXT
-    FROM pgfr.snapshots;
+    FROM pgfr_record.snapshots;
 
     RETURN QUERY
     SELECT 'statement_snapshots'::TEXT, count(*)::BIGINT,
            min(captured_at)::TEXT || ' to ' || max(captured_at)::TEXT
-    FROM pgfr.statement_snapshots;
+    FROM pgfr_record.statement_snapshots;
 
     RETURN QUERY
     SELECT 'table_snapshots'::TEXT, count(*)::BIGINT,
            min(captured_at)::TEXT || ' to ' || max(captured_at)::TEXT
-    FROM pgfr.table_snapshots;
+    FROM pgfr_record.table_snapshots;
 
     RETURN QUERY
     SELECT 'index_snapshots'::TEXT, count(*)::BIGINT,
            min(captured_at)::TEXT || ' to ' || max(captured_at)::TEXT
-    FROM pgfr.index_snapshots;
+    FROM pgfr_record.index_snapshots;
 
     RETURN QUERY
     SELECT 'activity_samples_archive'::TEXT, count(*)::BIGINT,
            min(captured_at)::TEXT || ' to ' || max(captured_at)::TEXT
-    FROM pgfr.activity_samples_archive;
+    FROM pgfr_record.activity_samples_archive;
 
     RETURN QUERY
     SELECT 'lock_samples_archive'::TEXT, count(*)::BIGINT,
            min(captured_at)::TEXT || ' to ' || max(captured_at)::TEXT
-    FROM pgfr.lock_samples_archive;
+    FROM pgfr_record.lock_samples_archive;
 
     RETURN QUERY
     SELECT 'wait_samples_archive'::TEXT, count(*)::BIGINT,
            min(captured_at)::TEXT || ' to ' || max(captured_at)::TEXT
-    FROM pgfr.wait_samples_archive;
+    FROM pgfr_record.wait_samples_archive;
 
     RETURN QUERY
     SELECT 'wait_event_aggregates'::TEXT, count(*)::BIGINT,
            min(window_start)::TEXT || ' to ' || max(window_end)::TEXT
-    FROM pgfr.wait_event_aggregates;
+    FROM pgfr_record.wait_event_aggregates;
 
     RETURN QUERY
     SELECT 'activity_aggregates'::TEXT, count(*)::BIGINT,
            min(window_start)::TEXT || ' to ' || max(window_end)::TEXT
-    FROM pgfr.activity_aggregates;
+    FROM pgfr_record.activity_aggregates;
 
     RETURN QUERY
     SELECT 'lock_aggregates'::TEXT, count(*)::BIGINT,
            min(window_start)::TEXT || ' to ' || max(window_end)::TEXT
-    FROM pgfr.lock_aggregates;
+    FROM pgfr_record.lock_aggregates;
 
     RETURN QUERY
     SELECT 'config'::TEXT, count(*)::BIGINT,
            'current settings'::TEXT
-    FROM pgfr.config;
+    FROM pgfr_record.config;
 END;
 $$;
 
 -- Analyzes current metrics (schema size, sample duration, retention settings) and returns configuration optimization recommendations
 -- Provides actionable SQL commands for performance, storage, and automation tuning
-CREATE OR REPLACE FUNCTION pgfr.config_recommendations()
+CREATE OR REPLACE FUNCTION pgfr_record.config_recommendations()
 RETURNS TABLE(
     category TEXT,
     recommendation TEXT,
@@ -4666,38 +4666,38 @@ DECLARE
     v_retention_samples INTEGER;
     v_retention_snapshots INTEGER;
 BEGIN
-    v_mode := pgfr._get_config('mode', 'normal');
-    SELECT schema_size_mb INTO v_schema_size_mb FROM pgfr._check_schema_size();
-    SELECT count(*) INTO v_sample_count FROM pgfr.samples_ring;
-    SELECT count(*) INTO v_snapshot_count FROM pgfr.snapshots;
+    v_mode := pgfr_record._get_config('mode', 'normal');
+    SELECT schema_size_mb INTO v_schema_size_mb FROM pgfr_record._check_schema_size();
+    SELECT count(*) INTO v_sample_count FROM pgfr_record.samples_ring;
+    SELECT count(*) INTO v_snapshot_count FROM pgfr_record.snapshots;
     SELECT avg(duration_ms) INTO v_avg_sample_ms
-    FROM pgfr.collection_stats
+    FROM pgfr_record.collection_stats
     WHERE collection_type = 'sample'
       AND success = true
       AND skipped = false
       AND started_at > now() - interval '24 hours';
-    v_retention_samples := pgfr._get_config('retention_samples_days', '7')::integer;
-    v_retention_snapshots := pgfr._get_config('retention_snapshots_days', '30')::integer;
+    v_retention_samples := pgfr_record._get_config('retention_samples_days', '7')::integer;
+    v_retention_snapshots := pgfr_record._get_config('retention_snapshots_days', '30')::integer;
     IF v_avg_sample_ms > 1000 AND v_mode = 'normal' THEN
         RETURN QUERY SELECT
             'Performance'::text,
             'Switch to light mode'::text,
             format('Average sample duration is %s ms, which may impact system performance', round(v_avg_sample_ms)),
-            'SELECT pgfr.set_mode(''light'');'::text;
+            'SELECT pgfr_record.set_mode(''light'');'::text;
     END IF;
     IF v_schema_size_mb > 5000 THEN
         RETURN QUERY SELECT
             'Storage'::text,
             'Run cleanup to reclaim space'::text,
             format('Schema size is %s MB', round(v_schema_size_mb)::text),
-            'SELECT * FROM pgfr.cleanup();'::text;
+            'SELECT * FROM pgfr_record.cleanup();'::text;
     END IF;
     IF v_sample_count > 50000 AND v_retention_samples > 7 THEN
         RETURN QUERY SELECT
             'Storage'::text,
             'Reduce sample retention period'::text,
             format('High sample count (%s) with %s day retention', v_sample_count, v_retention_samples),
-            format('UPDATE pgfr.config SET value = ''3'' WHERE key = ''retention_samples_days'';')::text;
+            format('UPDATE pgfr_record.config SET value = ''3'' WHERE key = ''retention_samples_days'';')::text;
     END IF;
     IF NOT FOUND THEN
         RETURN QUERY SELECT
@@ -4711,8 +4711,8 @@ $$;
 
 
 
-SELECT pgfr.snapshot();
-SELECT pgfr.sample();
+SELECT pgfr_record.snapshot();
+SELECT pgfr_record.sample();
 DO $$
 DECLARE
     v_sample_schedule TEXT;
@@ -4740,11 +4740,11 @@ BEGIN
     RAISE NOTICE '     SELECT * FROM pgfr_analyze.capacity_summary(interval ''7 days'');';
     RAISE NOTICE '';
     RAISE NOTICE 'Views for recent activity:';
-    RAISE NOTICE '  - pgfr.deltas            (snapshot deltas incl. temp files)';
-    RAISE NOTICE '  - pgfr.recent_waits      (wait events, last 2 hours from ring buffer)';
-    RAISE NOTICE '  - pgfr.recent_activity   (active sessions, last 2 hours from ring buffer)';
-    RAISE NOTICE '  - pgfr.recent_locks      (lock contention, last 2 hours from ring buffer)';
-    RAISE NOTICE '  - pgfr.recent_replication (replication lag, last 2 hours)';
+    RAISE NOTICE '  - pgfr_record.deltas            (snapshot deltas incl. temp files)';
+    RAISE NOTICE '  - pgfr_record.recent_waits      (wait events, last 2 hours from ring buffer)';
+    RAISE NOTICE '  - pgfr_record.recent_activity   (active sessions, last 2 hours from ring buffer)';
+    RAISE NOTICE '  - pgfr_record.recent_locks      (lock contention, last 2 hours from ring buffer)';
+    RAISE NOTICE '  - pgfr_record.recent_replication (replication lag, last 2 hours)';
     RAISE NOTICE '';
     RAISE NOTICE 'For autovacuum control functions (vacuum diagnostics, scale factor tuning, bloat analysis):';
     RAISE NOTICE '  psql --single-transaction -f _control/install.sql';

@@ -13,32 +13,32 @@ SELECT plan(25);
 -- =============================================================================
 
 SELECT has_column(
-    'pgfr', 'snapshots', 'confl_tablespace',
+    'pgfr_record', 'snapshots', 'confl_tablespace',
     'snapshots should have confl_tablespace column'
 );
 
 SELECT has_column(
-    'pgfr', 'snapshots', 'confl_lock',
+    'pgfr_record', 'snapshots', 'confl_lock',
     'snapshots should have confl_lock column'
 );
 
 SELECT has_column(
-    'pgfr', 'snapshots', 'confl_snapshot',
+    'pgfr_record', 'snapshots', 'confl_snapshot',
     'snapshots should have confl_snapshot column'
 );
 
 SELECT has_column(
-    'pgfr', 'snapshots', 'confl_bufferpin',
+    'pgfr_record', 'snapshots', 'confl_bufferpin',
     'snapshots should have confl_bufferpin column'
 );
 
 SELECT has_column(
-    'pgfr', 'snapshots', 'confl_deadlock',
+    'pgfr_record', 'snapshots', 'confl_deadlock',
     'snapshots should have confl_deadlock column'
 );
 
 SELECT has_column(
-    'pgfr', 'snapshots', 'confl_active_logicalslot',
+    'pgfr_record', 'snapshots', 'confl_active_logicalslot',
     'snapshots should have confl_active_logicalslot column'
 );
 
@@ -47,22 +47,22 @@ SELECT has_column(
 -- =============================================================================
 
 SELECT has_view(
-    'pgfr', 'recent_idle_in_transaction',
+    'pgfr_record', 'recent_idle_in_transaction',
     'recent_idle_in_transaction view should exist'
 );
 
 SELECT has_column(
-    'pgfr', 'recent_idle_in_transaction', 'pid',
+    'pgfr_record', 'recent_idle_in_transaction', 'pid',
     'recent_idle_in_transaction should have pid column'
 );
 
 SELECT has_column(
-    'pgfr', 'recent_idle_in_transaction', 'idle_duration',
+    'pgfr_record', 'recent_idle_in_transaction', 'idle_duration',
     'recent_idle_in_transaction should have idle_duration column'
 );
 
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.recent_idle_in_transaction LIMIT 1$$,
+    $$SELECT * FROM pgfr_record.recent_idle_in_transaction LIMIT 1$$,
     'recent_idle_in_transaction view should be queryable'
 );
 
@@ -71,24 +71,24 @@ SELECT lives_ok(
 -- =============================================================================
 
 -- Take a snapshot to populate data
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Verify conflict columns are queryable (NULL on primary, populated on standby)
 SELECT lives_ok(
     $$SELECT confl_tablespace, confl_lock, confl_snapshot, confl_bufferpin, confl_deadlock
-      FROM pgfr.snapshots ORDER BY id DESC LIMIT 1$$,
+      FROM pgfr_record.snapshots ORDER BY id DESC LIMIT 1$$,
     'conflict columns should be queryable in snapshots'
 );
 
 -- Verify snapshot was created successfully
 SELECT ok(
-    (SELECT count(*) FROM pgfr.snapshots WHERE captured_at > now() - interval '1 minute') > 0,
+    (SELECT count(*) FROM pgfr_record.snapshots WHERE captured_at > now() - interval '1 minute') > 0,
     'snapshot() should create a new snapshot'
 );
 
 -- Verify logical slot conflict column is queryable (PG16+ only, NULL on others)
 SELECT lives_ok(
-    $$SELECT confl_active_logicalslot FROM pgfr.snapshots ORDER BY id DESC LIMIT 1$$,
+    $$SELECT confl_active_logicalslot FROM pgfr_record.snapshots ORDER BY id DESC LIMIT 1$$,
     'confl_active_logicalslot column should be queryable'
 );
 
@@ -155,21 +155,21 @@ SELECT results_eq(
 -- =============================================================================
 
 -- Take a sample to populate activity data
-SELECT pgfr.sample();
+SELECT pgfr_record.sample();
 
 -- Verify activity_samples_archive has required columns for anomaly detection
 SELECT has_column(
-    'pgfr', 'activity_samples_archive', 'state',
+    'pgfr_record', 'activity_samples_archive', 'state',
     'activity_samples_archive should have state column for idle-in-transaction detection'
 );
 
 SELECT has_column(
-    'pgfr', 'activity_samples_archive', 'xact_start',
+    'pgfr_record', 'activity_samples_archive', 'xact_start',
     'activity_samples_archive should have xact_start column for idle-in-transaction detection'
 );
 
 SELECT has_column(
-    'pgfr', 'activity_samples_archive', 'backend_start',
+    'pgfr_record', 'activity_samples_archive', 'backend_start',
     'activity_samples_archive should have backend_start column for connection leak detection'
 );
 
@@ -178,12 +178,12 @@ SELECT has_column(
 -- =============================================================================
 
 SELECT has_column(
-    'pgfr', 'table_snapshots', 'n_dead_tup',
+    'pgfr_record', 'table_snapshots', 'n_dead_tup',
     'table_snapshots should have n_dead_tup column for dead tuple detection'
 );
 
 SELECT has_column(
-    'pgfr', 'table_snapshots', 'last_autovacuum',
+    'pgfr_record', 'table_snapshots', 'last_autovacuum',
     'table_snapshots should have last_autovacuum column for vacuum starvation detection'
 );
 

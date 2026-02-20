@@ -13,32 +13,32 @@ SELECT plan(10);
 -- =============================================================================
 
 SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'storm_threshold_multiplier'),
+    EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'storm_threshold_multiplier'),
     'storm_threshold_multiplier config setting should exist'
 );
 
 SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'storm_lookback_interval'),
+    EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'storm_lookback_interval'),
     'storm_lookback_interval config setting should exist'
 );
 
 SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'storm_baseline_days'),
+    EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'storm_baseline_days'),
     'storm_baseline_days config setting should exist'
 );
 
 SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'storm_severity_low_max'),
+    EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'storm_severity_low_max'),
     'storm_severity_low_max config setting should exist'
 );
 
 SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'storm_severity_medium_max'),
+    EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'storm_severity_medium_max'),
     'storm_severity_medium_max config setting should exist'
 );
 
 SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'storm_severity_high_max'),
+    EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'storm_severity_high_max'),
     'storm_severity_high_max config setting should exist'
 );
 

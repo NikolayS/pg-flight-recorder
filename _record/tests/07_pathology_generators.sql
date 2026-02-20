@@ -46,7 +46,7 @@ BEGIN
     PERFORM pg_advisory_lock(12345);
 
     -- Capture the state while lock is held
-    PERFORM pgfr.sample();
+    PERFORM pgfr_record.sample();
 
     -- Try to acquire the same lock in a non-blocking way (simulates a blocked session)
     -- This will fail immediately and return false, but the attempt is logged
@@ -59,7 +59,7 @@ $$;
 
 -- Test that sample() continues to work after lock operations
 SELECT lives_ok(
-    $$SELECT pgfr.sample()$$,
+    $$SELECT pgfr_record.sample()$$,
     'LOCK PATHOLOGY: sample() should execute after lock contention scenario'
 );
 
@@ -67,7 +67,7 @@ SELECT lives_ok(
 -- Note: Lock samples may be empty if no actual blocking occurred
 -- (advisory locks don't create blocked sessions in single transaction)
 SELECT ok(
-    (SELECT count(*) FROM pgfr.lock_samples_ring) >= 0,
+    (SELECT count(*) FROM pgfr_record.lock_samples_ring) >= 0,
     'LOCK PATHOLOGY: lock_samples_ring should be queryable'
 );
 
@@ -122,7 +122,7 @@ SELECT ok(
 );
 
 -- Capture baseline snapshot before generating pathology
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Generate pathology: Force temp file spills with low work_mem
 DO $$
@@ -158,24 +158,24 @@ $$;
 
 -- Capture snapshot after generating pathology
 SELECT pg_sleep(0.2); -- Small delay to ensure statement stats are updated
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Test that snapshot captured the period
 SELECT ok(
-    (SELECT count(*) FROM pgfr.snapshots WHERE captured_at > now() - interval '10 seconds') >= 2,
+    (SELECT count(*) FROM pgfr_record.snapshots WHERE captured_at > now() - interval '10 seconds') >= 2,
     'MEMORY PATHOLOGY: At least 2 snapshots should exist from the test period'
 );
 
 -- Test that temp file data was captured in snapshots
 -- Note: temp_files and temp_bytes are cumulative, so we check they exist
 SELECT ok(
-    (SELECT count(*) FROM pgfr.snapshots WHERE temp_files IS NOT NULL) >= 1,
+    (SELECT count(*) FROM pgfr_record.snapshots WHERE temp_files IS NOT NULL) >= 1,
     'MEMORY PATHOLOGY: Snapshots should capture temp_files metric'
 );
 
 -- Test that statement_snapshots table exists and has data
 SELECT ok(
-    (SELECT count(*) FROM pgfr.statement_snapshots) >= 0,
+    (SELECT count(*) FROM pgfr_record.statement_snapshots) >= 0,
     'MEMORY PATHOLOGY: statement_snapshots should contain query statistics'
 );
 
@@ -188,11 +188,11 @@ DECLARE
     v_anomaly_count INT;
 BEGIN
     SELECT min(captured_at) INTO v_start_time
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at > now() - interval '10 seconds';
 
     SELECT max(captured_at) INTO v_end_time
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at > now() - interval '10 seconds';
 
     -- Check if anomaly_report can run on this time range
@@ -244,7 +244,7 @@ SELECT ok(
 );
 
 -- Capture baseline snapshot
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Generate pathology: CPU-intensive calculations
 DO $$
@@ -270,17 +270,17 @@ END;
 $$;
 
 -- Capture snapshot after CPU work
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Test that snapshots were captured
 SELECT ok(
-    (SELECT count(*) FROM pgfr.snapshots WHERE captured_at > now() - interval '10 seconds') >= 2,
+    (SELECT count(*) FROM pgfr_record.snapshots WHERE captured_at > now() - interval '10 seconds') >= 2,
     'CPU PATHOLOGY: At least 2 snapshots should exist from test period'
 );
 
 -- Test that statement_snapshots table is accessible (may or may not have data depending on pg_stat_statements)
 SELECT ok(
-    (SELECT count(*) FROM pgfr.statement_snapshots) >= 0,
+    (SELECT count(*) FROM pgfr_record.statement_snapshots) >= 0,
     'CPU PATHOLOGY: statement_snapshots should be queryable'
 );
 
@@ -328,7 +328,7 @@ SELECT ok(
 DO $$
 BEGIN
     -- Capture activity before slow operation
-    PERFORM pgfr.sample();
+    PERFORM pgfr_record.sample();
 
     -- Simulate slow query (short sleep to not slow down tests too much)
     PERFORM pg_sleep(0.5);
@@ -337,13 +337,13 @@ BEGIN
     PERFORM count(*) FROM test_slow_realtime;
 
     -- Capture activity after slow operation
-    PERFORM pgfr.sample();
+    PERFORM pgfr_record.sample();
 END;
 $$;
 
 -- Test that sample() captured activity
 SELECT ok(
-    (SELECT count(*) FROM pgfr.activity_samples_ring) >= 0,
+    (SELECT count(*) FROM pgfr_record.activity_samples_ring) >= 0,
     'SLOW REALTIME PATHOLOGY: activity_samples_ring should be queryable'
 );
 
@@ -400,7 +400,7 @@ SELECT ok(
 );
 
 -- Capture baseline snapshot
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Generate pathology: Force sequential scans and expensive operations
 DO $$
@@ -431,12 +431,12 @@ END;
 $$;
 
 -- Capture snapshot after slow queries
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Test that statement_snapshots is queryable (may not have data if pg_stat_statements isn't tracking)
 SELECT ok(
-    (SELECT count(*) FROM pgfr.statement_snapshots ss
-     JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
+    (SELECT count(*) FROM pgfr_record.statement_snapshots ss
+     JOIN pgfr_record.snapshots s ON s.id = ss.snapshot_id
      WHERE s.captured_at > now() - interval '10 seconds') >= 0,
     'SLOW QUERIES PATHOLOGY: statement_snapshots should be queryable for recent period'
 );
@@ -444,8 +444,8 @@ SELECT ok(
 -- Test that we can query statement stats for slow query analysis
 SELECT lives_ok(
     $$SELECT query_preview, calls, mean_exec_time, shared_blks_read
-      FROM pgfr.statement_snapshots ss
-      JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
+      FROM pgfr_record.statement_snapshots ss
+      JOIN pgfr_record.snapshots s ON s.id = ss.snapshot_id
       WHERE s.captured_at > now() - interval '10 seconds'
       ORDER BY mean_exec_time DESC NULLS LAST
       LIMIT 10$$,
@@ -461,7 +461,7 @@ DECLARE
 BEGIN
     SELECT min(captured_at), max(captured_at)
     INTO v_start_time, v_end_time
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at > now() - interval '10 seconds';
 
     -- Verify _compare() executes
@@ -551,7 +551,7 @@ END;
 $$;
 
 -- Capture snapshot with elevated connection count
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Test that pg_stat_activity is queryable (connections may or may not have increased depending on dblink success)
 SELECT ok(
@@ -561,7 +561,7 @@ SELECT ok(
 
 -- Test that snapshots capture connection metrics
 SELECT ok(
-    (SELECT connections_total FROM pgfr.snapshots
+    (SELECT connections_total FROM pgfr_record.snapshots
      ORDER BY captured_at DESC LIMIT 1) IS NOT NULL,
     'CONNECTION PATHOLOGY: Snapshot should capture connections_total'
 );
@@ -576,7 +576,7 @@ SELECT ok(
 SELECT lives_ok(
     $$SELECT connections_active, connections_total, connections_max,
              round(100.0 * connections_total / NULLIF(connections_max, 0), 1) AS utilization_pct
-      FROM pgfr.snapshots
+      FROM pgfr_record.snapshots
       ORDER BY captured_at DESC
       LIMIT 1$$,
     'CONNECTION PATHOLOGY: Should be able to query connection utilization metrics'
@@ -638,7 +638,7 @@ BEGIN
     v_start_time := now();
 
     -- Capture initial snapshot
-    PERFORM pgfr.snapshot();
+    PERFORM pgfr_record.snapshot();
 
     -- Run some queries to generate activity
     PERFORM count(*) FROM test_historical WHERE data LIKE '%a%';
@@ -648,7 +648,7 @@ BEGIN
     PERFORM pg_sleep(0.2);
 
     -- Capture another snapshot
-    PERFORM pgfr.snapshot();
+    PERFORM pgfr_record.snapshot();
 
     -- Store time range for later tests
     PERFORM set_config('pathology.historical_start', v_start_time::text, false);
@@ -676,7 +676,7 @@ SELECT lives_ok(
 
 -- Test that activity_samples_archive is queryable (may be empty if archiving hasn't run)
 SELECT ok(
-    (SELECT count(*) FROM pgfr.activity_samples_archive) >= 0,
+    (SELECT count(*) FROM pgfr_record.activity_samples_archive) >= 0,
     'HISTORICAL PATHOLOGY: activity_samples_archive should be queryable'
 );
 
@@ -715,7 +715,7 @@ SELECT ok(
 );
 
 -- Capture baseline snapshot
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Generate pathology: Force sequential scan and capture I/O metrics
 DO $$
@@ -743,7 +743,7 @@ END;
 $$;
 
 -- Capture snapshot after I/O operations
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Test that wait_summary can filter by IO wait events
 SELECT lives_ok(
@@ -760,8 +760,8 @@ SELECT lives_ok(
 -- Test that we can query disk read metrics from statement_snapshots
 SELECT lives_ok(
     $$SELECT query_preview, shared_blks_read, blk_read_time
-      FROM pgfr.statement_snapshots ss
-      JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
+      FROM pgfr_record.statement_snapshots ss
+      JOIN pgfr_record.snapshots s ON s.id = ss.snapshot_id
       WHERE s.captured_at > now() - interval '1 minute'
       ORDER BY shared_blks_read DESC NULLS LAST
       LIMIT 10$$,
@@ -777,7 +777,7 @@ SELECT lives_ok(
                   THEN round(100.0 * blks_hit / (blks_hit + blks_read), 1)
                   ELSE NULL
              END AS cache_hit_pct
-      FROM pgfr.snapshots
+      FROM pgfr_record.snapshots
       WHERE captured_at > now() - interval '1 minute'
       ORDER BY captured_at DESC
       LIMIT 5$$,
@@ -803,17 +803,17 @@ SELECT ok(
 -- =============================================================================
 
 -- Capture baseline snapshot before checkpoint operations
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Test that checkpoint metrics are captured in snapshots
 SELECT ok(
     EXISTS (
-        SELECT 1 FROM pgfr.snapshots
+        SELECT 1 FROM pgfr_record.snapshots
         WHERE checkpoint_time IS NOT NULL
            OR ckpt_timed IS NOT NULL
            OR ckpt_requested IS NOT NULL
         LIMIT 1
-    ) OR (SELECT count(*) FROM pgfr.snapshots) >= 0,  -- Always pass if snapshots exist
+    ) OR (SELECT count(*) FROM pgfr_record.snapshots) >= 0,  -- Always pass if snapshots exist
     'CHECKPOINT PATHOLOGY: Snapshots should capture checkpoint metrics (or be queryable)'
 );
 
@@ -822,7 +822,7 @@ CHECKPOINT;
 
 -- Small delay then capture
 SELECT pg_sleep(0.2);
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Test that we can query checkpoint timing data
 SELECT lives_ok(
@@ -833,7 +833,7 @@ SELECT lives_ok(
              ckpt_buffers,
              ckpt_timed,
              ckpt_requested
-      FROM pgfr.snapshots
+      FROM pgfr_record.snapshots
       WHERE captured_at > now() - interval '1 minute'
       ORDER BY captured_at DESC
       LIMIT 5$$,
@@ -859,7 +859,7 @@ SELECT lives_ok(
              wal_bytes,
              bgw_buffers_backend,
              bgw_buffers_backend_fsync
-      FROM pgfr.snapshots
+      FROM pgfr_record.snapshots
       WHERE captured_at > now() - interval '1 minute'
       ORDER BY captured_at DESC
       LIMIT 5$$,
@@ -875,7 +875,7 @@ DECLARE
 BEGIN
     SELECT min(captured_at), max(captured_at)
     INTO v_start_time, v_end_time
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at > now() - interval '1 minute';
 
     -- Verify _compare() executes for checkpoint analysis

@@ -13,37 +13,37 @@ SELECT plan(14);
 -- =============================================================================
 
 SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'regression_threshold_pct'),
+    EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'regression_threshold_pct'),
     'regression_threshold_pct config setting should exist'
 );
 
 SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'regression_lookback_interval'),
+    EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'regression_lookback_interval'),
     'regression_lookback_interval config setting should exist'
 );
 
 SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'regression_baseline_days'),
+    EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'regression_baseline_days'),
     'regression_baseline_days config setting should exist'
 );
 
 SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'regression_severity_low_max'),
+    EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'regression_severity_low_max'),
     'regression_severity_low_max config setting should exist'
 );
 
 SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'regression_severity_medium_max'),
+    EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'regression_severity_medium_max'),
     'regression_severity_medium_max config setting should exist'
 );
 
 SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'regression_severity_high_max'),
+    EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'regression_severity_high_max'),
     'regression_severity_high_max config setting should exist'
 );
 
 SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'regression_detection_metric'),
+    EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'regression_detection_metric'),
     'regression_detection_metric config setting should exist'
 );
 

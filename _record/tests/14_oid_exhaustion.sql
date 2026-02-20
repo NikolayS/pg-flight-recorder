@@ -13,12 +13,12 @@ SELECT plan(14);
 -- =============================================================================
 
 SELECT has_column(
-    'pgfr', 'snapshots', 'max_catalog_oid',
+    'pgfr_record', 'snapshots', 'max_catalog_oid',
     'snapshots table should have max_catalog_oid column'
 );
 
 SELECT has_column(
-    'pgfr', 'snapshots', 'large_object_count',
+    'pgfr_record', 'snapshots', 'large_object_count',
     'snapshots table should have large_object_count column'
 );
 
@@ -27,28 +27,28 @@ SELECT has_column(
 -- =============================================================================
 
 -- Take a snapshot to populate data
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- Verify max_catalog_oid is populated
 SELECT ok(
-    (SELECT max_catalog_oid FROM pgfr.snapshots ORDER BY id DESC LIMIT 1) IS NOT NULL,
+    (SELECT max_catalog_oid FROM pgfr_record.snapshots ORDER BY id DESC LIMIT 1) IS NOT NULL,
     'max_catalog_oid should be populated after snapshot()'
 );
 
 -- Verify large_object_count is populated
 SELECT ok(
-    (SELECT large_object_count FROM pgfr.snapshots ORDER BY id DESC LIMIT 1) IS NOT NULL,
+    (SELECT large_object_count FROM pgfr_record.snapshots ORDER BY id DESC LIMIT 1) IS NOT NULL,
     'large_object_count should be populated after snapshot()'
 );
 
 -- Verify max_catalog_oid is a reasonable value (> 0, < 4.3 billion)
 SELECT ok(
-    (SELECT max_catalog_oid FROM pgfr.snapshots ORDER BY id DESC LIMIT 1) > 0,
+    (SELECT max_catalog_oid FROM pgfr_record.snapshots ORDER BY id DESC LIMIT 1) > 0,
     'max_catalog_oid should be greater than 0'
 );
 
 SELECT ok(
-    (SELECT max_catalog_oid FROM pgfr.snapshots ORDER BY id DESC LIMIT 1) < 4294967295,
+    (SELECT max_catalog_oid FROM pgfr_record.snapshots ORDER BY id DESC LIMIT 1) < 4294967295,
     'max_catalog_oid should be less than max OID (4.3 billion)'
 );
 
@@ -58,13 +58,13 @@ SELECT ok(
 
 -- Verify large_object_count is non-negative
 SELECT ok(
-    (SELECT large_object_count FROM pgfr.snapshots ORDER BY id DESC LIMIT 1) >= 0,
+    (SELECT large_object_count FROM pgfr_record.snapshots ORDER BY id DESC LIMIT 1) >= 0,
     'large_object_count should be non-negative'
 );
 
 -- Verify max_catalog_oid represents actual pg_class OIDs
 SELECT ok(
-    (SELECT max_catalog_oid FROM pgfr.snapshots ORDER BY id DESC LIMIT 1)
+    (SELECT max_catalog_oid FROM pgfr_record.snapshots ORDER BY id DESC LIMIT 1)
         >= (SELECT max(oid)::bigint FROM pg_class) - 1000,
     'max_catalog_oid should be close to actual max pg_class OID'
 );
@@ -112,7 +112,7 @@ SELECT ok(
 );
 
 -- Take another snapshot and verify rate calculation works
-SELECT pgfr.snapshot();
+SELECT pgfr_record.snapshot();
 
 -- After multiple snapshots, rate should still be NULL or non-negative
 SELECT ok(

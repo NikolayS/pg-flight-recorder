@@ -14,67 +14,67 @@ SELECT plan(25);
 -- =============================================================================
 
 SELECT has_column(
-    'pgfr', 'statement_snapshots', 'calls_delta',
+    'pgfr_record', 'statement_snapshots', 'calls_delta',
     'statement_snapshots should have calls_delta column'
 );
 
 SELECT has_column(
-    'pgfr', 'statement_snapshots', 'total_exec_time_delta',
+    'pgfr_record', 'statement_snapshots', 'total_exec_time_delta',
     'statement_snapshots should have total_exec_time_delta column'
 );
 
 SELECT has_column(
-    'pgfr', 'statement_snapshots', 'rows_delta',
+    'pgfr_record', 'statement_snapshots', 'rows_delta',
     'statement_snapshots should have rows_delta column'
 );
 
 SELECT has_column(
-    'pgfr', 'statement_snapshots', 'shared_blks_hit_delta',
+    'pgfr_record', 'statement_snapshots', 'shared_blks_hit_delta',
     'statement_snapshots should have shared_blks_hit_delta column'
 );
 
 SELECT has_column(
-    'pgfr', 'statement_snapshots', 'shared_blks_read_delta',
+    'pgfr_record', 'statement_snapshots', 'shared_blks_read_delta',
     'statement_snapshots should have shared_blks_read_delta column'
 );
 
 SELECT has_column(
-    'pgfr', 'statement_snapshots', 'shared_blks_dirtied_delta',
+    'pgfr_record', 'statement_snapshots', 'shared_blks_dirtied_delta',
     'statement_snapshots should have shared_blks_dirtied_delta column'
 );
 
 SELECT has_column(
-    'pgfr', 'statement_snapshots', 'shared_blks_written_delta',
+    'pgfr_record', 'statement_snapshots', 'shared_blks_written_delta',
     'statement_snapshots should have shared_blks_written_delta column'
 );
 
 SELECT has_column(
-    'pgfr', 'statement_snapshots', 'temp_blks_read_delta',
+    'pgfr_record', 'statement_snapshots', 'temp_blks_read_delta',
     'statement_snapshots should have temp_blks_read_delta column'
 );
 
 SELECT has_column(
-    'pgfr', 'statement_snapshots', 'temp_blks_written_delta',
+    'pgfr_record', 'statement_snapshots', 'temp_blks_written_delta',
     'statement_snapshots should have temp_blks_written_delta column'
 );
 
 SELECT has_column(
-    'pgfr', 'statement_snapshots', 'blk_read_time_delta',
+    'pgfr_record', 'statement_snapshots', 'blk_read_time_delta',
     'statement_snapshots should have blk_read_time_delta column'
 );
 
 SELECT has_column(
-    'pgfr', 'statement_snapshots', 'blk_write_time_delta',
+    'pgfr_record', 'statement_snapshots', 'blk_write_time_delta',
     'statement_snapshots should have blk_write_time_delta column'
 );
 
 SELECT has_column(
-    'pgfr', 'statement_snapshots', 'wal_records_delta',
+    'pgfr_record', 'statement_snapshots', 'wal_records_delta',
     'statement_snapshots should have wal_records_delta column'
 );
 
 SELECT has_column(
-    'pgfr', 'statement_snapshots', 'wal_bytes_delta',
+    'pgfr_record', 'statement_snapshots', 'wal_bytes_delta',
     'statement_snapshots should have wal_bytes_delta column'
 );
 
@@ -83,13 +83,13 @@ SELECT has_column(
 -- =============================================================================
 
 SELECT is(
-    (SELECT value FROM pgfr.config WHERE key = 'statements_top_n'),
+    (SELECT value FROM pgfr_record.config WHERE key = 'statements_top_n'),
     '50',
     'Default statements_top_n should be 50'
 );
 
 SELECT is(
-    (SELECT value FROM pgfr.config WHERE key = 'statements_interval_minutes'),
+    (SELECT value FROM pgfr_record.config WHERE key = 'statements_interval_minutes'),
     '5',
     'Default statements_interval_minutes should be 5'
 );
@@ -99,31 +99,31 @@ SELECT is(
 -- =============================================================================
 
 SELECT is(
-    (SELECT value FROM pgfr._profile_settings() WHERE profile = 'default' AND key = 'statements_top_n'),
+    (SELECT value FROM pgfr_record._profile_settings() WHERE profile = 'default' AND key = 'statements_top_n'),
     '50',
     'Default profile statements_top_n should be 50'
 );
 
 SELECT is(
-    (SELECT value FROM pgfr._profile_settings() WHERE profile = 'production_safe' AND key = 'statements_top_n'),
+    (SELECT value FROM pgfr_record._profile_settings() WHERE profile = 'production_safe' AND key = 'statements_top_n'),
     '30',
     'Production_safe profile statements_top_n should be 30'
 );
 
 SELECT is(
-    (SELECT value FROM pgfr._profile_settings() WHERE profile = 'troubleshooting' AND key = 'statements_top_n'),
+    (SELECT value FROM pgfr_record._profile_settings() WHERE profile = 'troubleshooting' AND key = 'statements_top_n'),
     '100',
     'Troubleshooting profile statements_top_n should be 100'
 );
 
 SELECT is(
-    (SELECT value FROM pgfr._profile_settings() WHERE profile = 'troubleshooting' AND key = 'statements_interval_minutes'),
+    (SELECT value FROM pgfr_record._profile_settings() WHERE profile = 'troubleshooting' AND key = 'statements_interval_minutes'),
     '2',
     'Troubleshooting profile statements_interval_minutes should be 2'
 );
 
 SELECT is(
-    (SELECT value FROM pgfr._profile_settings() WHERE profile = 'minimal_overhead' AND key = 'statements_top_n'),
+    (SELECT value FROM pgfr_record._profile_settings() WHERE profile = 'minimal_overhead' AND key = 'statements_top_n'),
     '20',
     'Minimal_overhead profile statements_top_n should be 20'
 );
@@ -140,16 +140,16 @@ DECLARE
     v_snap2 INTEGER;
 BEGIN
     -- Create two snapshot rows to use as parents
-    INSERT INTO pgfr.snapshots (captured_at, pg_version)
+    INSERT INTO pgfr_record.snapshots (captured_at, pg_version)
     VALUES (now() - interval '10 minutes', current_setting('server_version_num')::integer)
     RETURNING id INTO v_snap1;
 
-    INSERT INTO pgfr.snapshots (captured_at, pg_version)
+    INSERT INTO pgfr_record.snapshots (captured_at, pg_version)
     VALUES (now() - interval '5 minutes', current_setting('server_version_num')::integer)
     RETURNING id INTO v_snap2;
 
     -- Insert a "previous" row with high cumulative values
-    INSERT INTO pgfr.statement_snapshots (
+    INSERT INTO pgfr_record.statement_snapshots (
         snapshot_id, queryid, dbid, calls, total_exec_time, rows,
         shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written,
         temp_blks_read, temp_blks_written, blk_read_time, blk_write_time,
@@ -164,7 +164,7 @@ BEGIN
 
     -- Insert a "current" row with LOWER values (simulating counter reset)
     -- plus set delta columns as they would be computed
-    INSERT INTO pgfr.statement_snapshots (
+    INSERT INTO pgfr_record.statement_snapshots (
         snapshot_id, queryid, dbid, calls, total_exec_time, rows,
         shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written,
         temp_blks_read, temp_blks_written, blk_read_time, blk_write_time,
@@ -195,7 +195,7 @@ END $$;
 -- Verify counter reset produces NULL deltas
 SELECT ok(
     (SELECT calls_delta IS NULL
-     FROM pgfr.statement_snapshots
+     FROM pgfr_record.statement_snapshots
      WHERE snapshot_id = current_setting('test.snap2')::integer
        AND queryid = 999999999),
     'Counter reset should produce NULL calls_delta'
@@ -203,7 +203,7 @@ SELECT ok(
 
 SELECT ok(
     (SELECT total_exec_time_delta IS NULL
-     FROM pgfr.statement_snapshots
+     FROM pgfr_record.statement_snapshots
      WHERE snapshot_id = current_setting('test.snap2')::integer
        AND queryid = 999999999),
     'Counter reset should produce NULL total_exec_time_delta'
@@ -214,11 +214,11 @@ DO $$
 DECLARE
     v_snap3 INTEGER;
 BEGIN
-    INSERT INTO pgfr.snapshots (captured_at, pg_version)
+    INSERT INTO pgfr_record.snapshots (captured_at, pg_version)
     VALUES (now(), current_setting('server_version_num')::integer)
     RETURNING id INTO v_snap3;
 
-    INSERT INTO pgfr.statement_snapshots (
+    INSERT INTO pgfr_record.statement_snapshots (
         snapshot_id, queryid, dbid, calls, total_exec_time, rows,
         shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written,
         temp_blks_read, temp_blks_written, blk_read_time, blk_write_time,
@@ -247,7 +247,7 @@ END $$;
 
 SELECT is(
     (SELECT calls_delta
-     FROM pgfr.statement_snapshots
+     FROM pgfr_record.statement_snapshots
      WHERE snapshot_id = current_setting('test.snap3')::integer
        AND queryid = 999999999),
     150::bigint,
@@ -259,7 +259,7 @@ SELECT is(
 -- =============================================================================
 
 SELECT is(
-    (SELECT value FROM pgfr.config WHERE key = 'schema_version'),
+    (SELECT value FROM pgfr_record.config WHERE key = 'schema_version'),
     '2.28',
     'Schema version should be 2.28'
 );
@@ -270,7 +270,7 @@ SELECT is(
 
 -- Verify snapshot() still runs without error after our changes
 SELECT lives_ok(
-    $$SELECT pgfr.snapshot()$$,
+    $$SELECT pgfr_record.snapshot()$$,
     'snapshot() should run without error after delta changes'
 );
 

@@ -10,7 +10,7 @@
 -- Verify core is installed
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'schema_version') THEN
+    IF NOT EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'schema_version') THEN
         RAISE EXCEPTION 'Flight Recorder core not installed. Run _record/install.sql first.';
     END IF;
 END $$;
@@ -34,8 +34,8 @@ BEGIN
     -- Get earliest snapshot within window
     SELECT ts.n_tup_ins, ts.n_tup_upd, ts.n_tup_del, s.captured_at
     INTO v_first_snapshot
-    FROM pgfr.table_snapshots ts
-    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr_record.table_snapshots ts
+    JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
       AND s.captured_at >= now() - p_window
     ORDER BY s.captured_at ASC
@@ -44,8 +44,8 @@ BEGIN
     -- Get latest snapshot
     SELECT ts.n_tup_ins, ts.n_tup_upd, ts.n_tup_del, s.captured_at
     INTO v_last_snapshot
-    FROM pgfr.table_snapshots ts
-    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr_record.table_snapshots ts
+    JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
       AND s.captured_at >= now() - p_window
     ORDER BY s.captured_at DESC
@@ -85,8 +85,8 @@ BEGIN
     -- Get latest snapshot for this table
     SELECT ts.n_tup_upd, ts.n_tup_hot_upd
     INTO v_n_tup_upd, v_n_tup_hot_upd
-    FROM pgfr.table_snapshots ts
-    JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+    FROM pgfr_record.table_snapshots ts
+    JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
     WHERE ts.relid = p_relid
     ORDER BY s.captured_at DESC
     LIMIT 1;
@@ -197,8 +197,8 @@ BEGIN
     END IF;
     SELECT count(DISTINCT blocked_pid), max(blocked_duration)
     INTO v_lock_count, v_max_block_duration
-    FROM pgfr.lock_samples_ring l
-    JOIN pgfr.samples_ring s ON s.slot_id = l.slot_id
+    FROM pgfr_record.lock_samples_ring l
+    JOIN pgfr_record.samples_ring s ON s.slot_id = l.slot_id
     WHERE s.captured_at BETWEEN p_start_time AND p_end_time;
     IF v_lock_count > 0 THEN
         anomaly_type := 'LOCK_CONTENTION';
@@ -216,7 +216,7 @@ BEGIN
     END IF;
     -- Database-level XID wraparound check
     SELECT datfrozenxid_age INTO v_datfrozenxid_age
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at BETWEEN p_start_time AND p_end_time
       AND datfrozenxid_age IS NOT NULL
     ORDER BY captured_at DESC
@@ -251,10 +251,10 @@ BEGIN
                  LIMIT 1),
                 v_freeze_max_age
             ) AS table_freeze_max_age
-        FROM pgfr.table_snapshots ts
+        FROM pgfr_record.table_snapshots ts
         LEFT JOIN pg_class c ON c.oid = ts.relid
         WHERE ts.snapshot_id = (
-            SELECT id FROM pgfr.snapshots
+            SELECT id FROM pgfr_record.snapshots
             WHERE captured_at BETWEEN p_start_time AND p_end_time
             ORDER BY captured_at DESC
             LIMIT 1
@@ -303,7 +303,7 @@ BEGIN
     BEGIN
         SELECT max_catalog_oid, large_object_count
         INTO v_max_catalog_oid, v_large_object_count
-        FROM pgfr.snapshots
+        FROM pgfr_record.snapshots
         WHERE captured_at BETWEEN p_start_time AND p_end_time
           AND max_catalog_oid IS NOT NULL
         ORDER BY captured_at DESC
@@ -331,7 +331,7 @@ BEGIN
     FOR v_row IN
         SELECT pid, usename, application_name,
                EXTRACT(EPOCH FROM (now() - xact_start))/60 AS idle_minutes
-        FROM pgfr.activity_samples_archive
+        FROM pgfr_record.activity_samples_archive
         WHERE captured_at BETWEEN p_start_time AND p_end_time
           AND state = 'idle in transaction'
           AND xact_start IS NOT NULL
@@ -357,10 +357,10 @@ BEGIN
                COALESCE(ts.relname, split_part(ts.relid::regclass::text, '.', 2)) AS relname,
                ts.n_dead_tup, ts.n_live_tup,
                round(100.0 * ts.n_dead_tup / NULLIF(ts.n_dead_tup + ts.n_live_tup, 0), 1) AS dead_pct
-        FROM pgfr.table_snapshots ts
-        JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
-        WHERE s.captured_at = (SELECT MAX(s2.captured_at) FROM pgfr.snapshots s2
-                               JOIN pgfr.table_snapshots ts2 ON ts2.snapshot_id = s2.id
+        FROM pgfr_record.table_snapshots ts
+        JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
+        WHERE s.captured_at = (SELECT MAX(s2.captured_at) FROM pgfr_record.snapshots s2
+                               JOIN pgfr_record.table_snapshots ts2 ON ts2.snapshot_id = s2.id
                                WHERE s2.captured_at <= p_end_time)
           AND ts.n_dead_tup > 10000
           AND ts.n_dead_tup::float / NULLIF(ts.n_dead_tup + ts.n_live_tup, 0) > 0.1
@@ -386,8 +386,8 @@ BEGIN
                    ts.relid, ts.n_dead_tup, ts.last_autovacuum,
                    s.captured_at,
                    LAG(ts.n_dead_tup) OVER (PARTITION BY ts.relid ORDER BY s.captured_at) AS prev_dead
-            FROM pgfr.table_snapshots ts
-            JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+            FROM pgfr_record.table_snapshots ts
+            JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
             WHERE s.captured_at BETWEEN p_start_time AND p_end_time
         )
         SELECT schemaname, relname, n_dead_tup, last_autovacuum,
@@ -414,7 +414,7 @@ BEGIN
     FOR v_row IN
         SELECT DISTINCT ON (pid) pid, usename, application_name, backend_start,
                EXTRACT(DAY FROM (now() - backend_start)) AS days_open
-        FROM pgfr.activity_samples_archive
+        FROM pgfr_record.activity_samples_archive
         WHERE captured_at BETWEEN p_start_time AND p_end_time
           AND backend_start IS NOT NULL
           AND backend_start < now() - interval '7 days'
@@ -438,8 +438,8 @@ BEGIN
                    EXTRACT(EPOCH FROM r.replay_lag) AS lag_seconds,
                    s.captured_at,
                    ROW_NUMBER() OVER (PARTITION BY r.application_name ORDER BY s.captured_at) AS rn
-            FROM pgfr.replication_snapshots r
-            JOIN pgfr.snapshots s ON s.id = r.snapshot_id
+            FROM pgfr_record.replication_snapshots r
+            JOIN pgfr_record.snapshots s ON s.id = r.snapshot_id
             WHERE s.captured_at BETWEEN p_start_time AND p_end_time
               AND r.replay_lag IS NOT NULL
         ),
@@ -494,7 +494,7 @@ DECLARE
 BEGIN
     SELECT * INTO v_cmp FROM pgfr_analyze.compare(p_start_time, p_end_time);
     SELECT count(*) INTO v_sample_count
-    FROM pgfr.samples_ring WHERE captured_at BETWEEN p_start_time AND p_end_time;
+    FROM pgfr_record.samples_ring WHERE captured_at BETWEEN p_start_time AND p_end_time;
     SELECT count(*) INTO v_anomaly_count
     FROM pgfr_analyze.anomaly_report(p_start_time, p_end_time);
     section := 'OVERVIEW';
@@ -504,7 +504,7 @@ BEGIN
     RETURN NEXT;
     metric := 'Data Coverage';
     value := format('%s snapshots, %s samples',
-                   (SELECT count(*) FROM pgfr.snapshots
+                   (SELECT count(*) FROM pgfr_record.snapshots
                     WHERE captured_at BETWEEN p_start_time AND p_end_time),
                    v_sample_count);
     interpretation := CASE
@@ -577,8 +577,8 @@ BEGIN
         count(DISTINCT blocked_pid) AS blocked_count,
         max(blocked_duration) AS max_duration
     INTO v_lock_summary
-    FROM pgfr.lock_samples_ring l
-    JOIN pgfr.samples_ring s ON s.slot_id = l.slot_id
+    FROM pgfr_record.lock_samples_ring l
+    JOIN pgfr_record.samples_ring s ON s.slot_id = l.slot_id
     WHERE s.captured_at BETWEEN p_start_time AND p_end_time;
     metric := 'Blocked Sessions';
     value := COALESCE(v_lock_summary.blocked_count, 0)::text;
@@ -591,7 +591,7 @@ BEGIN
 END;
 $$;
 -- =============================================================================
--- ANALYSIS FUNCTIONS (full implementations, cross-schema reads from pgfr.*)
+-- ANALYSIS FUNCTIONS (full implementations, cross-schema reads from pgfr_record.*)
 -- =============================================================================
 
 -- Compares database metrics between two time points, returning checkpoint, WAL, buffer, and IO activity deltas
@@ -645,13 +645,13 @@ RETURNS TABLE(
 LANGUAGE sql STABLE AS $$
     WITH
     start_snap AS (
-        SELECT * FROM pgfr.snapshots
+        SELECT * FROM pgfr_record.snapshots
         WHERE captured_at <= p_start_time
         ORDER BY captured_at DESC
         LIMIT 1
     ),
     end_snap AS (
-        SELECT * FROM pgfr.snapshots
+        SELECT * FROM pgfr_record.snapshots
         WHERE captured_at >= p_end_time
         ORDER BY captured_at ASC
         LIMIT 1
@@ -667,7 +667,7 @@ LANGUAGE sql STABLE AS $$
         (e.ckpt_sync_time - s.ckpt_sync_time)::numeric,
         e.ckpt_buffers - s.ckpt_buffers,
         e.wal_bytes - s.wal_bytes,
-        pgfr._pretty_bytes(e.wal_bytes - s.wal_bytes),
+        pgfr_record._pretty_bytes(e.wal_bytes - s.wal_bytes),
         (e.wal_write_time - s.wal_write_time)::numeric,
         (e.wal_sync_time - s.wal_sync_time)::numeric,
         e.bgw_buffers_clean - s.bgw_buffers_clean,
@@ -676,7 +676,7 @@ LANGUAGE sql STABLE AS $$
         e.bgw_buffers_backend_fsync - s.bgw_buffers_backend_fsync,
         e.slots_count,
         e.slots_max_retained_wal,
-        pgfr._pretty_bytes(e.slots_max_retained_wal),
+        pgfr_record._pretty_bytes(e.slots_max_retained_wal),
         e.io_checkpointer_reads - s.io_checkpointer_reads,
         (e.io_checkpointer_read_time - s.io_checkpointer_read_time)::numeric,
         e.io_checkpointer_writes - s.io_checkpointer_writes,
@@ -697,7 +697,7 @@ LANGUAGE sql STABLE AS $$
         (e.io_bgwriter_write_time - s.io_bgwriter_write_time)::numeric,
         e.temp_files - s.temp_files,
         e.temp_bytes - s.temp_bytes,
-        pgfr._pretty_bytes(e.temp_bytes - s.temp_bytes)
+        pgfr_record._pretty_bytes(e.temp_bytes - s.temp_bytes)
     FROM start_snap s, end_snap e
 $$;
 COMMENT ON FUNCTION pgfr_analyze.compare(TIMESTAMPTZ, TIMESTAMPTZ) IS 'Compares database metrics between two time points, returning checkpoint, WAL, buffer, and IO activity deltas.';
@@ -720,9 +720,9 @@ LANGUAGE sql STABLE AS $$
         w.wait_event,
         w.state,
         w.count
-    FROM pgfr.samples_ring sr
-    JOIN pgfr.wait_samples_ring w ON w.slot_id = sr.slot_id
-    WHERE sr.captured_at > now() - pgfr._get_ring_retention_interval()
+    FROM pgfr_record.samples_ring sr
+    JOIN pgfr_record.wait_samples_ring w ON w.slot_id = sr.slot_id
+    WHERE sr.captured_at > now() - pgfr_record._get_ring_retention_interval()
       AND w.backend_type IS NOT NULL
     ORDER BY sr.captured_at DESC, w.count DESC;
 $$;
@@ -756,9 +756,9 @@ LANGUAGE sql STABLE AS $$
         a.query_start,
         sr.captured_at - a.query_start AS running_for,
         a.query_preview
-    FROM pgfr.samples_ring sr
-    JOIN pgfr.activity_samples_ring a ON a.slot_id = sr.slot_id
-    WHERE sr.captured_at > now() - pgfr._get_ring_retention_interval()
+    FROM pgfr_record.samples_ring sr
+    JOIN pgfr_record.activity_samples_ring a ON a.slot_id = sr.slot_id
+    WHERE sr.captured_at > now() - pgfr_record._get_ring_retention_interval()
       AND a.pid IS NOT NULL
     ORDER BY sr.captured_at DESC, a.query_start ASC;
 $$;
@@ -794,9 +794,9 @@ LANGUAGE sql STABLE AS $$
         COALESCE(l.locked_relation_oid::regclass::text, 'OID:' || l.locked_relation_oid::text) AS locked_relation,
         l.blocked_query_preview,
         l.blocking_query_preview
-    FROM pgfr.samples_ring sr
-    JOIN pgfr.lock_samples_ring l ON l.slot_id = sr.slot_id
-    WHERE sr.captured_at > now() - pgfr._get_ring_retention_interval()
+    FROM pgfr_record.samples_ring sr
+    JOIN pgfr_record.lock_samples_ring l ON l.slot_id = sr.slot_id
+    WHERE sr.captured_at > now() - pgfr_record._get_ring_retention_interval()
       AND l.blocked_pid IS NOT NULL
     ORDER BY sr.captured_at DESC, l.blocked_duration DESC;
 $$;
@@ -820,7 +820,7 @@ RETURNS TABLE(
 LANGUAGE sql STABLE AS $$
     WITH sample_range AS (
         SELECT slot_id, captured_at
-        FROM pgfr.samples_ring
+        FROM pgfr_record.samples_ring
         WHERE captured_at BETWEEN p_start_time AND p_end_time
     ),
     total_samples AS (
@@ -835,7 +835,7 @@ LANGUAGE sql STABLE AS $$
         round(avg(w.count), 2) AS avg_waiters,
         max(w.count) AS max_waiters,
         round(100.0 * count(DISTINCT w.slot_id) / NULLIF(t.cnt, 0), 1) AS pct_of_samples
-    FROM pgfr.wait_samples_ring w
+    FROM pgfr_record.wait_samples_ring w
     JOIN sample_range sr ON sr.slot_id = w.slot_id
     CROSS JOIN total_samples t
     WHERE w.state NOT IN ('idle', 'idle in transaction')
@@ -876,16 +876,16 @@ LANGUAGE sql STABLE AS $$
     WITH
     start_snap AS (
         SELECT ss.*, s.captured_at
-        FROM pgfr.statement_snapshots ss
-        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
+        FROM pgfr_record.statement_snapshots ss
+        JOIN pgfr_record.snapshots s ON s.id = ss.snapshot_id
         WHERE s.captured_at <= p_start_time
         ORDER BY s.captured_at DESC
         LIMIT 1000
     ),
     end_snap AS (
         SELECT ss.*, s.captured_at
-        FROM pgfr.statement_snapshots ss
-        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
+        FROM pgfr_record.statement_snapshots ss
+        JOIN pgfr_record.snapshots s ON s.id = ss.snapshot_id
         WHERE s.captured_at >= p_end_time
         ORDER BY s.captured_at ASC
         LIMIT 1000
@@ -988,7 +988,7 @@ LANGUAGE sql STABLE AS $$
     nearest_sample AS (
         SELECT slot_id, captured_at,
                ABS(EXTRACT(EPOCH FROM (captured_at - p_timestamp))) AS offset_secs
-        FROM pgfr.samples_ring
+        FROM pgfr_record.samples_ring
         ORDER BY ABS(EXTRACT(EPOCH FROM (captured_at - p_timestamp)))
         LIMIT 1
     ),
@@ -996,9 +996,9 @@ LANGUAGE sql STABLE AS $$
         SELECT s.id, s.captured_at, s.autovacuum_workers,
                (s.checkpoint_time IS DISTINCT FROM prev.checkpoint_time) AS checkpoint_occurred,
                ABS(EXTRACT(EPOCH FROM (s.captured_at - p_timestamp))) AS offset_secs
-        FROM pgfr.snapshots s
-        LEFT JOIN pgfr.snapshots prev ON prev.id = (
-            SELECT MAX(id) FROM pgfr.snapshots WHERE id < s.id
+        FROM pgfr_record.snapshots s
+        LEFT JOIN pgfr_record.snapshots prev ON prev.id = (
+            SELECT MAX(id) FROM pgfr_record.snapshots WHERE id < s.id
         )
         ORDER BY ABS(EXTRACT(EPOCH FROM (s.captured_at - p_timestamp)))
         LIMIT 1
@@ -1007,7 +1007,7 @@ LANGUAGE sql STABLE AS $$
         SELECT
             wait_event_type || ':' || wait_event AS wait_event,
             count
-        FROM pgfr.wait_samples_ring w
+        FROM pgfr_record.wait_samples_ring w
         JOIN nearest_sample ns ON ns.slot_id = w.slot_id
         WHERE w.state NOT IN ('idle', 'idle in transaction')
         ORDER BY count DESC
@@ -1023,14 +1023,14 @@ LANGUAGE sql STABLE AS $$
             count(*) FILTER (WHERE state = 'active') AS active_sessions,
             count(*) FILTER (WHERE wait_event IS NOT NULL) AS waiting_sessions,
             count(*) FILTER (WHERE state = 'idle in transaction') AS idle_in_transaction
-        FROM pgfr.activity_samples_ring a
+        FROM pgfr_record.activity_samples_ring a
         JOIN nearest_sample ns ON ns.slot_id = a.slot_id
     ),
     sample_locks AS (
         SELECT
             count(DISTINCT blocked_pid) AS blocked_pids,
             max(blocked_duration) AS longest_blocked
-        FROM pgfr.lock_samples_ring l
+        FROM pgfr_record.lock_samples_ring l
         JOIN nearest_sample ns ON ns.slot_id = l.slot_id
     ),
     sample_progress AS (
@@ -1097,21 +1097,21 @@ BEGIN
     -- Get configuration with defaults
     v_lookback := COALESCE(
         p_lookback,
-        pgfr._get_config('storm_lookback_interval', '1 hour')::interval
+        pgfr_record._get_config('storm_lookback_interval', '1 hour')::interval
     );
     v_threshold := COALESCE(
         p_threshold_multiplier,
-        pgfr._get_config('storm_threshold_multiplier', '3.0')::numeric
+        pgfr_record._get_config('storm_threshold_multiplier', '3.0')::numeric
     );
     v_baseline_days := COALESCE(
-        pgfr._get_config('storm_baseline_days', '7')::integer,
+        pgfr_record._get_config('storm_baseline_days', '7')::integer,
         7
     );
 
     -- Get severity thresholds
-    v_low_max := pgfr._get_config('storm_severity_low_max', '5.0')::numeric;
-    v_medium_max := pgfr._get_config('storm_severity_medium_max', '10.0')::numeric;
-    v_high_max := pgfr._get_config('storm_severity_high_max', '50.0')::numeric;
+    v_low_max := pgfr_record._get_config('storm_severity_low_max', '5.0')::numeric;
+    v_medium_max := pgfr_record._get_config('storm_severity_medium_max', '10.0')::numeric;
+    v_high_max := pgfr_record._get_config('storm_severity_high_max', '50.0')::numeric;
 
     RETURN QUERY
     WITH recent_stats AS (
@@ -1120,8 +1120,8 @@ BEGIN
             ss.queryid,
             left(ss.query_preview, 100) AS query_preview,
             SUM(ss.calls) AS total_calls
-        FROM pgfr.statement_snapshots ss
-        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
+        FROM pgfr_record.statement_snapshots ss
+        JOIN pgfr_record.snapshots s ON s.id = ss.snapshot_id
         WHERE s.captured_at >= now() - v_lookback
         GROUP BY ss.queryid, left(ss.query_preview, 100)
     ),
@@ -1131,8 +1131,8 @@ BEGIN
             ss.queryid,
             AVG(ss.calls) AS avg_calls,
             COUNT(DISTINCT date_trunc('day', s.captured_at)) AS days_sampled
-        FROM pgfr.statement_snapshots ss
-        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
+        FROM pgfr_record.statement_snapshots ss
+        JOIN pgfr_record.snapshots s ON s.id = ss.snapshot_id
         WHERE s.captured_at >= now() - (v_baseline_days || ' days')::interval
           AND s.captured_at < now() - v_lookback
         GROUP BY ss.queryid
@@ -1240,7 +1240,7 @@ BEGIN
         ckpt_write_time,
         ckpt_sync_time
     INTO v_recent_snapshot
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at >= now() - interval '1 hour'
     ORDER BY captured_at DESC
     LIMIT 1;
@@ -1293,24 +1293,24 @@ BEGIN
     -- Get configuration with defaults
     v_lookback := COALESCE(
         p_lookback,
-        pgfr._get_config('regression_lookback_interval', '1 hour')::interval
+        pgfr_record._get_config('regression_lookback_interval', '1 hour')::interval
     );
     v_threshold_pct := COALESCE(
         p_threshold_pct,
-        pgfr._get_config('regression_threshold_pct', '50.0')::numeric
+        pgfr_record._get_config('regression_threshold_pct', '50.0')::numeric
     );
     v_baseline_days := COALESCE(
-        pgfr._get_config('regression_baseline_days', '7')::integer,
+        pgfr_record._get_config('regression_baseline_days', '7')::integer,
         7
     );
 
     -- Get severity thresholds (percentage-based)
-    v_low_max := pgfr._get_config('regression_severity_low_max', '200.0')::numeric;
-    v_medium_max := pgfr._get_config('regression_severity_medium_max', '500.0')::numeric;
-    v_high_max := pgfr._get_config('regression_severity_high_max', '1000.0')::numeric;
+    v_low_max := pgfr_record._get_config('regression_severity_low_max', '200.0')::numeric;
+    v_medium_max := pgfr_record._get_config('regression_severity_medium_max', '500.0')::numeric;
+    v_high_max := pgfr_record._get_config('regression_severity_high_max', '1000.0')::numeric;
 
     -- Get detection metric (default to buffers)
-    v_detection_metric := pgfr._get_config('regression_detection_metric', 'buffers');
+    v_detection_metric := pgfr_record._get_config('regression_detection_metric', 'buffers');
 
     RETURN QUERY
     WITH recent_stats AS (
@@ -1323,8 +1323,8 @@ BEGIN
             AVG(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS avg_total_buffers,
             STDDEV(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS stddev_total_buffers,
             COUNT(*) AS sample_count
-        FROM pgfr.statement_snapshots ss
-        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
+        FROM pgfr_record.statement_snapshots ss
+        JOIN pgfr_record.snapshots s ON s.id = ss.snapshot_id
         WHERE s.captured_at >= now() - v_lookback
           AND ss.mean_exec_time IS NOT NULL
           AND ss.mean_exec_time > 0
@@ -1339,8 +1339,8 @@ BEGIN
             AVG(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS avg_total_buffers,
             STDDEV(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS stddev_total_buffers,
             COUNT(DISTINCT date_trunc('day', s.captured_at)) AS days_sampled
-        FROM pgfr.statement_snapshots ss
-        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
+        FROM pgfr_record.statement_snapshots ss
+        JOIN pgfr_record.snapshots s ON s.id = ss.snapshot_id
         WHERE s.captured_at >= now() - (v_baseline_days || ' days')::interval
           AND s.captured_at < now() - v_lookback
           AND ss.mean_exec_time IS NOT NULL
@@ -1452,9 +1452,9 @@ BEGIN
         count(*) FILTER (WHERE skipped = true)
     INTO v_avg_sample_ms, v_max_sample_ms, v_avg_snapshot_ms, v_max_snapshot_ms,
          v_total_collections, v_failed_collections, v_skipped_collections
-    FROM pgfr.collection_stats
+    FROM pgfr_record.collection_stats
     WHERE started_at > now() - p_lookback_interval;
-    SELECT schema_size_mb INTO v_schema_size_mb FROM pgfr._check_schema_size();
+    SELECT schema_size_mb INTO v_schema_size_mb FROM pgfr_record._check_schema_size();
     RETURN QUERY SELECT
         'Avg Sample Duration'::text,
         COALESCE(round(v_avg_sample_ms)::text || ' ms', 'N/A'),
@@ -1528,13 +1528,13 @@ BEGIN
             WHEN avg(sections_succeeded::numeric / NULLIF(sections_total, 0)) >= 0.75 THEN 'Fair - some section failures'
             ELSE 'Poor - frequent section failures'
         END::text
-    FROM pgfr.collection_stats
+    FROM pgfr_record.collection_stats
     WHERE started_at > now() - p_lookback_interval
       AND sections_total IS NOT NULL;
     RETURN QUERY
     WITH recent AS (
         SELECT duration_ms
-        FROM pgfr.collection_stats
+        FROM pgfr_record.collection_stats
         WHERE collection_type = 'sample'
           AND success = true
           AND skipped = false
@@ -1544,7 +1544,7 @@ BEGIN
     ),
     baseline AS (
         SELECT duration_ms
-        FROM pgfr.collection_stats
+        FROM pgfr_record.collection_stats
         WHERE collection_type = 'sample'
           AND success = true
           AND skipped = false
@@ -1594,18 +1594,18 @@ DECLARE
     v_schema_size_mb NUMERIC;
 BEGIN
     v_enabled := COALESCE(
-        pgfr._get_config('alert_enabled', 'false')::boolean,
+        pgfr_record._get_config('alert_enabled', 'false')::boolean,
         false
     );
     IF NOT v_enabled THEN
         RETURN;
     END IF;
     v_cb_threshold := COALESCE(
-        pgfr._get_config('alert_circuit_breaker_count', '5')::integer,
+        pgfr_record._get_config('alert_circuit_breaker_count', '5')::integer,
         5
     );
     SELECT count(*) INTO v_cb_count
-    FROM pgfr.collection_stats
+    FROM pgfr_record.collection_stats
     WHERE skipped = true
       AND started_at > now() - p_lookback_interval
       AND skipped_reason LIKE '%Circuit breaker%';
@@ -1618,23 +1618,23 @@ BEGIN
             'System under severe stress. Consider switching to emergency mode or disabling flight recorder temporarily.'::text;
     END IF;
     v_schema_threshold_mb := COALESCE(
-        pgfr._get_config('alert_schema_size_mb', '8000')::integer,
+        pgfr_record._get_config('alert_schema_size_mb', '8000')::integer,
         8000
     );
-    SELECT schema_size_mb INTO v_schema_size_mb FROM pgfr._check_schema_size();
+    SELECT schema_size_mb INTO v_schema_size_mb FROM pgfr_record._check_schema_size();
     IF v_schema_size_mb >= v_schema_threshold_mb THEN
         RETURN QUERY SELECT
             'SCHEMA_SIZE_HIGH'::text,
             'WARNING'::text,
             format('Schema size is %s MB (threshold: %s MB)', round(v_schema_size_mb)::text, v_schema_threshold_mb),
             now(),
-            'Run pgfr.cleanup() to reclaim space.'::text;
+            'Run pgfr_record.cleanup() to reclaim space.'::text;
     END IF;
     DECLARE
         v_recent_failures INTEGER;
     BEGIN
         SELECT count(*) INTO v_recent_failures
-        FROM pgfr.collection_stats
+        FROM pgfr_record.collection_stats
         WHERE success = false
           AND started_at > now() - p_lookback_interval;
         IF v_recent_failures >= 5 THEN
@@ -1649,7 +1649,7 @@ BEGIN
     DECLARE
         v_last_sample TIMESTAMPTZ;
     BEGIN
-        SELECT max(captured_at) INTO v_last_sample FROM pgfr.samples_ring;
+        SELECT max(captured_at) INTO v_last_sample FROM pgfr_record.samples_ring;
         IF v_last_sample IS NULL OR v_last_sample < now() - interval '15 minutes' THEN
             RETURN QUERY SELECT
                 'STALE_DATA'::text,
@@ -1680,7 +1680,7 @@ DECLARE
     v_count INTEGER;
 BEGIN
     -- Get schema version from config
-    SELECT value INTO v_version FROM pgfr.config WHERE key = 'schema_version';
+    SELECT value INTO v_version FROM pgfr_record.config WHERE key = 'schema_version';
     v_version := COALESCE(v_version, 'unknown');
 
     -- Header
@@ -1743,7 +1743,7 @@ BEGIN
     v_result := v_result || '## Snapshots' || E'\n\n';
 
     SELECT count(*) INTO v_count
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at BETWEEN p_start_time AND p_end_time;
 
     IF v_count = 0 THEN
@@ -1753,13 +1753,13 @@ BEGIN
         v_result := v_result || '|-------------|-----------|--------------|------------|----------------|' || E'\n';
         FOR v_row IN
             SELECT captured_at, wal_bytes, ckpt_timed, ckpt_requested, bgw_buffers_backend
-            FROM pgfr.snapshots
+            FROM pgfr_record.snapshots
             WHERE captured_at BETWEEN p_start_time AND p_end_time
             ORDER BY captured_at
         LOOP
             v_result := v_result || '| ' ||
                 to_char(v_row.captured_at, 'YYYY-MM-DD HH24:MI:SS') || ' | ' ||
-                COALESCE(pgfr._pretty_bytes(v_row.wal_bytes), '-') || ' | ' ||
+                COALESCE(pgfr_record._pretty_bytes(v_row.wal_bytes), '-') || ' | ' ||
                 COALESCE(v_row.ckpt_timed::TEXT, '-') || ' | ' ||
                 COALESCE(v_row.ckpt_requested::TEXT, '-') || ' | ' ||
                 COALESCE(v_row.bgw_buffers_backend::TEXT, '-') || ' |' || E'\n';
@@ -1851,7 +1851,7 @@ BEGIN
     v_result := v_result || '## Lock Contention' || E'\n\n';
 
     SELECT count(*) INTO v_count
-    FROM pgfr.lock_samples_archive
+    FROM pgfr_record.lock_samples_archive
     WHERE captured_at BETWEEN p_start_time AND p_end_time;
 
     IF v_count = 0 THEN
@@ -1861,7 +1861,7 @@ BEGIN
         v_result := v_result || '|------|-------------|--------------|-----------|----------|---------------|' || E'\n';
         FOR v_row IN
             SELECT *
-            FROM pgfr.lock_samples_archive
+            FROM pgfr_record.lock_samples_archive
             WHERE captured_at BETWEEN p_start_time AND p_end_time
             ORDER BY captured_at DESC
             LIMIT 50
@@ -1883,7 +1883,7 @@ BEGIN
     v_result := v_result || '## Long-Running Transactions' || E'\n\n';
 
     SELECT count(*) INTO v_count
-    FROM pgfr.activity_samples_archive
+    FROM pgfr_record.activity_samples_archive
     WHERE captured_at BETWEEN p_start_time AND p_end_time
       AND xact_start IS NOT NULL
       AND captured_at - xact_start > interval '5 minutes';
@@ -1902,7 +1902,7 @@ BEGIN
                 captured_at - xact_start AS xact_age,
                 state,
                 query_preview
-            FROM pgfr.activity_samples_archive
+            FROM pgfr_record.activity_samples_archive
             WHERE captured_at BETWEEN p_start_time AND p_end_time
               AND xact_start IS NOT NULL
               AND captured_at - xact_start > interval '5 minutes'
@@ -1927,8 +1927,8 @@ BEGIN
     v_result := v_result || '## Vacuum Progress' || E'\n\n';
 
     SELECT count(*) INTO v_count
-    FROM pgfr.vacuum_progress_snapshots v
-    JOIN pgfr.snapshots s ON s.id = v.snapshot_id
+    FROM pgfr_record.vacuum_progress_snapshots v
+    JOIN pgfr_record.snapshots s ON s.id = v.snapshot_id
     WHERE s.captured_at BETWEEN p_start_time AND p_end_time;
 
     IF v_count = 0 THEN
@@ -1951,8 +1951,8 @@ BEGIN
                     ELSE NULL
                 END AS pct_vacuumed,
                 v.num_dead_tuples
-            FROM pgfr.vacuum_progress_snapshots v
-            JOIN pgfr.snapshots s ON s.id = v.snapshot_id
+            FROM pgfr_record.vacuum_progress_snapshots v
+            JOIN pgfr_record.snapshots s ON s.id = v.snapshot_id
             WHERE s.captured_at BETWEEN p_start_time AND p_end_time
             ORDER BY s.captured_at DESC
             LIMIT 25
@@ -1975,7 +1975,7 @@ BEGIN
     v_result := v_result || '## WAL Archiver Status' || E'\n\n';
 
     SELECT count(*) INTO v_count
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at BETWEEN p_start_time AND p_end_time
       AND archived_count IS NOT NULL;
 
@@ -1993,7 +1993,7 @@ BEGIN
                 max(failed_count) - min(failed_count) AS failed_delta,
                 max(last_failed_wal) AS last_failed_wal,
                 max(last_failed_time) AS last_failed_time
-            FROM pgfr.snapshots
+            FROM pgfr_record.snapshots
             WHERE captured_at BETWEEN p_start_time AND p_end_time
               AND archived_count IS NOT NULL
         LOOP
@@ -2185,7 +2185,7 @@ BEGIN
             'Scheduling (pg_cron)'::text,
             'CAUTION'::text,
             'pg_cron extension not found',
-            'You will need to schedule pgfr.sample() and pgfr.snapshot() manually via external cron or pg_agent.'::text;
+            'You will need to schedule pgfr_record.sample() and pgfr_record.snapshot() manually via external cron or pg_agent.'::text;
     END IF;
     RETURN QUERY SELECT
         'Safety Mechanisms'::text,
@@ -2240,7 +2240,7 @@ $$;
 COMMENT ON FUNCTION pgfr_analyze.preflight_check_with_summary() IS
 
 'Pre-installation validation with summary. Calls preflight_check() twice - once for results, once to count. More expensive but includes summary row.';
--- Generates a comprehensive quarterly health review of the pgfr system
+-- Generates a comprehensive quarterly health review of the pgfr_record system
 -- Assesses collection performance, storage consumption, reliability, circuit breaker activity, and data freshness
 CREATE OR REPLACE FUNCTION pgfr_analyze.quarterly_review()
 RETURNS TABLE(
@@ -2273,7 +2273,7 @@ BEGIN
         count(*) FILTER (WHERE skipped),
         count(*)
     INTO v_avg_duration_ms, v_max_duration_ms, v_skipped_count, v_total_count
-    FROM pgfr.collection_stats
+    FROM pgfr_record.collection_stats
     WHERE started_at > now() - interval '30 days'
       AND collection_type = 'sample';
     IF v_avg_duration_ms IS NULL THEN
@@ -2304,8 +2304,8 @@ BEGIN
                    round(v_avg_duration_ms), round(v_max_duration_ms), v_skipped_count, v_total_count),
             'Collections are slower than expected. Consider: (1) switching to light mode, (2) increasing sample_interval_seconds to 300, or (3) checking for system bottlenecks.'::text;
     END IF;
-    SELECT schema_size_mb INTO v_schema_size_mb FROM pgfr._check_schema_size();
-    SELECT count(*) INTO v_sample_count FROM pgfr.samples_ring;
+    SELECT schema_size_mb INTO v_schema_size_mb FROM pgfr_record._check_schema_size();
+    SELECT count(*) INTO v_sample_count FROM pgfr_record.samples_ring;
     IF v_schema_size_mb < 3000 THEN
         RETURN QUERY SELECT
             '2. Storage Consumption'::text,
@@ -2328,7 +2328,7 @@ BEGIN
     SELECT
         count(*) FILTER (WHERE NOT success AND NOT skipped)
     INTO v_failed_collections
-    FROM pgfr.collection_stats
+    FROM pgfr_record.collection_stats
     WHERE started_at > now() - interval '90 days';
     IF v_failed_collections = 0 THEN
         RETURN QUERY SELECT
@@ -2350,7 +2350,7 @@ BEGIN
             'Frequent failures detected. Check collection_stats for error patterns.'::text;
     END IF;
     SELECT count(*) INTO v_circuit_breaker_trips
-    FROM pgfr.collection_stats
+    FROM pgfr_record.collection_stats
     WHERE skipped = true
       AND skipped_reason LIKE '%Circuit breaker%'
       AND started_at > now() - interval '90 days';
@@ -2373,8 +2373,8 @@ BEGIN
             format('%s trips in 90 days', v_circuit_breaker_trips),
             'Frequent circuit breaker trips indicate system stress. Consider switching to light mode permanently.'::text;
     END IF;
-    SELECT max(captured_at) INTO v_last_sample FROM pgfr.samples_ring;
-    SELECT max(captured_at) INTO v_last_snapshot FROM pgfr.snapshots;
+    SELECT max(captured_at) INTO v_last_sample FROM pgfr_record.samples_ring;
+    SELECT max(captured_at) INTO v_last_snapshot FROM pgfr_record.snapshots;
     IF v_last_sample > now() - interval '10 minutes' AND v_last_snapshot > now() - interval '15 minutes' THEN
         RETURN QUERY SELECT
             '5. Data Freshness'::text,
@@ -2423,13 +2423,13 @@ BEGIN
                 '6. pg_cron Job Health'::text,
                 'CRITICAL'::text,
                 format('%s/%s jobs missing: %s', v_missing_count, 4, array_to_string(v_missing_jobs, ', ')),
-                'CRITICAL: Flight recorder is not collecting data. Run pgfr.enable() to restore.'::text;
+                'CRITICAL: Flight recorder is not collecting data. Run pgfr_record.enable() to restore.'::text;
         ELSE
             RETURN QUERY SELECT
                 '6. pg_cron Job Health'::text,
                 'CRITICAL'::text,
                 format('%s/%s jobs inactive: %s', v_inactive_count, 4, array_to_string(v_inactive_jobs, ', ')),
-                'CRITICAL: pg_cron jobs exist but are disabled. Run pgfr.enable() to reactivate.'::text;
+                'CRITICAL: pg_cron jobs exist but are disabled. Run pgfr_record.enable() to reactivate.'::text;
         END IF;
     EXCEPTION WHEN OTHERS THEN
         RETURN QUERY SELECT
@@ -2519,17 +2519,17 @@ DECLARE
     v_sample_count INTEGER;
 BEGIN
     v_warning_pct := COALESCE(
-        pgfr._get_config('capacity_thresholds_warning_pct', '60')::integer,
+        pgfr_record._get_config('capacity_thresholds_warning_pct', '60')::integer,
         60
     );
     v_critical_pct := COALESCE(
-        pgfr._get_config('capacity_thresholds_critical_pct', '80')::integer,
+        pgfr_record._get_config('capacity_thresholds_critical_pct', '80')::integer,
         80
     );
     v_window_start := now() - p_time_window;
     v_window_hours := EXTRACT(EPOCH FROM p_time_window) / 3600.0;
     SELECT count(*) INTO v_sample_count
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at >= v_window_start;
     IF v_sample_count < 2 THEN
         RETURN QUERY SELECT
@@ -2548,7 +2548,7 @@ BEGIN
     FROM pg_settings WHERE name = 'max_connections';
     SELECT COALESCE(connections_total, 0)
     INTO v_current_connections
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at >= v_window_start
       AND connections_total IS NOT NULL
     ORDER BY captured_at DESC
@@ -2557,7 +2557,7 @@ BEGIN
         COALESCE(round(avg(connections_total), 0), 0),
         COALESCE(max(connections_total), 0)
     INTO v_avg_connections, v_peak_connections
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at >= v_window_start
       AND connections_total IS NOT NULL;
     IF v_current_connections IS NOT NULL THEN
@@ -2595,9 +2595,9 @@ BEGIN
             s.captured_at,
             s.bgw_buffers_backend - prev.bgw_buffers_backend AS backend_writes_delta,
             EXTRACT(EPOCH FROM (s.captured_at - prev.captured_at)) / 60.0 AS interval_minutes
-        FROM pgfr.snapshots s
-        JOIN pgfr.snapshots prev ON prev.id = (
-            SELECT MAX(id) FROM pgfr.snapshots WHERE id < s.id
+        FROM pgfr_record.snapshots s
+        JOIN pgfr_record.snapshots prev ON prev.id = (
+            SELECT MAX(id) FROM pgfr_record.snapshots WHERE id < s.id
         )
         WHERE s.captured_at >= v_window_start
           AND s.bgw_buffers_backend IS NOT NULL
@@ -2644,9 +2644,9 @@ BEGIN
     WITH temp_deltas AS (
         SELECT
             s.temp_bytes - prev.temp_bytes AS temp_bytes_delta
-        FROM pgfr.snapshots s
-        JOIN pgfr.snapshots prev ON prev.id = (
-            SELECT MAX(id) FROM pgfr.snapshots WHERE id < s.id
+        FROM pgfr_record.snapshots s
+        JOIN pgfr_record.snapshots prev ON prev.id = (
+            SELECT MAX(id) FROM pgfr_record.snapshots WHERE id < s.id
         )
         WHERE s.captured_at >= v_window_start
           AND s.temp_bytes IS NOT NULL
@@ -2660,8 +2660,8 @@ BEGIN
     v_temp_bytes_per_hour := v_temp_bytes_total / NULLIF(v_window_hours, 0);
     metric := 'memory_work_mem';
     current_usage := format('%s spilled (%s/hour)',
-                           pgfr._pretty_bytes(v_temp_bytes_total),
-                           pgfr._pretty_bytes(v_temp_bytes_per_hour::bigint));
+                           pgfr_record._pretty_bytes(v_temp_bytes_total),
+                           pgfr_record._pretty_bytes(v_temp_bytes_per_hour::bigint));
     provisioned_capacity := (SELECT setting FROM pg_settings WHERE name = 'work_mem');
     utilization_pct := CASE
         WHEN v_temp_bytes_per_hour IS NULL OR v_temp_bytes_per_hour <= 0 THEN 0
@@ -2677,24 +2677,24 @@ BEGIN
     recommendation := CASE
         WHEN v_temp_bytes_per_hour >= 1073741824 THEN
             format('CRITICAL: Heavy temp file spills (%s/hour). Increase work_mem for affected queries or globally.',
-                   pgfr._pretty_bytes(v_temp_bytes_per_hour::bigint))
+                   pgfr_record._pretty_bytes(v_temp_bytes_per_hour::bigint))
         WHEN v_temp_bytes_per_hour >= 104857600 THEN
             format('WARNING: Moderate temp file spills (%s/hour). Consider increasing work_mem for sort/hash operations.',
-                   pgfr._pretty_bytes(v_temp_bytes_per_hour::bigint))
+                   pgfr_record._pretty_bytes(v_temp_bytes_per_hour::bigint))
         WHEN v_temp_bytes_total = 0 THEN
             'HEALTHY: No temp file spills detected. Queries fitting in work_mem.'
         ELSE
             format('HEALTHY: Minimal temp file spills (%s/hour). Current work_mem adequate.',
-                   pgfr._pretty_bytes(v_temp_bytes_per_hour::bigint))
+                   pgfr_record._pretty_bytes(v_temp_bytes_per_hour::bigint))
     END;
     RETURN NEXT;
     WITH io_deltas AS (
         SELECT
             s.blks_read - prev.blks_read AS read_delta,
             s.blks_hit - prev.blks_hit AS hit_delta
-        FROM pgfr.snapshots s
-        JOIN pgfr.snapshots prev ON prev.id = (
-            SELECT MAX(id) FROM pgfr.snapshots WHERE id < s.id
+        FROM pgfr_record.snapshots s
+        JOIN pgfr_record.snapshots prev ON prev.id = (
+            SELECT MAX(id) FROM pgfr_record.snapshots WHERE id < s.id
         )
         WHERE s.captured_at >= v_window_start
           AND s.blks_read IS NOT NULL
@@ -2745,13 +2745,13 @@ BEGIN
     RETURN NEXT;
     SELECT
         COALESCE(
-            (SELECT db_size_bytes FROM pgfr.snapshots
+            (SELECT db_size_bytes FROM pgfr_record.snapshots
              WHERE captured_at >= v_window_start AND db_size_bytes IS NOT NULL
              ORDER BY captured_at DESC LIMIT 1),
             0
         ),
         COALESCE(
-            (SELECT db_size_bytes FROM pgfr.snapshots
+            (SELECT db_size_bytes FROM pgfr_record.snapshots
              WHERE captured_at >= v_window_start AND db_size_bytes IS NOT NULL
              ORDER BY captured_at ASC LIMIT 1),
             0
@@ -2762,7 +2762,7 @@ BEGIN
                                        / NULLIF(v_window_hours / 24.0, 0);
         metric := 'storage_growth';
         current_usage := format('%s current size, growing %s MB/day',
-                               pgfr._pretty_bytes(v_current_db_size),
+                               pgfr_record._pretty_bytes(v_current_db_size),
                                CASE
                                    WHEN v_storage_growth_mb_per_day < 0 THEN '~0'
                                    ELSE round(v_storage_growth_mb_per_day, 1)::text
@@ -2798,9 +2798,9 @@ BEGIN
         SELECT
             (s.xact_commit + s.xact_rollback - prev.xact_commit - prev.xact_rollback) AS xact_delta,
             EXTRACT(EPOCH FROM (s.captured_at - prev.captured_at)) AS interval_seconds
-        FROM pgfr.snapshots s
-        JOIN pgfr.snapshots prev ON prev.id = (
-            SELECT MAX(id) FROM pgfr.snapshots WHERE id < s.id
+        FROM pgfr_record.snapshots s
+        JOIN pgfr_record.snapshots prev ON prev.id = (
+            SELECT MAX(id) FROM pgfr_record.snapshots WHERE id < s.id
         )
         WHERE s.captured_at >= v_window_start
           AND s.xact_commit IS NOT NULL
@@ -2956,7 +2956,7 @@ CREATE OR REPLACE VIEW pgfr_analyze.capacity_dashboard AS
 WITH
 latest_snapshot AS (
     SELECT max(captured_at) AS last_updated
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
 ),
 capacity_metrics AS (
     SELECT
@@ -3112,15 +3112,15 @@ LANGUAGE sql STABLE AS $$
     WITH
     start_snap AS (
         SELECT DISTINCT ON (ts.relid) ts.*
-        FROM pgfr.table_snapshots ts
-        JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+        FROM pgfr_record.table_snapshots ts
+        JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
         WHERE s.captured_at <= p_start_time
         ORDER BY ts.relid, s.captured_at DESC
     ),
     end_snap AS (
         SELECT DISTINCT ON (ts.relid) ts.*
-        FROM pgfr.table_snapshots ts
-        JOIN pgfr.snapshots s ON s.id = ts.snapshot_id
+        FROM pgfr_record.table_snapshots ts
+        JOIN pgfr_record.snapshots s ON s.id = ts.snapshot_id
         WHERE s.captured_at >= p_end_time
         ORDER BY ts.relid, s.captured_at ASC
     ),
@@ -3292,12 +3292,12 @@ RETURNS TABLE(
 LANGUAGE sql STABLE AS $$
     WITH latest_snapshot AS (
         SELECT max(id) AS snapshot_id
-        FROM pgfr.snapshots
+        FROM pgfr_record.snapshots
         WHERE captured_at > now() - p_lookback_interval
     ),
     earliest_snapshot AS (
         SELECT min(id) AS snapshot_id
-        FROM pgfr.snapshots
+        FROM pgfr_record.snapshots
         WHERE captured_at > now() - p_lookback_interval
     ),
     index_usage AS (
@@ -3308,9 +3308,9 @@ LANGUAGE sql STABLE AS $$
             e.indexrelid,
             e.index_size_bytes,
             COALESCE(e.idx_scan, 0) - COALESCE(s.idx_scan, 0) AS scan_delta
-        FROM pgfr.index_snapshots e
+        FROM pgfr_record.index_snapshots e
         CROSS JOIN latest_snapshot ls
-        LEFT JOIN pgfr.index_snapshots s
+        LEFT JOIN pgfr_record.index_snapshots s
             ON s.indexrelid = e.indexrelid
             AND s.snapshot_id = (SELECT snapshot_id FROM earliest_snapshot)
         WHERE e.snapshot_id = ls.snapshot_id
@@ -3319,7 +3319,7 @@ LANGUAGE sql STABLE AS $$
         iu.schemaname,
         iu.relname,
         iu.indexrelname,
-        pgfr._pretty_bytes(iu.index_size_bytes) AS index_size,
+        pgfr_record._pretty_bytes(iu.index_size_bytes) AS index_size,
         iu.scan_delta AS last_scan_count,
         CASE
             WHEN iu.scan_delta = 0 THEN 'DROP INDEX (never used in ' || p_lookback_interval::text || ')'
@@ -3357,15 +3357,15 @@ LANGUAGE sql STABLE AS $$
     WITH
     start_snap AS (
         SELECT DISTINCT ON (i.indexrelid) i.*
-        FROM pgfr.index_snapshots i
-        JOIN pgfr.snapshots s ON s.id = i.snapshot_id
+        FROM pgfr_record.index_snapshots i
+        JOIN pgfr_record.snapshots s ON s.id = i.snapshot_id
         WHERE s.captured_at <= p_start_time
         ORDER BY i.indexrelid, s.captured_at DESC
     ),
     end_snap AS (
         SELECT DISTINCT ON (i.indexrelid) i.*
-        FROM pgfr.index_snapshots i
-        JOIN pgfr.snapshots s ON s.id = i.snapshot_id
+        FROM pgfr_record.index_snapshots i
+        JOIN pgfr_record.snapshots s ON s.id = i.snapshot_id
         WHERE s.captured_at >= p_end_time
         ORDER BY i.indexrelid, s.captured_at ASC
     )
@@ -3382,7 +3382,7 @@ LANGUAGE sql STABLE AS $$
                              (COALESCE(e.idx_tup_read, 0) - COALESCE(s.idx_tup_read, 0)), 1)
             ELSE NULL
         END AS selectivity,
-        pgfr._pretty_bytes(e.index_size_bytes) AS index_size,
+        pgfr_record._pretty_bytes(e.index_size_bytes) AS index_size,
         CASE
             WHEN COALESCE(e.index_size_bytes, 0) > 0
             THEN round((COALESCE(e.idx_scan, 0) - COALESCE(s.idx_scan, 0)) /
@@ -3421,15 +3421,15 @@ LANGUAGE sql STABLE AS $$
     WITH
     start_configs AS (
         SELECT DISTINCT ON (cs.name) cs.name, cs.setting, cs.unit, cs.source, s.captured_at
-        FROM pgfr.config_snapshots cs
-        JOIN pgfr.snapshots s ON s.id = cs.snapshot_id
+        FROM pgfr_record.config_snapshots cs
+        JOIN pgfr_record.snapshots s ON s.id = cs.snapshot_id
         WHERE s.captured_at <= p_start_time
         ORDER BY cs.name, s.captured_at DESC
     ),
     end_configs AS (
         SELECT DISTINCT ON (cs.name) cs.name, cs.setting, cs.unit, cs.source, s.captured_at
-        FROM pgfr.config_snapshots cs
-        JOIN pgfr.snapshots s ON s.id = cs.snapshot_id
+        FROM pgfr_record.config_snapshots cs
+        JOIN pgfr_record.snapshots s ON s.id = cs.snapshot_id
         WHERE s.captured_at >= p_end_time
         ORDER BY cs.name, s.captured_at ASC
     )
@@ -3466,8 +3466,8 @@ LANGUAGE sql STABLE AS $$
         cs.name AS parameter_name,
         cs.setting || COALESCE(' ' || cs.unit, '') AS value,
         cs.source
-    FROM pgfr.config_snapshots cs
-    JOIN pgfr.snapshots s ON s.id = cs.snapshot_id
+    FROM pgfr_record.config_snapshots cs
+    JOIN pgfr_record.snapshots s ON s.id = cs.snapshot_id
     WHERE s.captured_at <= p_timestamp
         AND (p_category IS NULL OR cs.name LIKE p_category || '%')
     ORDER BY cs.name, s.captured_at DESC
@@ -3506,7 +3506,7 @@ BEGIN
     IF v_shared_buffers < 134217728 THEN  -- < 128 MB
         category := 'memory';
         parameter_name := 'shared_buffers';
-        current_value := pgfr._pretty_bytes(v_shared_buffers);
+        current_value := pgfr_record._pretty_bytes(v_shared_buffers);
         issue := 'Very low shared_buffers';
         recommendation := 'Increase to at least 25% of available RAM';
         RETURN NEXT;
@@ -3516,7 +3516,7 @@ BEGIN
     IF v_work_mem < 16777216 THEN  -- < 16 MB
         category := 'memory';
         parameter_name := 'work_mem';
-        current_value := pgfr._pretty_bytes(v_work_mem);
+        current_value := pgfr_record._pretty_bytes(v_work_mem);
         issue := 'Low work_mem may cause disk spills';
         recommendation := 'Consider increasing to 32-64MB, depending on workload';
         RETURN NEXT;
@@ -3583,8 +3583,8 @@ LANGUAGE sql STABLE AS $$
             WHEN drc.role_name <> '' THEN 'role'
             ELSE 'unknown'
         END AS scope
-    FROM pgfr.db_role_config_snapshots drc
-    JOIN pgfr.snapshots s ON s.id = drc.snapshot_id
+    FROM pgfr_record.db_role_config_snapshots drc
+    JOIN pgfr_record.snapshots s ON s.id = drc.snapshot_id
     WHERE s.captured_at <= p_timestamp
         AND (p_database IS NULL OR drc.database_name = p_database)
         AND (p_role IS NULL OR drc.role_name = p_role)
@@ -3614,16 +3614,16 @@ LANGUAGE sql STABLE AS $$
     start_configs AS (
         SELECT DISTINCT ON (drc.database_name, drc.role_name, drc.parameter_name)
             drc.database_name, drc.role_name, drc.parameter_name, drc.parameter_value
-        FROM pgfr.db_role_config_snapshots drc
-        JOIN pgfr.snapshots s ON s.id = drc.snapshot_id
+        FROM pgfr_record.db_role_config_snapshots drc
+        JOIN pgfr_record.snapshots s ON s.id = drc.snapshot_id
         WHERE s.captured_at <= p_start_time
         ORDER BY drc.database_name, drc.role_name, drc.parameter_name, s.captured_at DESC
     ),
     end_configs AS (
         SELECT DISTINCT ON (drc.database_name, drc.role_name, drc.parameter_name)
             drc.database_name, drc.role_name, drc.parameter_name, drc.parameter_value
-        FROM pgfr.db_role_config_snapshots drc
-        JOIN pgfr.snapshots s ON s.id = drc.snapshot_id
+        FROM pgfr_record.db_role_config_snapshots drc
+        JOIN pgfr_record.snapshots s ON s.id = drc.snapshot_id
         WHERE s.captured_at <= p_end_time
         ORDER BY drc.database_name, drc.role_name, drc.parameter_name, s.captured_at DESC
     )
@@ -3662,7 +3662,7 @@ RETURNS TABLE(
 )
 LANGUAGE sql STABLE AS $$
     WITH latest_snapshot AS (
-        SELECT id FROM pgfr.snapshots ORDER BY captured_at DESC LIMIT 1
+        SELECT id FROM pgfr_record.snapshots ORDER BY captured_at DESC LIMIT 1
     ),
     config_data AS (
         SELECT
@@ -3675,7 +3675,7 @@ LANGUAGE sql STABLE AS $$
                 WHEN drc.role_name <> '' THEN 'role'
                 ELSE 'unknown'
             END AS scope
-        FROM pgfr.db_role_config_snapshots drc
+        FROM pgfr_record.db_role_config_snapshots drc
         WHERE drc.snapshot_id = (SELECT id FROM latest_snapshot)
     )
     SELECT
@@ -3797,13 +3797,13 @@ BEGIN
     -- STEP 1: Find surrounding snapshots
     -- ==========================================================================
     SELECT * INTO v_snap_before
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at <= p_timestamp
     ORDER BY captured_at DESC
     LIMIT 1;
 
     SELECT * INTO v_snap_after
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at >= p_timestamp
     ORDER BY captured_at ASC
     LIMIT 1;
@@ -3817,14 +3817,14 @@ BEGIN
     -- STEP 2: Find surrounding samples (from ring buffer)
     -- ==========================================================================
     SELECT sr.* INTO v_sample_before
-    FROM pgfr.samples_ring sr
+    FROM pgfr_record.samples_ring sr
     WHERE sr.captured_at <= p_timestamp
       AND sr.captured_at > '1970-01-01'::timestamptz
     ORDER BY sr.captured_at DESC
     LIMIT 1;
 
     SELECT sr.* INTO v_sample_after
-    FROM pgfr.samples_ring sr
+    FROM pgfr_record.samples_ring sr
     WHERE sr.captured_at >= p_timestamp
       AND sr.captured_at > '1970-01-01'::timestamptz
     ORDER BY sr.captured_at ASC
@@ -3839,7 +3839,7 @@ BEGIN
     -- STEP 3: Interpolate snapshot metrics
     -- ==========================================================================
     IF v_snap_before IS NOT NULL AND v_snap_after IS NOT NULL THEN
-        v_est_active := pgfr._interpolate_metric(
+        v_est_active := pgfr_record._interpolate_metric(
             v_snap_before.connections_active::NUMERIC,
             v_snap_before.captured_at,
             v_snap_after.connections_active::NUMERIC,
@@ -3847,7 +3847,7 @@ BEGIN
             p_timestamp
         );
 
-        v_est_total := pgfr._interpolate_metric(
+        v_est_total := pgfr_record._interpolate_metric(
             v_snap_before.connections_total::NUMERIC,
             v_snap_before.captured_at,
             v_snap_after.connections_total::NUMERIC,
@@ -3942,14 +3942,14 @@ BEGIN
         -- Count active sessions
         SELECT COUNT(*), COUNT(*) FILTER (WHERE a.state = 'active')
         INTO v_sessions, v_sessions
-        FROM pgfr.activity_samples_ring a
+        FROM pgfr_record.activity_samples_ring a
         WHERE a.slot_id = v_sample_before.slot_id
           AND a.pid IS NOT NULL;
 
         -- Find long-running queries (> 60 seconds at sample time)
         SELECT COUNT(*), MAX(EXTRACT(EPOCH FROM (v_sample_before.captured_at - a.query_start)))
         INTO v_long_running, v_longest_secs
-        FROM pgfr.activity_samples_ring a
+        FROM pgfr_record.activity_samples_ring a
         WHERE a.slot_id = v_sample_before.slot_id
           AND a.pid IS NOT NULL
           AND a.state = 'active'
@@ -3966,7 +3966,7 @@ BEGIN
                 'user', a.usename,
                 'query_preview', a.query_preview
             )
-            FROM pgfr.activity_samples_ring a
+            FROM pgfr_record.activity_samples_ring a
             WHERE a.slot_id = v_sample_before.slot_id
               AND a.pid IS NOT NULL
               AND a.query_start BETWEEN v_window_start AND v_window_end
@@ -3985,7 +3985,7 @@ BEGIN
                 'pid', a.pid,
                 'user', a.usename
             )
-            FROM pgfr.activity_samples_ring a
+            FROM pgfr_record.activity_samples_ring a
             WHERE a.slot_id = v_sample_before.slot_id
               AND a.pid IS NOT NULL
               AND a.xact_start BETWEEN v_window_start AND v_window_end
@@ -4003,7 +4003,7 @@ BEGIN
     IF v_sample_before IS NOT NULL THEN
         SELECT COUNT(*) > 0, COUNT(*)
         INTO v_lock_detected, v_blocked
-        FROM pgfr.lock_samples_ring l
+        FROM pgfr_record.lock_samples_ring l
         WHERE l.slot_id = v_sample_before.slot_id
           AND l.blocked_pid IS NOT NULL;
 
@@ -4024,7 +4024,7 @@ BEGIN
                 'wait_event', ws.wait_event,
                 'count', ws.count
             ) AS w
-            FROM pgfr.wait_samples_ring ws
+            FROM pgfr_record.wait_samples_ring ws
             WHERE ws.slot_id = v_sample_before.slot_id
               AND ws.wait_event IS NOT NULL
             ORDER BY ws.count DESC NULLS LAST
@@ -4169,7 +4169,7 @@ BEGIN
                 'write_time_ms', round(s.ckpt_write_time::NUMERIC, 1),
                 'sync_time_ms', round(s.ckpt_sync_time::NUMERIC, 1)
             ) AS details
-        FROM pgfr.snapshots s
+        FROM pgfr_record.snapshots s
         WHERE s.checkpoint_time BETWEEN p_start_time AND p_end_time
           AND s.checkpoint_time IS NOT NULL
 
@@ -4184,7 +4184,7 @@ BEGIN
                 'wal_file', s.last_archived_wal,
                 'archived_count', s.archived_count
             ) AS details
-        FROM pgfr.snapshots s
+        FROM pgfr_record.snapshots s
         WHERE s.last_archived_time BETWEEN p_start_time AND p_end_time
           AND s.last_archived_time IS NOT NULL
 
@@ -4199,7 +4199,7 @@ BEGIN
                 'wal_file', s.last_failed_wal,
                 'failed_count', s.failed_count
             ) AS details
-        FROM pgfr.snapshots s
+        FROM pgfr_record.snapshots s
         WHERE s.last_failed_time BETWEEN p_start_time AND p_end_time
           AND s.last_failed_time IS NOT NULL
 
@@ -4217,8 +4217,8 @@ BEGIN
                 'client_addr', a.client_addr::TEXT,
                 'query_preview', a.query_preview
             ) AS details
-        FROM pgfr.activity_samples_ring a
-        JOIN pgfr.samples_ring sr ON sr.slot_id = a.slot_id
+        FROM pgfr_record.activity_samples_ring a
+        JOIN pgfr_record.samples_ring sr ON sr.slot_id = a.slot_id
         WHERE a.query_start BETWEEN p_start_time AND p_end_time
           AND a.query_start IS NOT NULL
           AND a.pid IS NOT NULL
@@ -4236,8 +4236,8 @@ BEGIN
                 'user', a.usename,
                 'application', a.application_name
             ) AS details
-        FROM pgfr.activity_samples_ring a
-        JOIN pgfr.samples_ring sr ON sr.slot_id = a.slot_id
+        FROM pgfr_record.activity_samples_ring a
+        JOIN pgfr_record.samples_ring sr ON sr.slot_id = a.slot_id
         WHERE a.xact_start BETWEEN p_start_time AND p_end_time
           AND a.xact_start IS NOT NULL
           AND a.pid IS NOT NULL
@@ -4259,8 +4259,8 @@ BEGIN
                 'client_addr', a.client_addr::TEXT,
                 'backend_type', a.backend_type
             ) AS details
-        FROM pgfr.activity_samples_ring a
-        JOIN pgfr.samples_ring sr ON sr.slot_id = a.slot_id
+        FROM pgfr_record.activity_samples_ring a
+        JOIN pgfr_record.samples_ring sr ON sr.slot_id = a.slot_id
         WHERE a.backend_start BETWEEN p_start_time AND p_end_time
           AND a.backend_start IS NOT NULL
           AND a.pid IS NOT NULL
@@ -4284,8 +4284,8 @@ BEGIN
                 'lock_type', l.lock_type,
                 'duration', l.blocked_duration::TEXT
             ) AS details
-        FROM pgfr.lock_samples_ring l
-        JOIN pgfr.samples_ring sr ON sr.slot_id = l.slot_id
+        FROM pgfr_record.lock_samples_ring l
+        JOIN pgfr_record.samples_ring sr ON sr.slot_id = l.slot_id
         WHERE sr.captured_at BETWEEN p_start_time AND p_end_time
           AND l.blocked_pid IS NOT NULL
           AND sr.captured_at > '1970-01-01'::timestamptz
@@ -4305,7 +4305,7 @@ BEGIN
                 'avg_concurrent', round(wa.avg_waiters, 1),
                 'sample_count', wa.sample_count
             ) AS details
-        FROM pgfr.wait_event_aggregates wa
+        FROM pgfr_record.wait_event_aggregates wa
         WHERE wa.start_time BETWEEN p_start_time AND p_end_time
           AND wa.max_waiters >= 3  -- Only show significant waits
 
@@ -4330,7 +4330,7 @@ BEGIN
                 'blks_read', s.blks_read,
                 'temp_bytes', s.temp_bytes
             ) AS details
-        FROM pgfr.snapshots s
+        FROM pgfr_record.snapshots s
         WHERE s.captured_at BETWEEN p_start_time AND p_end_time
     )
     SELECT ae.event_time, ae.event_type, ae.description, ae.details
@@ -4452,8 +4452,8 @@ BEGIN
         MAX(l.blocked_duration),
         AVG(l.blocked_duration)
     INTO v_blocked_total, v_max_block_duration, v_avg_block_duration
-    FROM pgfr.lock_samples_ring l
-    JOIN pgfr.samples_ring sr ON sr.slot_id = l.slot_id
+    FROM pgfr_record.lock_samples_ring l
+    JOIN pgfr_record.samples_ring sr ON sr.slot_id = l.slot_id
     WHERE sr.captured_at BETWEEN p_start_time AND p_end_time
       AND l.blocked_pid IS NOT NULL;
 
@@ -4464,7 +4464,7 @@ BEGIN
             MAX(blocked_duration),
             AVG(blocked_duration)
         INTO v_blocked_total, v_max_block_duration, v_avg_block_duration
-        FROM pgfr.lock_samples_archive
+        FROM pgfr_record.lock_samples_archive
         WHERE captured_at BETWEEN p_start_time AND p_end_time
           AND blocked_pid IS NOT NULL;
     END IF;
@@ -4476,8 +4476,8 @@ BEGIN
     INTO v_blocked_max_concurrent
     FROM (
         SELECT COUNT(DISTINCT l.blocked_pid) AS blocked_count
-        FROM pgfr.lock_samples_ring l
-        JOIN pgfr.samples_ring sr ON sr.slot_id = l.slot_id
+        FROM pgfr_record.lock_samples_ring l
+        JOIN pgfr_record.samples_ring sr ON sr.slot_id = l.slot_id
         WHERE sr.captured_at BETWEEN p_start_time AND p_end_time
           AND l.blocked_pid IS NOT NULL
         GROUP BY sr.slot_id
@@ -4488,8 +4488,8 @@ BEGIN
     INTO v_lock_types
     FROM (
         SELECT l.lock_type, COUNT(*) AS cnt
-        FROM pgfr.lock_samples_ring l
-        JOIN pgfr.samples_ring sr ON sr.slot_id = l.slot_id
+        FROM pgfr_record.lock_samples_ring l
+        JOIN pgfr_record.samples_ring sr ON sr.slot_id = l.slot_id
         WHERE sr.captured_at BETWEEN p_start_time AND p_end_time
           AND l.blocked_pid IS NOT NULL
           AND l.lock_type IS NOT NULL
@@ -4507,8 +4507,8 @@ BEGIN
             ss.queryid,
             left(ss.query_preview, 80) AS query_preview,
             AVG(ss.mean_exec_time) AS baseline_ms
-        FROM pgfr.statement_snapshots ss
-        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
+        FROM pgfr_record.statement_snapshots ss
+        JOIN pgfr_record.snapshots s ON s.id = ss.snapshot_id
         WHERE s.captured_at BETWEEN v_baseline_start AND v_baseline_end
           AND ss.mean_exec_time IS NOT NULL
           AND ss.mean_exec_time > 0
@@ -4519,8 +4519,8 @@ BEGIN
         SELECT
             ss.queryid,
             AVG(ss.mean_exec_time) AS during_ms
-        FROM pgfr.statement_snapshots ss
-        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
+        FROM pgfr_record.statement_snapshots ss
+        JOIN pgfr_record.snapshots s ON s.id = ss.snapshot_id
         WHERE s.captured_at BETWEEN p_start_time AND p_end_time
           AND ss.mean_exec_time IS NOT NULL
           AND ss.mean_exec_time > 0
@@ -4561,7 +4561,7 @@ BEGIN
     -- Baseline connections (average before incident)
     SELECT COALESCE(AVG(connections_total), 0)::integer
     INTO v_conn_before
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at BETWEEN v_baseline_start AND v_baseline_end;
 
     -- During incident connections
@@ -4569,7 +4569,7 @@ BEGIN
         COALESCE(AVG(connections_total), 0)::integer,
         COALESCE(MAX(connections_total), 0)::integer
     INTO v_conn_during_avg, v_conn_during_max
-    FROM pgfr.snapshots
+    FROM pgfr_record.snapshots
     WHERE captured_at BETWEEN p_start_time AND p_end_time;
 
     -- Connection increase percentage
@@ -4592,8 +4592,8 @@ BEGIN
             COALESCE(l.blocked_app, 'unknown') AS app,
             COUNT(DISTINCT l.blocked_pid) AS blocked_count,
             MAX(l.blocked_duration) AS max_wait
-        FROM pgfr.lock_samples_ring l
-        JOIN pgfr.samples_ring sr ON sr.slot_id = l.slot_id
+        FROM pgfr_record.lock_samples_ring l
+        JOIN pgfr_record.samples_ring sr ON sr.slot_id = l.slot_id
         WHERE sr.captured_at BETWEEN p_start_time AND p_end_time
           AND l.blocked_pid IS NOT NULL
         GROUP BY COALESCE(l.blocked_app, 'unknown')
@@ -4610,8 +4610,8 @@ BEGIN
             w.wait_event_type,
             w.wait_event,
             SUM(w.count) AS total_count
-        FROM pgfr.wait_samples_ring w
-        JOIN pgfr.samples_ring sr ON sr.slot_id = w.slot_id
+        FROM pgfr_record.wait_samples_ring w
+        JOIN pgfr_record.samples_ring sr ON sr.slot_id = w.slot_id
         WHERE sr.captured_at BETWEEN v_baseline_start AND v_baseline_end
           AND w.wait_event IS NOT NULL
         GROUP BY w.wait_event_type, w.wait_event
@@ -4621,8 +4621,8 @@ BEGIN
             w.wait_event_type,
             w.wait_event,
             SUM(w.count) AS total_count
-        FROM pgfr.wait_samples_ring w
-        JOIN pgfr.samples_ring sr ON sr.slot_id = w.slot_id
+        FROM pgfr_record.wait_samples_ring w
+        JOIN pgfr_record.samples_ring sr ON sr.slot_id = w.slot_id
         WHERE sr.captured_at BETWEEN p_start_time AND p_end_time
           AND w.wait_event IS NOT NULL
         GROUP BY w.wait_event_type, w.wait_event
@@ -4655,7 +4655,7 @@ BEGIN
             captured_at,
             LAG(xact_commit) OVER (ORDER BY captured_at) AS prev_commit,
             LAG(captured_at) OVER (ORDER BY captured_at) AS prev_time
-        FROM pgfr.snapshots
+        FROM pgfr_record.snapshots
         WHERE captured_at BETWEEN v_baseline_start AND v_baseline_end
     )
     SELECT COALESCE(AVG(
@@ -4676,7 +4676,7 @@ BEGIN
             captured_at,
             LAG(xact_commit) OVER (ORDER BY captured_at) AS prev_commit,
             LAG(captured_at) OVER (ORDER BY captured_at) AS prev_time
-        FROM pgfr.snapshots
+        FROM pgfr_record.snapshots
         WHERE captured_at BETWEEN p_start_time AND p_end_time
     )
     SELECT COALESCE(AVG(
