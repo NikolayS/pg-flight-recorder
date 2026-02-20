@@ -821,7 +821,7 @@ INSERT INTO pgfr.config (key, value) VALUES
     ('alert_circuit_breaker_count', '5'),
     ('alert_schema_size_mb', '8000'),
     ('lock_timeout_strategy', 'fail_fast'),
-    ('check_checkpoint_backup', 'true'),
+
     ('check_pss_conflicts', 'true'),
     ('schema_size_use_percentage', 'true'),
     ('schema_size_percentage', '5.0'),
@@ -1480,43 +1480,8 @@ $$;
 
 -- Evaluates active backups to determine collection eligibility
 -- Returns skip reason message or NULL if collection can proceed
-CREATE OR REPLACE FUNCTION pgfr._should_skip_collection()
-RETURNS TEXT
-LANGUAGE plpgsql AS $$
-DECLARE
-    v_checkpoint_check BOOLEAN;
-    v_backup_running BOOLEAN;
-BEGIN
-    v_checkpoint_check := COALESCE(
-        pgfr._get_config('check_checkpoint_backup', 'true')::boolean,
-        true
-    );
-    IF v_checkpoint_check THEN
-        BEGIN
-            SELECT EXISTS(
-                SELECT 1 FROM pg_stat_activity
-                WHERE pid != pg_backend_pid()
-                  AND (query ILIKE '%pg_dump%'
-                   OR query ILIKE '%pg_basebackup%'
-                   OR application_name ILIKE '%backup%')
-            ) INTO v_backup_running;
-            IF v_backup_running THEN
-                RETURN 'Backup in progress (pg_dump/pg_basebackup/walsender detected)';
-            END IF;
-        EXCEPTION WHEN OTHERS THEN
-            NULL;
-        END;
-    END IF;
-    RETURN NULL;
-EXCEPTION WHEN OTHERS THEN
-    RETURN NULL;
-END;
-$$;
-COMMENT ON FUNCTION pgfr._should_skip_collection() IS 'Pre-flight checks for backups';
-
-
 -- Sampled activity: Collect performance samples (wait events, active sessions, locks) into ring buffers
--- Applies load shedding, circuit breaker, and pre-flight checks before collection
+-- Applies load shedding and circuit breaker before collection
 CREATE OR REPLACE FUNCTION pgfr.sample()
 RETURNS TIMESTAMPTZ
 LANGUAGE plpgsql AS $$
@@ -1548,16 +1513,6 @@ BEGIN
         RAISE NOTICE 'pgfr_record: Skipping sample collection due to circuit breaker';
         RETURN v_captured_at;
     END IF;
-    DECLARE
-        v_skip_reason TEXT;
-    BEGIN
-        v_skip_reason := pgfr._should_skip_collection();
-        IF v_skip_reason IS NOT NULL THEN
-            PERFORM pgfr._record_collection_skip('sample', v_skip_reason);
-            RAISE NOTICE 'pgfr_record: Skipping sample - %', v_skip_reason;
-            RETURN v_captured_at;
-        END IF;
-    END;
     v_stat_id := pgfr._record_collection_start('sample', 3);
     DECLARE
         v_lock_strategy TEXT;
@@ -2692,16 +2647,6 @@ BEGIN
         RAISE NOTICE 'pgfr_record: Skipping snapshot collection due to circuit breaker';
         RETURN v_captured_at;
     END IF;
-    DECLARE
-        v_skip_reason TEXT;
-    BEGIN
-        v_skip_reason := pgfr._should_skip_collection();
-        IF v_skip_reason IS NOT NULL THEN
-            PERFORM pgfr._record_collection_skip('snapshot', v_skip_reason);
-            RAISE NOTICE 'pgfr_record: Skipping snapshot - %', v_skip_reason;
-            RETURN v_captured_at;
-        END IF;
-    END;
     PERFORM pgfr._check_schema_size();
     v_stat_id := pgfr._record_collection_start('snapshot', 7);
     DECLARE

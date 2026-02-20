@@ -9,10 +9,6 @@
 BEGIN;
 SELECT plan(99);
 
--- Disable checkpoint detection during tests to prevent snapshot skipping
-UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
-
-
 -- =============================================================================
 -- 13. ERROR HANDLING & EXCEPTION PATHS (60 tests)
 -- =============================================================================

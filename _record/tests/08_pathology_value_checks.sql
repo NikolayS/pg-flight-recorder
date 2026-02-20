@@ -10,10 +10,6 @@
 BEGIN;
 SELECT plan(12);
 
--- Disable checkpoint detection during tests
-UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
-
-
 -- =============================================================================
 -- VALUE CHECK 1: MEMORY PRESSURE - Temp Files Should Increase (4 tests)
 -- =============================================================================

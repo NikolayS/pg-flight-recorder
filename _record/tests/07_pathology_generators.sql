@@ -11,10 +11,6 @@
 BEGIN;
 SELECT plan(48);
 
--- Disable checkpoint detection during tests to prevent snapshot skipping
-UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
-
-
 -- =============================================================================
 -- PATHOLOGY 1: LOCK CONTENTION (6 tests)
 -- Based on: DIAGNOSTIC_PLAYBOOKS.md - Section 5 "Lock Contention / Blocked Queries"

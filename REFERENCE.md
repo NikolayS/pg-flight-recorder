@@ -608,7 +608,6 @@ UPDATE pgfr.config SET value = '300' WHERE key = 'sample_interval_seconds';
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `check_checkpoint_backup` | `true` | Check for active backups |
 | `check_pss_conflicts` | `true` | Check for pg_stat_statements conflicts |
 
 ### Schema size limits
@@ -753,7 +752,6 @@ SELECT * FROM pgfr.get_mode();     -- Check current mode
 |------------|---------|----------|
 | **Circuit Breaker** | Collection exceeds `circuit_breaker_threshold_ms` (default 1s) | Skips next collection cycle |
 | **Load Shedding** | Active connections exceed `load_shedding_active_pct` of `max_connections` | Skips entire collection cycle |
-| **Backup Check** | Active backup detected (pg_dump/pg_basebackup) | Skips collection to avoid I/O contention |
 
 ### Manual mode control
 

@@ -9,10 +9,6 @@
 BEGIN;
 SELECT plan(54);
 
--- Disable checkpoint detection during tests to prevent snapshot skipping
-UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
-
-
 -- =============================================================================
 -- 1. INSTALLATION VERIFICATION (19 tests)
 -- =============================================================================
@@ -108,11 +104,6 @@ SELECT has_function('pgfr', 'cleanup_aggregates', 'Cleanup: Function pgfr.cleanu
 -- =============================================================================
 -- 3. CORE FUNCTIONALITY (10 tests)
 -- =============================================================================
-
--- Disable checkpoint/backup checks for test environment
--- In CI, fresh containers have checkpoints_req > 0 and recent stats_reset,
--- which triggers false positives in checkpoint detection
-UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
 -- Test snapshot() function works
 SELECT lives_ok(

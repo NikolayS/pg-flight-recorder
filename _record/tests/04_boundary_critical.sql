@@ -7,11 +7,7 @@
 -- =============================================================================
 
 BEGIN;
-SELECT plan(84);
-
--- Disable checkpoint detection during tests to prevent snapshot skipping
-UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
-
+SELECT plan(79);
 
 -- =============================================================================
 -- 11. ADVERSARIAL BOUNDARY TESTS (50 tests)
@@ -511,37 +507,6 @@ UPDATE pgfr.config SET value = '50' WHERE key = 'lock_timeout_ms';
 -- 12.3 Pre-Collection Checks (15 tests)
 -- -----------------------------------------------------------------------------
 
--- Test _should_skip_collection() on non-replica (disable checkpoint check to isolate replica check)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
-
-SELECT ok(
-    pgfr._should_skip_collection() IS NULL,
-    'Pre-Collection: _should_skip_collection() should return NULL on primary (not a replica)'
-);
-
--- Re-enable checkpoint check
-UPDATE pgfr.config SET value = 'true' WHERE key = 'check_checkpoint_backup';
-
--- Test _should_skip_collection() with check_checkpoint_backup disabled
-UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
-
-SELECT ok(
-    pgfr._should_skip_collection() IS NULL,
-    'Pre-Collection: _should_skip_collection() should return NULL when check_checkpoint_backup disabled'
-);
-
--- Re-enable checkpoint/backup check
-UPDATE pgfr.config SET value = 'true' WHERE key = 'check_checkpoint_backup';
-
--- Disable again for remaining tests to prevent snapshot skipping
-UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
-
--- Test _should_skip_collection() general execution
-SELECT lives_ok(
-    $$SELECT pgfr._should_skip_collection()$$,
-    'Pre-Collection: _should_skip_collection() should execute without error'
-);
-
 -- Test _check_statements_health() basic execution
 SELECT lives_ok(
     $$SELECT pgfr._check_statements_health()$$,
@@ -558,29 +523,6 @@ SELECT ok(
 SELECT lives_ok(
     $$SELECT pgfr.sample()$$,
     'Pre-Collection: sample() should succeed even with pre-collection checks enabled'
-);
-
--- Test pre-collection checks with all disabled
-DO $$
-BEGIN
-    UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
-END $$;
-
-SELECT ok(
-    pgfr._should_skip_collection() IS NULL,
-    'Pre-Collection: _should_skip_collection() should return NULL when all checks disabled'
-);
-
--- Re-enable checks
-UPDATE pgfr.config SET value = 'true' WHERE key = 'check_checkpoint_backup';
-
--- Disable checkpoint detection again for remaining tests
-UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
-
--- Test exception handling in _should_skip_collection()
-SELECT lives_ok(
-    $$SELECT pgfr._should_skip_collection()$$,
-    'Pre-Collection: _should_skip_collection() should handle exceptions gracefully'
 );
 
 -- Test _check_statements_health() with pg_stat_statements disabled/unavailable
