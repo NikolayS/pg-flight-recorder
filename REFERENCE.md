@@ -699,7 +699,7 @@ Profiles configure groups of related settings for different environments. Key di
 
 | Setting | default | production_safe | development | troubleshooting | minimal_overhead |
 |---------|---------|-----------------|-------------|-----------------|------------------|
-| `sample_interval_seconds` | 180 | 300 | 180 | 60 | 300 |
+| `sample_interval_seconds` | 60 | 300 | 60 | 60 | 300 |
 | `load_shedding_active_pct` | 70 | 60 | 70 | disabled | 50 |
 | `circuit_breaker_threshold_ms` | 1000 | 800 | 1000 | 2000 | 500 |
 | `enable_locks` | true | false | true | true | false |

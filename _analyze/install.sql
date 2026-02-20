@@ -2168,7 +2168,7 @@ BEGIN
         RETURN QUERY SELECT
             'Storage Overhead'::text,
             'GO'::text,
-            'Ring buffer uses fixed 120KB memory. Aggregates: ~2-3 GB per week (7-day retention).',
+            'Ring buffer memory depends on slot count (default 120 slots, configurable 72-2880). Aggregates: ~2-3 GB per week (7-day retention).',
             'UNLOGGED ring buffers minimize WAL overhead. Ring buffers self-clean automatically. Daily aggregate cleanup prevents unbounded growth.'::text;
     END;
     SELECT EXISTS (

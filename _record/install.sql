@@ -1893,7 +1893,7 @@ EXCEPTION
         RETURN v_captured_at;
 END;
 $$;
-COMMENT ON FUNCTION pgfr_record.sample() IS 'Sampled activity: Collect samples into ring buffer (60s intervals, 3 sections: waits, activity, locks)';
+COMMENT ON FUNCTION pgfr_record.sample() IS 'Sampled activity: Collect samples into ring buffer (configurable interval, default 60s, 3 sections: waits, activity, locks)';
 
 
 -- Aggregates: Aggregate wait events, lock conflicts, and query activity from ring buffers into durable aggregate tables
@@ -4332,7 +4332,7 @@ BEGIN
     SELECT value::integer INTO v_sample_interval_seconds
     FROM pgfr_record.config
     WHERE key = 'sample_interval_seconds';
-    v_sample_interval_seconds := COALESCE(v_sample_interval_seconds, 120);
+    v_sample_interval_seconds := COALESCE(v_sample_interval_seconds, 60);
     SELECT extversion INTO v_pgcron_version
     FROM pg_extension WHERE extname = 'pg_cron';
     IF v_pgcron_version IS NOT NULL THEN
