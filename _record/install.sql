@@ -3995,7 +3995,7 @@ BEGIN
         -- Only reschedule if the job exists (i.e., collection is enabled)
         IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr_sample') THEN
             PERFORM cron.unschedule('pgfr_sample');
-            PERFORM cron.schedule('pgfr_sample', v_cron_expression, 'SELECT pgfr.sample()');
+            PERFORM cron.schedule('pgfr_sample', v_cron_expression, 'SET statement_timeout = ''5s''; SELECT pgfr.sample()');
         END IF;
     EXCEPTION
         WHEN undefined_table THEN NULL;
@@ -4641,7 +4641,7 @@ BEGIN
              split_part(v_pgcron_version, '.', 2)::int = 4 AND
              COALESCE(NULLIF(split_part(v_pgcron_version, '.', 3), '')::int, 0) >= 1)
         );
-        PERFORM cron.schedule('pgfr_snapshot', '*/5 * * * *', 'SELECT pgfr.snapshot()');
+        PERFORM cron.schedule('pgfr_snapshot', '*/5 * * * *', 'SET statement_timeout = ''10s''; SELECT pgfr.snapshot()');
         v_scheduled := v_scheduled + 1;
         IF v_sample_interval_seconds <= 60 THEN
             v_cron_expression := '* * * * *';
@@ -4655,14 +4655,14 @@ BEGIN
             v_cron_expression := format('*/%s * * * *', v_sample_interval_minutes);
             v_sample_schedule := format('approximately every %s seconds', v_sample_interval_seconds);
         END IF;
-        PERFORM cron.schedule('pgfr_sample', v_cron_expression, 'SELECT pgfr.sample()');
+        PERFORM cron.schedule('pgfr_sample', v_cron_expression, 'SET statement_timeout = ''5s''; SELECT pgfr.sample()');
         v_scheduled := v_scheduled + 1;
-        PERFORM cron.schedule('pgfr_flush', '*/5 * * * *', 'SELECT pgfr.flush_ring_to_aggregates()');
+        PERFORM cron.schedule('pgfr_flush', '*/5 * * * *', 'SET statement_timeout = ''10s''; SELECT pgfr.flush_ring_to_aggregates()');
         v_scheduled := v_scheduled + 1;
-        PERFORM cron.schedule('pgfr_archive', '*/15 * * * *', 'SELECT pgfr.archive_ring_samples()');
+        PERFORM cron.schedule('pgfr_archive', '*/15 * * * *', 'SET statement_timeout = ''10s''; SELECT pgfr.archive_ring_samples()');
         v_scheduled := v_scheduled + 1;
         PERFORM cron.schedule('pgfr_cleanup', '0 3 * * *',
-            'SELECT pgfr.cleanup_aggregates(); SELECT * FROM pgfr.cleanup(''30 days''::interval);');
+            'SET statement_timeout = ''60s''; SELECT pgfr.cleanup_aggregates(); SELECT * FROM pgfr.cleanup(''30 days''::interval);');
         v_scheduled := v_scheduled + 1;
         INSERT INTO pgfr.config (key, value, updated_at)
         VALUES ('enabled', 'true', now())
@@ -4734,29 +4734,29 @@ BEGIN
     PERFORM cron.schedule(
         'pgfr_snapshot',
         '*/5 * * * *',
-        'SELECT pgfr.snapshot()'
+        'SET statement_timeout = ''10s''; SELECT pgfr.snapshot()'
     );
     PERFORM cron.schedule(
         'pgfr_sample',
         '*/2 * * * *',
-        'SELECT pgfr.sample()'
+        'SET statement_timeout = ''5s''; SELECT pgfr.sample()'
     );
     v_sample_schedule := 'every 120 seconds (ring buffer)';
     RAISE NOTICE 'Flight Recorder installed. Sampling %', v_sample_schedule;
     PERFORM cron.schedule(
         'pgfr_flush',
         '*/5 * * * *',
-        'SELECT pgfr.flush_ring_to_aggregates()'
+        'SET statement_timeout = ''10s''; SELECT pgfr.flush_ring_to_aggregates()'
     );
     PERFORM cron.schedule(
         'pgfr_archive',
         '*/15 * * * *',
-        'SELECT pgfr.archive_ring_samples()'
+        'SET statement_timeout = ''10s''; SELECT pgfr.archive_ring_samples()'
     );
     PERFORM cron.schedule(
         'pgfr_cleanup',
         '0 3 * * *',
-        'SELECT pgfr.cleanup_aggregates(); SELECT * FROM pgfr.cleanup(''30 days''::interval);'
+        'SET statement_timeout = ''60s''; SELECT pgfr.cleanup_aggregates(); SELECT * FROM pgfr.cleanup(''30 days''::interval);'
     );
 EXCEPTION
     WHEN undefined_table THEN
