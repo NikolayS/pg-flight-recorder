@@ -1495,9 +1495,10 @@ BEGIN
         BEGIN
             SELECT EXISTS(
                 SELECT 1 FROM pg_stat_activity
-                WHERE query ILIKE '%pg_dump%'
+                WHERE pid != pg_backend_pid()
+                  AND (query ILIKE '%pg_dump%'
                    OR query ILIKE '%pg_basebackup%'
-                   OR application_name ILIKE '%backup%'
+                   OR application_name ILIKE '%backup%')
             ) INTO v_backup_running;
             IF v_backup_running THEN
                 RETURN 'Backup in progress (pg_dump/pg_basebackup/walsender detected)';
