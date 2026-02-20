@@ -2,8 +2,9 @@
 hubspot.config.yml
 benchmark2/results/*
 
-# Claude Code local settings (user-specific)
-.claude/settings.local.json
+# Mothballed directories
+benchmark/
+.claude/
 
 # Supabase CLI local state
 supabase/
