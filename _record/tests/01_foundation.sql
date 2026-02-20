@@ -12,11 +12,6 @@ SELECT plan(54);
 -- Disable checkpoint detection during tests to prevent snapshot skipping
 UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
--- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
-
--- Disable collection jitter to speed up tests (default is 0-10 second random delay)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
 
 -- =============================================================================
 -- 1. INSTALLATION VERIFICATION (19 tests)

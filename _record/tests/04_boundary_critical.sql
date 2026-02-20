@@ -7,16 +7,11 @@
 -- =============================================================================
 
 BEGIN;
-SELECT plan(100);
+SELECT plan(84);
 
 -- Disable checkpoint detection during tests to prevent snapshot skipping
 UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
--- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
-
--- Disable collection jitter to speed up tests (default is 0-10 second random delay)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
 
 -- =============================================================================
 -- 11. ADVERSARIAL BOUNDARY TESTS (50 tests)
@@ -322,165 +317,6 @@ SELECT lives_ok(
 -- Phase 2: Test all 23 previously untested functions with comprehensive coverage
 
 -- -----------------------------------------------------------------------------
--- 12.1 Mode Switching Logic (15 tests)
--- -----------------------------------------------------------------------------
-
--- Test _check_and_adjust_mode() with auto_mode disabled
-DO $$
-BEGIN
-    UPDATE pgfr.config SET value = 'false' WHERE key = 'auto_mode_enabled';
-END $$;
-
-SELECT is(
-    (SELECT count(*) FROM pgfr._check_and_adjust_mode()),
-    0::bigint,
-    'Mode Switching: _check_and_adjust_mode() should return nothing when auto_mode disabled'
-);
-
--- Re-enable auto mode for subsequent tests
-UPDATE pgfr.config SET value = 'true' WHERE key = 'auto_mode_enabled';
-
--- Test triggering emergency mode via circuit breaker trips
-DO $$
-BEGIN
-    -- Insert 2 recent circuit breaker trips
-    INSERT INTO pgfr.collection_stats (collection_type, started_at, duration_ms, skipped, skipped_reason)
-    VALUES
-        ('sample', now() - interval '5 minutes', 1500, true, 'Circuit breaker tripped - last run exceeded threshold'),
-        ('sample', now() - interval '3 minutes', 1600, true, 'Circuit breaker tripped - last run exceeded threshold');
-END $$;
-
--- Force mode check
-SELECT pgfr._check_and_adjust_mode();
-
-SELECT is(
-    (SELECT value FROM pgfr.config WHERE key = 'mode'),
-    'emergency',
-    'Mode Switching: Should escalate to emergency mode with 2+ circuit breaker trips'
-);
-
--- Test recovery from emergency mode (0 trips)
-DELETE FROM pgfr.collection_stats WHERE skipped_reason LIKE '%Circuit breaker%';
-SELECT pgfr._check_and_adjust_mode();
-
-SELECT ok(
-    (SELECT value FROM pgfr.config WHERE key = 'mode') IN ('light', 'normal'),
-    'Mode Switching: Should recover from emergency mode when circuit breaker trips cleared (to light or normal)'
-);
-
--- Test mode switching with NULL max_connections
-SELECT lives_ok(
-    $$SELECT pgfr._check_and_adjust_mode()$$,
-    'Mode Switching: _check_and_adjust_mode() should handle NULL max_connections gracefully'
-);
-
--- Test with invalid mode in config table
-UPDATE pgfr.config SET value = 'invalid_mode' WHERE key = 'mode';
-
-SELECT lives_ok(
-    $$SELECT pgfr._check_and_adjust_mode()$$,
-    'Mode Switching: Should handle invalid mode in config gracefully'
-);
-
--- Reset to normal mode
-UPDATE pgfr.config SET value = 'normal' WHERE key = 'mode';
-
--- Test mode doesn't change if conditions not met
-DO $$
-DECLARE
-    v_mode_before TEXT;
-    v_mode_after TEXT;
-BEGIN
-    SELECT value INTO v_mode_before FROM pgfr.config WHERE key = 'mode';
-
-    -- Check mode with no circuit breaker trips and normal connection usage
-    PERFORM pgfr._check_and_adjust_mode();
-
-    SELECT value INTO v_mode_after FROM pgfr.config WHERE key = 'mode';
-
-    -- Store result for next test to check
-    IF v_mode_before != v_mode_after THEN
-        RAISE EXCEPTION 'Mode changed unexpectedly from % to %', v_mode_before, v_mode_after;
-    END IF;
-END $$;
-
-SELECT ok(true, 'Mode Switching: Mode should remain stable when conditions not met');
-
--- Test mode switching during active collection
-SELECT lives_ok(
-    $$SELECT pgfr._check_and_adjust_mode()$$,
-    'Mode Switching: Mode check should not interfere with active collections'
-);
-
--- Test with connections_threshold = 0
-UPDATE pgfr.config SET value = '0' WHERE key = 'auto_mode_connections_threshold';
-SELECT lives_ok(
-    $$SELECT pgfr._check_and_adjust_mode()$$,
-    'Mode Switching: Should handle connections_threshold = 0 without division by zero'
-);
-
--- Reset connections threshold
-UPDATE pgfr.config SET value = '60' WHERE key = 'auto_mode_connections_threshold';
-
--- Test with trips_threshold = 0
-UPDATE pgfr.config SET value = '0' WHERE key = 'auto_mode_trips_threshold';
-SELECT lives_ok(
-    $$SELECT pgfr._check_and_adjust_mode()$$,
-    'Mode Switching: Should handle trips_threshold = 0'
-);
-
--- Reset trips threshold
-UPDATE pgfr.config SET value = '1' WHERE key = 'auto_mode_trips_threshold';
-
--- Test with trips_threshold = 100
-UPDATE pgfr.config SET value = '100' WHERE key = 'auto_mode_trips_threshold';
-SELECT lives_ok(
-    $$SELECT pgfr._check_and_adjust_mode()$$,
-    'Mode Switching: Should handle trips_threshold = 100 (never trigger emergency)'
-);
-
--- Reset trips threshold
-UPDATE pgfr.config SET value = '1' WHERE key = 'auto_mode_trips_threshold';
-
--- Test that config changes persist after mode switch
-DO $$
-BEGIN
-    -- Switch mode
-    PERFORM pgfr.set_mode('light');
-    PERFORM pgfr.set_mode('normal');
-END $$;
-
-SELECT ok(true, 'Mode Switching: Config values should persist after mode switches');
-
--- Test rapid mode oscillation
-DO $$
-DECLARE
-    i INTEGER;
-BEGIN
-    FOR i IN 1..10 LOOP
-        PERFORM pgfr.set_mode(CASE WHEN i % 2 = 0 THEN 'normal' ELSE 'light' END);
-    END LOOP;
-END $$;
-
-SELECT ok(true, 'Mode Switching: System should handle rapid mode oscillation (10x toggle)');
-
--- Verify mode switch with active checkpoint detection disabled
-UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
-
--- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
-SELECT lives_ok(
-    $$SELECT pgfr._check_and_adjust_mode()$$,
-    'Mode Switching: Should work with checkpoint detection disabled'
-);
-
--- Keep checkpoint detection disabled for subsequent tests
-UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
-
--- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
-
--- -----------------------------------------------------------------------------
 -- 12.2 Health Check Functions (20 tests)
 -- -----------------------------------------------------------------------------
 
@@ -678,9 +514,6 @@ UPDATE pgfr.config SET value = '50' WHERE key = 'lock_timeout_ms';
 -- Test _should_skip_collection() on non-replica (disable checkpoint check to isolate replica check)
 UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
--- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
-
 SELECT ok(
     pgfr._should_skip_collection() IS NULL,
     'Pre-Collection: _should_skip_collection() should return NULL on primary (not a replica)'
@@ -691,9 +524,6 @@ UPDATE pgfr.config SET value = 'true' WHERE key = 'check_checkpoint_backup';
 
 -- Test _should_skip_collection() with check_checkpoint_backup disabled
 UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
-
--- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
 
 SELECT ok(
     pgfr._should_skip_collection() IS NULL,
@@ -706,25 +536,10 @@ UPDATE pgfr.config SET value = 'true' WHERE key = 'check_checkpoint_backup';
 -- Disable again for remaining tests to prevent snapshot skipping
 UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
--- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
-
 -- Test _should_skip_collection() general execution
 SELECT lives_ok(
     $$SELECT pgfr._should_skip_collection()$$,
     'Pre-Collection: _should_skip_collection() should execute without error'
-);
-
--- Test _check_catalog_ddl_locks() with no locks
-SELECT ok(
-    NOT pgfr._check_catalog_ddl_locks(),
-    'Pre-Collection: _check_catalog_ddl_locks() should return false when no DDL locks exist'
-);
-
--- Test _check_catalog_ddl_locks() execution
-SELECT lives_ok(
-    $$SELECT pgfr._check_catalog_ddl_locks()$$,
-    'Pre-Collection: _check_catalog_ddl_locks() should execute without error'
 );
 
 -- Test _check_statements_health() basic execution
@@ -749,9 +564,6 @@ SELECT lives_ok(
 DO $$
 BEGIN
     UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
-
--- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
 END $$;
 
 SELECT ok(
@@ -765,19 +577,10 @@ UPDATE pgfr.config SET value = 'true' WHERE key = 'check_checkpoint_backup';
 -- Disable checkpoint detection again for remaining tests
 UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
--- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
-
 -- Test exception handling in _should_skip_collection()
 SELECT lives_ok(
     $$SELECT pgfr._should_skip_collection()$$,
     'Pre-Collection: _should_skip_collection() should handle exceptions gracefully'
-);
-
--- Test _check_catalog_ddl_locks() exception handling
-SELECT lives_ok(
-    $$SELECT pgfr._check_catalog_ddl_locks()$$,
-    'Pre-Collection: _check_catalog_ddl_locks() should handle exceptions with fallback'
 );
 
 -- Test _check_statements_health() with pg_stat_statements disabled/unavailable

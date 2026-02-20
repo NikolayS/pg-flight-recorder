@@ -7,16 +7,11 @@
 -- =============================================================================
 
 BEGIN;
-SELECT plan(104);
+SELECT plan(97);
 
 -- Disable checkpoint detection during tests to prevent snapshot skipping
 UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
--- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
-
--- Disable collection jitter to speed up tests (default is 0-10 second random delay)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
 
 -- =============================================================================
 -- 15. LOAD SHEDDING & CIRCUIT BREAKER (30 tests) - Phase 5
@@ -195,111 +190,7 @@ SELECT ok(
 UPDATE pgfr.config SET value = '70' WHERE key = 'load_shedding_active_pct';
 
 -- -----------------------------------------------------------------------------
--- 15.2 LOAD THROTTLING (10 tests)
--- -----------------------------------------------------------------------------
-
--- Test 1: Load throttling disabled
-UPDATE pgfr.config SET value = 'false' WHERE key = 'load_throttle_enabled';
-DELETE FROM pgfr.collection_stats;
-
-DO $$ BEGIN
-    PERFORM pgfr.sample();
-END $$;
-
-SELECT ok(
-    (SELECT count(*) FROM pgfr.collection_stats WHERE skipped = false AND collection_type = 'sample') >= 1,
-    'Safety: Load throttling disabled should allow collection'
-);
-
--- Re-enable
-UPDATE pgfr.config SET value = 'true' WHERE key = 'load_throttle_enabled';
-
--- Test 2: Config values can be set for transaction threshold
-UPDATE pgfr.config SET value = '0' WHERE key = 'load_throttle_xact_threshold';
-
-SELECT ok(
-    pgfr._get_config('load_throttle_xact_threshold', '1000')::integer = 0,
-    'Safety: Load throttling transaction threshold config can be set'
-);
-
--- Reset transaction threshold
-UPDATE pgfr.config SET value = '1000' WHERE key = 'load_throttle_xact_threshold';
-
--- Test 3: Config values can be set for block I/O threshold
-UPDATE pgfr.config SET value = '0' WHERE key = 'load_throttle_blk_threshold';
-
-SELECT ok(
-    pgfr._get_config('load_throttle_blk_threshold', '10000')::integer = 0,
-    'Safety: Load throttling block I/O threshold config can be set'
-);
-
--- Reset block threshold
-UPDATE pgfr.config SET value = '10000' WHERE key = 'load_throttle_blk_threshold';
-
--- Test 7: Load throttling doesn't affect snapshot()
-UPDATE pgfr.config SET value = '0' WHERE key = 'load_throttle_xact_threshold';
-DELETE FROM pgfr.snapshots WHERE captured_at > now() - interval '1 minute';
-
-DO $$ BEGIN
-    PERFORM pgfr.snapshot();
-END $$;
-
-SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.snapshots WHERE captured_at > now() - interval '10 seconds'),
-    'Safety: Load throttling should not affect snapshot() collections'
-);
-
--- Reset
-UPDATE pgfr.config SET value = '1000' WHERE key = 'load_throttle_xact_threshold';
-
--- Test 8: Combined load shedding + throttling (shedding runs first)
--- Set load shedding to 0% which will always trigger (X% >= 0% is always true)
--- Set load throttling to 0 which may or may not trigger depending on xact rate
-UPDATE pgfr.config SET value = '0' WHERE key = 'load_shedding_active_pct';
-UPDATE pgfr.config SET value = '0' WHERE key = 'load_throttle_xact_threshold';
-DELETE FROM pgfr.collection_stats;
-
-DO $$ BEGIN
-    PERFORM pgfr.sample();
-END $$;
-
--- Load shedding runs first (checked before throttling), so skip_reason should be load shedding
--- With >= comparison and 0% threshold, load shedding always triggers before throttling check
-SELECT ok(
-    (SELECT skipped_reason FROM pgfr.collection_stats WHERE collection_type = 'sample' AND skipped = true ORDER BY started_at DESC LIMIT 1) LIKE
-    '%Load shedding%',
-    'Safety: When both mechanisms active, load shedding should run first'
-);
-
--- Reset
-UPDATE pgfr.config SET value = '70' WHERE key = 'load_shedding_active_pct';
-UPDATE pgfr.config SET value = '1000' WHERE key = 'load_throttle_xact_threshold';
-
--- Test 9: Throttling with troubleshooting profile (disabled)
-SELECT pgfr.apply_profile('troubleshooting');
-
-SELECT ok(
-    pgfr._get_config('load_throttle_enabled', 'true')::boolean = false,
-    'Safety: troubleshooting profile should disable load throttling'
-);
-
--- Reset to default profile
-SELECT pgfr.apply_profile('default');
-
--- Test 10: Load throttling works with default thresholds
-DELETE FROM pgfr.collection_stats;
-
-DO $$ BEGIN
-    PERFORM pgfr.sample();
-END $$;
-
-SELECT ok(
-    (SELECT count(*) FROM pgfr.collection_stats WHERE collection_type = 'sample') > 0,
-    'Safety: Load throttling with default thresholds should allow collection'
-);
-
--- -----------------------------------------------------------------------------
--- 15.3 CIRCUIT BREAKER (10 tests)
+-- 15.2 CIRCUIT BREAKER (10 tests)
 -- -----------------------------------------------------------------------------
 
 -- Test 1: Circuit breaker disabled
@@ -318,18 +209,18 @@ SELECT ok(
 -- Re-enable
 UPDATE pgfr.config SET value = 'true' WHERE key = 'circuit_breaker_enabled';
 
--- Test 2: _check_circuit_breaker() with < 3 collections (inactive)
+-- Test 2: _check_circuit_breaker() with < 3 fast collections (should not trip)
 DELETE FROM pgfr.collection_stats;
 
--- Insert only 2 collections
+-- Insert only 2 collections with durations below threshold (1000ms)
 INSERT INTO pgfr.collection_stats (collection_type, started_at, completed_at, duration_ms, success, skipped)
 VALUES
-    ('sample', now() - interval '5 minutes', now() - interval '5 minutes', 1500, true, false),
-    ('sample', now() - interval '3 minutes', now() - interval '3 minutes', 1200, true, false);
+    ('sample', now() - interval '5 minutes', now() - interval '5 minutes', 500, true, false),
+    ('sample', now() - interval '3 minutes', now() - interval '3 minutes', 600, true, false);
 
 SELECT ok(
     pgfr._check_circuit_breaker('sample') = false,
-    'Safety: Circuit breaker should be inactive with < 3 collections in window'
+    'Safety: Circuit breaker should not trip with < 3 fast collections in window'
 );
 
 -- Test 3: _check_circuit_breaker() with 3 fast collections (should not trip)

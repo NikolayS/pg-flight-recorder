@@ -12,7 +12,7 @@ pgfr_record installs a set of tables, views, and pg_cron jobs that continuously 
 - **Ring buffers** (UNLOGGED) for real-time wait events, active sessions, and lock contention
 - **Durable snapshots** every 5 minutes: WAL, checkpoints, I/O, tables, indexes, statements, replication, configuration
 - **Aggregates and archives** for longer retention (7 days for archives, 30 days for snapshots)
-- **Safety mechanisms**: circuit breaker, load shedding, adaptive sampling, DDL lock check
+- **Safety mechanisms**: circuit breaker, load shedding, backup detection
 - **Collection modes**: normal, light, emergency, kill
 - **Configurable profiles**: default, production_safe, development, troubleshooting, minimal_overhead
 - **Delta views**: snapshot-over-snapshot changes for trend analysis

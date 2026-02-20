@@ -7,16 +7,11 @@
 -- =============================================================================
 
 BEGIN;
-SELECT plan(100);
+SELECT plan(99);
 
 -- Disable checkpoint detection during tests to prevent snapshot skipping
 UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
--- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
-
--- Disable collection jitter to speed up tests (default is 0-10 second random delay)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
 
 -- =============================================================================
 -- 13. ERROR HANDLING & EXCEPTION PATHS (60 tests)
@@ -176,12 +171,6 @@ UPDATE pgfr.config SET value = '120' WHERE key = 'sample_interval_seconds';
 -- -----------------------------------------------------------------------------
 -- 13.2 Division by Zero Protection (10 tests)
 -- -----------------------------------------------------------------------------
-
--- Test percentage calculation with max_connections = 0 (mock scenario)
-SELECT lives_ok(
-    $$SELECT pgfr._check_and_adjust_mode()$$,
-    'Error: Mode check should handle division by zero in connection percentage'
-);
 
 -- Test hit_ratio calculation in compare() with 0 blocks
 SELECT lives_ok(

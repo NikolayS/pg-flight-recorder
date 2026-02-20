@@ -12,8 +12,6 @@ SELECT plan(72);
 -- Disable checkpoint detection during tests to prevent snapshot skipping
 UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
--- Disable collection jitter to speed up tests
-UPDATE pgfr.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
 
 -- =============================================================================
 -- 1. SCHEMA TESTS - vacuum_control_state TABLE (4 tests)

@@ -598,11 +598,8 @@ UPDATE pgfr.config SET value = '300' WHERE key = 'sample_interval_seconds';
 | `circuit_breaker_threshold_ms` | `1000` | Max collection duration before circuit breaker trips |
 | `circuit_breaker_window_minutes` | `15` | Window for circuit breaker evaluation |
 | `load_shedding_active_pct` | `70` | Connection % threshold for load shedding |
-| `adaptive_sampling_idle_threshold` | `5` | Minimum active connections to consider system non-idle |
 | `lock_timeout_ms` | `100` | Lock timeout for collection queries |
 | `lock_timeout_strategy` | `fail_fast` | Lock timeout strategy |
-| `collection_jitter_max_seconds` | `10` | Maximum jitter added to collection timing |
-| `auto_mode_trips_threshold` | `1` | Circuit breaker trips before automatic mode switch |
 | `section_timeout_ms` | `250` | Per-section timeout within collection |
 | `statement_timeout_ms` | `1000` | Statement timeout for collection queries |
 | `work_mem_kb` | `2048` | `work_mem` for collection queries (KB) |
@@ -611,8 +608,7 @@ UPDATE pgfr.config SET value = '300' WHERE key = 'sample_interval_seconds';
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `check_ddl_before_collection` | `true` | Check for DDL locks before collecting |
-| `check_checkpoint_backup` | `true` | Check for active checkpoints/backups |
+| `check_checkpoint_backup` | `true` | Check for active backups |
 | `check_pss_conflicts` | `true` | Check for pg_stat_statements conflicts |
 
 ### Schema size limits
@@ -656,8 +652,6 @@ UPDATE pgfr.config SET value = '300' WHERE key = 'sample_interval_seconds';
 |---------|---------|-------------|
 | `skip_locks_threshold` | `50` | Skip lock collection if > N blocked backends |
 | `skip_activity_conn_threshold` | `100` | Skip activity collection if > N active connections |
-| `load_throttle_xact_threshold` | `1000` | Skip if > N transactions/second |
-| `load_throttle_blk_threshold` | `10000` | Skip if > N blocks/second |
 
 ### Anomaly detection
 
@@ -707,7 +701,6 @@ Profiles configure groups of related settings for different environments. Key di
 | Setting | default | production_safe | development | troubleshooting | minimal_overhead |
 |---------|---------|-----------------|-------------|-----------------|------------------|
 | `sample_interval_seconds` | 180 | 300 | 180 | 60 | 300 |
-| `adaptive_sampling` | true | true | false | false | true |
 | `load_shedding_active_pct` | 70 | 60 | 70 | disabled | 50 |
 | `circuit_breaker_threshold_ms` | 1000 | 800 | 1000 | 2000 | 500 |
 | `enable_locks` | true | false | true | true | false |
@@ -722,8 +715,6 @@ Profiles configure groups of related settings for different environments. Key di
 | `table_stats_top_n` | 50 | 30 | 50 | 100 | 20 |
 | `table_stats_enabled` | true | true | true | true | false |
 | `index_stats_enabled` | true | true | true | true | false |
-| `auto_mode_connections_threshold` | 60 | 50 | 60 | 80 | 40 |
-| `collection_jitter_enabled` | true | true | true | false | false |
 
 ```sql
 -- List all profiles and their settings
@@ -760,19 +751,10 @@ SELECT * FROM pgfr.get_mode();     -- Check current mode
 
 | Protection | Trigger | Behavior |
 |------------|---------|----------|
-| **Circuit Breaker** | Collection exceeds `circuit_breaker_threshold_ms` (default 1s) | Skips next collection. After `auto_mode_trips_threshold` trips in `circuit_breaker_window_minutes`, switches to lighter mode |
+| **Circuit Breaker** | Collection exceeds `circuit_breaker_threshold_ms` (default 1s) | Skips next collection cycle |
 | **Load Shedding** | Active connections exceed `load_shedding_active_pct` of `max_connections` | Skips entire collection cycle |
-| **Load Throttle** | Transaction rate exceeds `load_throttle_xact_threshold` or block rate exceeds `load_throttle_blk_threshold` | Skips collection |
-| **Adaptive Sampling** | Active connections below `adaptive_sampling_idle_threshold` | Skips collection (system is idle) |
-| **DDL Lock Check** | `AccessExclusiveLock` held on system catalogs | Skips collection to avoid lock contention |
-| **Backup Check** | Active backup detected (pg_dump/pg_basebackup/walsender) | Skips collection to avoid I/O contention |
+| **Backup Check** | Active backup detected (pg_dump/pg_basebackup) | Skips collection to avoid I/O contention |
 
-### Automatic mode switching
+### Manual mode control
 
-When `auto_mode_enabled` is `true`, the system automatically degrades collection mode under sustained pressure:
-
-1. `normal` -> `light`: After repeated circuit breaker trips
-2. `light` -> `emergency`: If pressure continues
-3. `emergency` -> `kill`: Last resort
-
-Mode automatically recovers when pressure subsides.
+Use `pgfr.set_mode()` to manually switch collection modes: `normal`, `light`, `emergency`, `kill`.

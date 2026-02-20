@@ -13,9 +13,6 @@ SELECT plan(12);
 -- Disable checkpoint detection during tests
 UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
--- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
-UPDATE pgfr.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
 
 -- =============================================================================
 -- VALUE CHECK 1: MEMORY PRESSURE - Temp Files Should Increase (4 tests)

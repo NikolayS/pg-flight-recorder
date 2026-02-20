@@ -7,16 +7,11 @@
 -- =============================================================================
 
 BEGIN;
-SELECT plan(80);
+SELECT plan(75);
 
 -- Disable checkpoint detection during tests to prevent snapshot skipping
 UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
--- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
-
--- Disable collection jitter to speed up tests (default is 0-10 second random delay)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'collection_jitter_enabled';
 
 -- =============================================================================
 -- 8. KILL SWITCH (6 tests)
@@ -171,34 +166,6 @@ SELECT lives_ok(
 -- =============================================================================
 -- 10. P2 SAFETY FEATURES (12 tests)
 -- =============================================================================
-
--- Test P2: Automatic mode switching function exists
-SELECT has_function(
-    'pgfr', '_check_and_adjust_mode',
-    'P2: Function pgfr._check_and_adjust_mode should exist'
-);
-
--- Test P2: Auto mode config entries exist
-SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'auto_mode_enabled'),
-    'P2: Auto mode enabled config should exist'
-);
-
-SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'auto_mode_connections_threshold'),
-    'P2: Auto mode connections threshold config should exist'
-);
-
-SELECT ok(
-    EXISTS (SELECT 1 FROM pgfr.config WHERE key = 'auto_mode_trips_threshold'),
-    'P2: Auto mode trips threshold config should exist'
-);
-
--- Test P2: Auto mode defaults to enabled
-SELECT ok(
-    (SELECT value FROM pgfr.config WHERE key = 'auto_mode_enabled') = 'true',
-    'P2: Auto mode should be enabled by default'
-);
 
 -- Test P2: Configurable retention config entries exist
 SELECT ok(

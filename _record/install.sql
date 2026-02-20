@@ -674,9 +674,7 @@ RETURNS TABLE(
 LANGUAGE sql STABLE AS $$
     SELECT * FROM (VALUES
         ('default', 'sample_interval_seconds', '180', 'Sample every 3 minutes'),
-        ('default', 'adaptive_sampling', 'true', 'Skip collection when system idle'),
         ('default', 'load_shedding_enabled', 'true', 'Skip during high load (>70% connections)'),
-        ('default', 'load_throttle_enabled', 'true', 'Skip during I/O pressure'),
         ('default', 'circuit_breaker_enabled', 'true', 'Auto-skip if collections run slow'),
         ('default', 'enable_locks', 'true', 'Collect lock contention data'),
         ('default', 'enable_progress', 'true', 'Collect operation progress'),
@@ -695,19 +693,12 @@ LANGUAGE sql STABLE AS $$
         ('default', 'work_mem_kb', '2048', 'work_mem 2MB for collection queries'),
         ('default', 'skip_locks_threshold', '50', 'Skip lock collection if > 50 blocked'),
         ('default', 'skip_activity_conn_threshold', '100', 'Skip activity if > 100 active'),
-        ('default', 'load_throttle_xact_threshold', '1000', 'Skip if > 1000 xact/sec'),
-        ('default', 'load_throttle_blk_threshold', '10000', 'Skip if > 10000 blk/sec'),
         ('default', 'statements_interval_minutes', '15', 'Collect statements every 15 minutes'),
         ('default', 'statements_min_calls', '1', 'Include queries with >= 1 call'),
         ('default', 'table_stats_top_n', '50', 'Track top 50 tables'),
-        ('default', 'collection_jitter_enabled', 'true', 'Add jitter to prevent thundering herd'),
-        ('default', 'auto_mode_enabled', 'true', 'Enable automatic mode switching'),
-        ('default', 'auto_mode_connections_threshold', '60', 'Emergency mode at 60% connections'),
         ('production_safe', 'sample_interval_seconds', '300', 'Sample every 5 minutes (40% less overhead)'),
-        ('production_safe', 'adaptive_sampling', 'true', 'Skip when idle'),
         ('production_safe', 'load_shedding_enabled', 'true', 'Skip during high load'),
         ('production_safe', 'load_shedding_active_pct', '60', 'More aggressive load shedding (60% vs 70%)'),
-        ('production_safe', 'load_throttle_enabled', 'true', 'Skip during I/O pressure'),
         ('production_safe', 'circuit_breaker_enabled', 'true', 'Auto-skip if slow'),
         ('production_safe', 'circuit_breaker_threshold_ms', '800', 'Stricter circuit breaker (800ms vs 1000ms)'),
         ('production_safe', 'enable_locks', 'false', 'Disable lock collection (reduce overhead)'),
@@ -728,18 +719,11 @@ LANGUAGE sql STABLE AS $$
         ('production_safe', 'work_mem_kb', '1024', 'Lower work_mem to reduce overhead'),
         ('production_safe', 'skip_locks_threshold', '30', 'More aggressive lock skip'),
         ('production_safe', 'skip_activity_conn_threshold', '50', 'More aggressive activity skip'),
-        ('production_safe', 'load_throttle_xact_threshold', '500', 'Lower xact threshold'),
-        ('production_safe', 'load_throttle_blk_threshold', '5000', 'Lower I/O threshold'),
         ('production_safe', 'statements_interval_minutes', '30', 'Less frequent statement collection'),
         ('production_safe', 'statements_min_calls', '5', 'Only queries with >= 5 calls'),
         ('production_safe', 'table_stats_top_n', '30', 'Track fewer tables'),
-        ('production_safe', 'collection_jitter_enabled', 'true', 'Add jitter to prevent thundering herd'),
-        ('production_safe', 'auto_mode_enabled', 'true', 'Enable automatic mode switching'),
-        ('production_safe', 'auto_mode_connections_threshold', '50', 'Earlier emergency mode'),
         ('development', 'sample_interval_seconds', '180', 'Sample every 3 minutes'),
-        ('development', 'adaptive_sampling', 'false', 'Always collect (never skip when idle)'),
         ('development', 'load_shedding_enabled', 'true', 'Skip during high load'),
-        ('development', 'load_throttle_enabled', 'true', 'Skip during I/O pressure'),
         ('development', 'circuit_breaker_enabled', 'true', 'Auto-skip if slow'),
         ('development', 'enable_locks', 'true', 'Collect lock data'),
         ('development', 'enable_progress', 'true', 'Collect progress data'),
@@ -758,18 +742,11 @@ LANGUAGE sql STABLE AS $$
         ('development', 'work_mem_kb', '2048', 'Standard work_mem'),
         ('development', 'skip_locks_threshold', '50', 'Standard lock skip threshold'),
         ('development', 'skip_activity_conn_threshold', '100', 'Standard activity skip threshold'),
-        ('development', 'load_throttle_xact_threshold', '1000', 'Standard xact threshold'),
-        ('development', 'load_throttle_blk_threshold', '10000', 'Standard I/O threshold'),
         ('development', 'statements_interval_minutes', '15', 'Collect statements every 15 minutes'),
         ('development', 'statements_min_calls', '1', 'Include all queries'),
         ('development', 'table_stats_top_n', '50', 'Track top 50 tables'),
-        ('development', 'collection_jitter_enabled', 'true', 'Add jitter'),
-        ('development', 'auto_mode_enabled', 'true', 'Enable automatic mode switching'),
-        ('development', 'auto_mode_connections_threshold', '60', 'Standard emergency threshold'),
         ('troubleshooting', 'sample_interval_seconds', '60', 'Sample every minute (detailed data)'),
-        ('troubleshooting', 'adaptive_sampling', 'false', 'Never skip - always collect'),
         ('troubleshooting', 'load_shedding_enabled', 'false', 'Collect even under load'),
-        ('troubleshooting', 'load_throttle_enabled', 'false', 'Collect even during I/O pressure'),
         ('troubleshooting', 'circuit_breaker_enabled', 'true', 'Keep circuit breaker enabled'),
         ('troubleshooting', 'circuit_breaker_threshold_ms', '2000', 'More lenient threshold - 2 seconds'),
         ('troubleshooting', 'enable_locks', 'true', 'Collect all lock data'),
@@ -796,20 +773,12 @@ LANGUAGE sql STABLE AS $$
         ('troubleshooting', 'work_mem_kb', '4096', 'More work_mem for complex queries'),
         ('troubleshooting', 'skip_locks_threshold', '100', 'Higher threshold - collect more'),
         ('troubleshooting', 'skip_activity_conn_threshold', '200', 'Higher threshold - collect more'),
-        ('troubleshooting', 'load_throttle_xact_threshold', '2000', 'Higher threshold - collect under load'),
-        ('troubleshooting', 'load_throttle_blk_threshold', '20000', 'Higher threshold - collect under I/O'),
         ('troubleshooting', 'statements_interval_minutes', '5', 'More frequent statement collection'),
         ('troubleshooting', 'statements_min_calls', '1', 'Include all queries'),
         ('troubleshooting', 'table_stats_top_n', '100', 'Track more tables'),
-        ('troubleshooting', 'collection_jitter_enabled', 'false', 'No jitter for consistent timing'),
-        ('troubleshooting', 'auto_mode_enabled', 'false', 'Stay in normal mode for debugging'),
-        ('troubleshooting', 'auto_mode_connections_threshold', '80', 'Higher emergency threshold'),
         ('minimal_overhead', 'sample_interval_seconds', '300', 'Sample every 5 minutes'),
-        ('minimal_overhead', 'adaptive_sampling', 'true', 'Skip when idle'),
-        ('minimal_overhead', 'adaptive_sampling_idle_threshold', '10', 'Higher idle threshold (10 vs 5)'),
         ('minimal_overhead', 'load_shedding_enabled', 'true', 'Skip during high load'),
         ('minimal_overhead', 'load_shedding_active_pct', '50', 'Very aggressive (50%)'),
-        ('minimal_overhead', 'load_throttle_enabled', 'true', 'Skip during I/O pressure'),
         ('minimal_overhead', 'circuit_breaker_enabled', 'true', 'Auto-skip if slow'),
         ('minimal_overhead', 'circuit_breaker_threshold_ms', '500', 'Very strict (500ms)'),
         ('minimal_overhead', 'enable_locks', 'false', 'Disable locks'),
@@ -830,14 +799,9 @@ LANGUAGE sql STABLE AS $$
         ('minimal_overhead', 'work_mem_kb', '1024', 'Minimal work_mem'),
         ('minimal_overhead', 'skip_locks_threshold', '20', 'Very aggressive lock skip'),
         ('minimal_overhead', 'skip_activity_conn_threshold', '30', 'Very aggressive activity skip'),
-        ('minimal_overhead', 'load_throttle_xact_threshold', '300', 'Very low xact threshold'),
-        ('minimal_overhead', 'load_throttle_blk_threshold', '3000', 'Very low I/O threshold'),
         ('minimal_overhead', 'statements_interval_minutes', '30', 'Infrequent statement collection'),
         ('minimal_overhead', 'statements_min_calls', '10', 'Only hot queries'),
-        ('minimal_overhead', 'table_stats_top_n', '20', 'Track fewer tables'),
-        ('minimal_overhead', 'collection_jitter_enabled', 'false', 'No jitter (minimize complexity)'),
-        ('minimal_overhead', 'auto_mode_enabled', 'true', 'Enable automatic mode switching'),
-        ('minimal_overhead', 'auto_mode_connections_threshold', '40', 'Very early emergency mode')
+        ('minimal_overhead', 'table_stats_top_n', '20', 'Track fewer tables')
     ) AS t(profile, key, value, description);
 $$;
 
@@ -853,21 +817,17 @@ INSERT INTO pgfr.config (key, value) VALUES
     ('schema_size_warning_mb', '5000'),
     ('schema_size_critical_mb', '10000'),
     ('schema_size_check_enabled', 'true'),
-    ('auto_mode_trips_threshold', '1'),
     ('alert_enabled', 'false'),
     ('alert_circuit_breaker_count', '5'),
     ('alert_schema_size_mb', '8000'),
     ('lock_timeout_strategy', 'fail_fast'),
-    ('check_ddl_before_collection', 'true'),
     ('check_checkpoint_backup', 'true'),
     ('check_pss_conflicts', 'true'),
     ('schema_size_use_percentage', 'true'),
     ('schema_size_percentage', '5.0'),
     ('schema_size_min_mb', '1000'),
     ('schema_size_max_mb', '10000'),
-    ('adaptive_sampling_idle_threshold', '5'),
     ('load_shedding_active_pct', '70'),
-    ('collection_jitter_max_seconds', '10'),
     ('archive_samples_enabled', 'true'),
     ('archive_sample_frequency_minutes', '15'),
     ('archive_retention_days', '7'),
@@ -1062,90 +1022,6 @@ BEGIN
         250
     );
     PERFORM set_config('statement_timeout', v_timeout_ms::text, true);
-END;
-$$;
-
--- Evaluates system metrics (active connections, circuit breaker activity) and automatically
--- adjusts the flight recorder mode between normal, light, and emergency states
-CREATE OR REPLACE FUNCTION pgfr._check_and_adjust_mode()
-RETURNS TABLE(
-    previous_mode TEXT,
-    new_mode TEXT,
-    reason TEXT,
-    action_taken BOOLEAN
-)
-LANGUAGE plpgsql AS $$
-DECLARE
-    v_enabled BOOLEAN;
-    v_current_mode TEXT;
-    v_connections_threshold INTEGER;
-    v_trips_threshold INTEGER;
-    v_active_connections INTEGER;
-    v_recent_trips INTEGER;
-    v_max_connections INTEGER;
-    v_connection_pct NUMERIC;
-    v_suggested_mode TEXT;
-    v_reason TEXT;
-BEGIN
-    v_enabled := COALESCE(
-        pgfr._get_config('auto_mode_enabled', 'false')::boolean,
-        false
-    );
-    IF NOT v_enabled THEN
-        RETURN;
-    END IF;
-    v_current_mode := pgfr._get_config('mode', 'normal');
-    v_connections_threshold := COALESCE(
-        pgfr._get_config('auto_mode_connections_threshold', '60')::integer,
-        60
-    );
-    v_trips_threshold := COALESCE(
-        pgfr._get_config('auto_mode_trips_threshold', '1')::integer,
-        1
-    );
-    SELECT count(*) FILTER (WHERE state = 'active')
-    INTO v_active_connections
-    FROM pg_stat_activity
-    WHERE backend_type = 'client backend';
-    SELECT setting::integer
-    INTO v_max_connections
-    FROM pg_settings
-    WHERE name = 'max_connections';
-    v_connection_pct := (v_active_connections::numeric / NULLIF(v_max_connections, 0)) * 100;
-    SELECT count(*)
-    INTO v_recent_trips
-    FROM pgfr.collection_stats
-    WHERE skipped = true
-      AND started_at > now() - interval '10 minutes'
-      AND skipped_reason LIKE '%Circuit breaker%';
-    v_suggested_mode := v_current_mode;
-    IF v_recent_trips >= v_trips_threshold THEN
-        v_suggested_mode := 'emergency';
-        v_reason := format('Circuit breaker tripped %s times in last 10 minutes (threshold: %s)',
-                          v_recent_trips, v_trips_threshold);
-    ELSIF v_connection_pct >= v_connections_threshold THEN
-        IF v_current_mode = 'normal' THEN
-            v_suggested_mode := 'light';
-            v_reason := format('Active connections at %s%% of max (threshold: %s%%)',
-                              round(v_connection_pct, 1)::text, v_connections_threshold);
-        END IF;
-    ELSE
-        IF v_current_mode = 'emergency' AND v_recent_trips = 0 THEN
-            v_suggested_mode := 'light';
-            v_reason := 'System recovered: no recent circuit breaker trips';
-        ELSIF v_current_mode = 'light' AND v_connection_pct < (v_connections_threshold * 0.7) THEN
-            v_suggested_mode := 'normal';
-            v_reason := format('System load reduced: connections at %s%% (threshold: %s%%)',
-                              round(v_connection_pct, 1)::text, v_connections_threshold);
-        END IF;
-    END IF;
-    IF v_suggested_mode != v_current_mode THEN
-        PERFORM pgfr.set_mode(v_suggested_mode);
-        RAISE NOTICE 'pgfr_record: Auto-mode switched from % to %: %',
-                     v_current_mode, v_suggested_mode, v_reason;
-        RETURN QUERY SELECT v_current_mode, v_suggested_mode, v_reason, true;
-    END IF;
-    RETURN;
 END;
 $$;
 
@@ -1602,37 +1478,6 @@ BEGIN
 END;
 $$;
 
--- Checks for exclusive DDL locks on critical system catalog tables
--- Returns true if locks detected to indicate potential lock contention
-CREATE OR REPLACE FUNCTION pgfr._check_catalog_ddl_locks()
-RETURNS BOOLEAN
-LANGUAGE plpgsql AS $$
-DECLARE
-    v_ddl_lock_exists BOOLEAN;
-BEGIN
-    SELECT EXISTS(
-        SELECT 1
-        FROM pg_locks l
-        JOIN pg_class c ON c.oid = l.relation
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE l.mode = 'AccessExclusiveLock'
-          AND l.granted = true
-          AND n.nspname IN ('pg_catalog', 'information_schema')
-          AND c.relname IN (
-              'pg_stat_activity',
-              'pg_locks',
-              'pg_stat_database',
-              'pg_stat_statements'
-          )
-    ) INTO v_ddl_lock_exists;
-    RETURN v_ddl_lock_exists;
-EXCEPTION WHEN OTHERS THEN
-    RETURN false;
-END;
-$$;
-COMMENT ON FUNCTION pgfr._check_catalog_ddl_locks() IS 'Pre-check for DDL locks on system catalogs to avoid lock contention';
-
-
 -- Evaluates active backups to determine collection eligibility
 -- Returns skip reason message or NULL if collection can proceed
 CREATE OR REPLACE FUNCTION pgfr._should_skip_collection()
@@ -1650,8 +1495,7 @@ BEGIN
         BEGIN
             SELECT EXISTS(
                 SELECT 1 FROM pg_stat_activity
-                WHERE (backend_type = 'walsender' AND state = 'active')
-                   OR query ILIKE '%pg_dump%'
+                WHERE query ILIKE '%pg_dump%'
                    OR query ILIKE '%pg_basebackup%'
                    OR application_name ILIKE '%backup%'
             ) INTO v_backup_running;
@@ -1697,25 +1541,6 @@ BEGIN
         v_sample_interval_seconds := 3600;
     END IF;
     v_slot_id := (v_epoch / v_sample_interval_seconds) % pgfr._get_ring_buffer_slots();
-    DECLARE
-        v_jitter_enabled BOOLEAN;
-        v_jitter_max INTEGER;
-        v_jitter_seconds NUMERIC;
-    BEGIN
-        v_jitter_enabled := COALESCE(
-            pgfr._get_config('collection_jitter_enabled', 'true')::boolean,
-            true
-        );
-        v_jitter_max := COALESCE(
-            pgfr._get_config('collection_jitter_max_seconds', '10')::integer,
-            10
-        );
-        IF v_jitter_enabled AND v_jitter_max > 0 THEN
-            v_jitter_seconds := random() * v_jitter_max;
-            PERFORM pg_sleep(v_jitter_seconds);
-        END IF;
-    END;
-    PERFORM pgfr._check_and_adjust_mode();
     v_should_skip := pgfr._check_circuit_breaker('sample');
     IF v_should_skip THEN
         PERFORM pgfr._record_collection_skip('sample', 'Circuit breaker tripped - last run exceeded threshold');
@@ -1732,48 +1557,15 @@ BEGIN
             RETURN v_captured_at;
         END IF;
     END;
-    DECLARE
-        v_running_count INTEGER;
-        v_running_pid INTEGER;
-    BEGIN
-        SELECT count(*), min(pid) INTO v_running_count, v_running_pid
-        FROM pg_stat_activity
-        WHERE query ~ 'SELECT\s+pgfr\.sample\(\)'
-          AND state = 'active'
-          AND pid != pg_backend_pid()
-          AND backend_type = 'client backend';
-        IF v_running_count > 0 THEN
-            PERFORM pgfr._record_collection_skip('sample',
-                format('Job deduplication: %s sample job(s) already running (PID: %s)',
-                       v_running_count, v_running_pid));
-            RAISE NOTICE 'pgfr_record: Skipping sample - another job already running (PID: %)', v_running_pid;
-            RETURN v_captured_at;
-        END IF;
-    END;
     v_stat_id := pgfr._record_collection_start('sample', 3);
     DECLARE
-        v_check_ddl BOOLEAN;
         v_lock_strategy TEXT;
-        v_ddl_lock_exists BOOLEAN;
         v_lock_timeout_ms INTEGER;
     BEGIN
-        v_check_ddl := COALESCE(
-            pgfr._get_config('check_ddl_before_collection', 'true')::boolean,
-            true
-        );
         v_lock_strategy := COALESCE(
             pgfr._get_config('lock_timeout_strategy', 'fail_fast'),
             'fail_fast'
         );
-        IF v_check_ddl AND v_lock_strategy = 'skip_if_locked' THEN
-            v_ddl_lock_exists := pgfr._check_catalog_ddl_locks();
-            IF v_ddl_lock_exists THEN
-                PERFORM pgfr._record_collection_skip('sample',
-                    'DDL lock detected on system catalogs (skip_if_locked strategy)');
-                RAISE NOTICE 'pgfr_record: Skipping sample - DDL lock detected on catalogs';
-                RETURN v_captured_at;
-            END IF;
-        END IF;
         v_lock_timeout_ms := CASE v_lock_strategy
             WHEN 'skip_if_locked' THEN 0
             WHEN 'patient' THEN 500
@@ -1789,19 +1581,7 @@ BEGIN
         v_load_threshold_pct INTEGER;
         v_max_connections INTEGER;
         v_active_pct NUMERIC;
-        v_adaptive_sampling BOOLEAN;
-        v_idle_threshold INTEGER;
         v_active_count INTEGER;
-        v_load_throttle_enabled BOOLEAN;
-        v_xact_threshold INTEGER;
-        v_blk_threshold INTEGER;
-        v_xact_rate NUMERIC;
-        v_blk_rate NUMERIC;
-        v_xact_commit BIGINT;
-        v_xact_rollback BIGINT;
-        v_blks_read BIGINT;
-        v_blks_hit BIGINT;
-        v_db_uptime INTERVAL;
         v_stmt_utilization NUMERIC;
         v_stmt_status TEXT;
     BEGIN
@@ -1828,47 +1608,6 @@ BEGIN
                 RETURN v_captured_at;
             END IF;
         END IF;
-        v_load_throttle_enabled := COALESCE(
-                pgfr._get_config('load_throttle_enabled', 'true')::boolean,
-                true
-            );
-            IF v_load_throttle_enabled THEN
-                v_xact_threshold := COALESCE(
-                    pgfr._get_config('load_throttle_xact_threshold', '1000')::integer,
-                    1000
-                );
-                v_blk_threshold := COALESCE(
-                    pgfr._get_config('load_throttle_blk_threshold', '10000')::integer,
-                    10000
-                );
-                SELECT 
-                    xact_commit, 
-                    xact_rollback,
-                    blks_read,
-                    blks_hit,
-                    now() - stats_reset
-                INTO v_xact_commit, v_xact_rollback, v_blks_read, v_blks_hit, v_db_uptime
-                FROM pg_stat_database
-                WHERE datname = current_database();
-                IF v_db_uptime > interval '10 seconds' THEN
-                    v_xact_rate := (v_xact_commit + v_xact_rollback) / EXTRACT(EPOCH FROM v_db_uptime);
-                    v_blk_rate := (v_blks_read + v_blks_hit) / EXTRACT(EPOCH FROM v_db_uptime);
-                    IF v_xact_rate > v_xact_threshold THEN
-                        PERFORM pgfr._record_collection_skip('sample',
-                            format('Load throttling: high transaction rate (%s txn/sec > %s threshold)',
-                                   round(v_xact_rate, 1), v_xact_threshold));
-                        PERFORM set_config('statement_timeout', '0', true);
-                        RETURN v_captured_at;
-                    END IF;
-                    IF v_blk_rate > v_blk_threshold THEN
-                        PERFORM pgfr._record_collection_skip('sample',
-                            format('Load throttling: high I/O rate (%s blocks/sec > %s threshold)',
-                                   round(v_blk_rate, 1), v_blk_threshold));
-                        PERFORM set_config('statement_timeout', '0', true);
-                        RETURN v_captured_at;
-                    END IF;
-                END IF;
-            END IF;
         IF pgfr._has_pg_stat_statements() THEN
             SELECT utilization_pct, status
             INTO v_stmt_utilization, v_stmt_status
@@ -1877,28 +1616,6 @@ BEGIN
                 PERFORM pgfr._record_collection_skip('sample',
                     format('pg_stat_statements overhead: %s utilization (%s%%), skipping to reduce hash table pressure',
                            v_stmt_status, round(v_stmt_utilization, 1)));
-                PERFORM set_config('statement_timeout', '0', true);
-                RETURN v_captured_at;
-            END IF;
-        END IF;
-        v_adaptive_sampling := COALESCE(
-            pgfr._get_config('adaptive_sampling', 'false')::boolean,
-            false
-        );
-        IF v_adaptive_sampling THEN
-            v_idle_threshold := COALESCE(
-                pgfr._get_config('adaptive_sampling_idle_threshold', '5')::integer,
-                5
-            );
-            IF v_active_count IS NULL THEN
-                SELECT count(*) INTO v_active_count
-                FROM pg_stat_activity
-                WHERE state = 'active' AND backend_type = 'client backend';
-            END IF;
-            IF v_active_count < v_idle_threshold THEN
-                PERFORM pgfr._record_collection_skip('sample',
-                    format('Adaptive sampling: system idle (%s active connections < %s threshold)',
-                           v_active_count, v_idle_threshold));
                 PERFORM set_config('statement_timeout', '0', true);
                 RETURN v_captured_at;
             END IF;
@@ -2984,49 +2701,16 @@ BEGIN
             RETURN v_captured_at;
         END IF;
     END;
-    DECLARE
-        v_running_count INTEGER;
-        v_running_pid INTEGER;
-    BEGIN
-        SELECT count(*), min(pid) INTO v_running_count, v_running_pid
-        FROM pg_stat_activity
-        WHERE query ~ 'SELECT\s+pgfr\.snapshot\(\)'
-          AND state = 'active'
-          AND pid != pg_backend_pid()
-          AND backend_type = 'client backend';
-        IF v_running_count > 0 THEN
-            PERFORM pgfr._record_collection_skip('snapshot',
-                format('Job deduplication: %s snapshot job(s) already running (PID: %s)',
-                       v_running_count, v_running_pid));
-            RAISE NOTICE 'pgfr_record: Skipping snapshot - another job already running (PID: %)', v_running_pid;
-            RETURN v_captured_at;
-        END IF;
-    END;
     PERFORM pgfr._check_schema_size();
     v_stat_id := pgfr._record_collection_start('snapshot', 7);
     DECLARE
-        v_check_ddl BOOLEAN;
         v_lock_strategy TEXT;
-        v_ddl_lock_exists BOOLEAN;
         v_lock_timeout_ms INTEGER;
     BEGIN
-        v_check_ddl := COALESCE(
-            pgfr._get_config('check_ddl_before_collection', 'true')::boolean,
-            true
-        );
         v_lock_strategy := COALESCE(
             pgfr._get_config('lock_timeout_strategy', 'fail_fast'),
             'fail_fast'
         );
-        IF v_check_ddl AND v_lock_strategy = 'skip_if_locked' THEN
-            v_ddl_lock_exists := pgfr._check_catalog_ddl_locks();
-            IF v_ddl_lock_exists THEN
-                PERFORM pgfr._record_collection_skip('snapshot',
-                    'DDL lock detected on system catalogs (skip_if_locked strategy)');
-                RAISE NOTICE 'pgfr_record: Skipping snapshot - DDL lock detected on catalogs';
-                RETURN v_captured_at;
-            END IF;
-        END IF;
         v_lock_timeout_ms := CASE v_lock_strategy
             WHEN 'skip_if_locked' THEN 0
             WHEN 'patient' THEN 500
@@ -5455,13 +5139,6 @@ BEGIN
             'Reduce sample retention period'::text,
             format('High sample count (%s) with %s day retention', v_sample_count, v_retention_samples),
             format('UPDATE pgfr.config SET value = ''3'' WHERE key = ''retention_samples_days'';')::text;
-    END IF;
-    IF v_avg_sample_ms > 500 AND pgfr._get_config('auto_mode_enabled', 'false') = 'false' THEN
-        RETURN QUERY SELECT
-            'Automation'::text,
-            'Enable automatic mode switching'::text,
-            'Sample duration varies significantly - auto-mode can help reduce overhead during peaks'::text,
-            'UPDATE pgfr.config SET value = ''true'' WHERE key = ''auto_mode_enabled'';'::text;
     END IF;
     IF NOT FOUND THEN
         RETURN QUERY SELECT
