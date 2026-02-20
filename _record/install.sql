@@ -1165,6 +1165,8 @@ BEGIN
     END;
 END;
 $$;
+COMMENT ON FUNCTION pgfr_record.validate_config() IS
+'Validates Flight Recorder configuration and reports on critical settings: section_timeout_ms, circuit_breaker, lock_timeout_ms, schema_size, skip_thresholds, and recent collection failures.';
 
 -- Validates ring buffer configuration and returns diagnostic checks
 -- Checks retention, batching efficiency, CPU overhead, and memory usage
@@ -3334,6 +3336,9 @@ EXCEPTION
         RAISE;
 END;
 $$;
+COMMENT ON FUNCTION pgfr_record.snapshot() IS
+'Durable snapshots: Collect comprehensive system metrics (WAL, checkpoints, I/O, connections, table/index stats, replication, statements). Version-aware for PG 15/16/17 differences.';
+
 CREATE OR REPLACE VIEW pgfr_record.deltas AS
 SELECT
     s.id,
@@ -3617,6 +3622,8 @@ BEGIN
     RETURN v_description;
 END;
 $$;
+COMMENT ON FUNCTION pgfr_record.set_mode(TEXT) IS
+'Set operating mode: normal (60s, all collectors), light (60s, no progress tracking), or emergency (300s, minimal collectors). Reschedules the sample cron job if running.';
 
 -- Retrieve the current flight recorder operating mode and its associated configuration
 -- Returns mode, sample interval, and feature flags for locks, progress, and statement tracking
@@ -3641,6 +3648,8 @@ LANGUAGE sql STABLE AS $$
         COALESCE(pgfr_record._get_config('enable_progress', 'true')::boolean, true) AS progress_enabled,
         pgfr_record._get_config('statements_enabled', 'auto') AS statements_enabled
 $$;
+COMMENT ON FUNCTION pgfr_record.get_mode() IS
+'Returns current operating mode and configuration: mode name, sample interval, and feature flags for locks, progress, and statement tracking.';
 
 -- Lists the available monitoring profiles for flight recorder with their configurations, use cases, and overhead levels
 CREATE OR REPLACE FUNCTION pgfr_record.list_profiles()
@@ -3680,6 +3689,8 @@ LANGUAGE sql STABLE AS $$
          'Ultra-minimal (~0.008% CPU)')
     ) AS t(profile_name, description, use_case, sample_interval, overhead_level)
 $$;
+COMMENT ON FUNCTION pgfr_record.list_profiles() IS
+'Lists available monitoring profiles (default, production_safe, development, troubleshooting, minimal_overhead) with descriptions, use cases, sample intervals, and overhead levels.';
 
 -- Returns ring buffer optimization profiles for different use cases
 -- Profiles provide pre-configured ring_buffer_slots, sample_interval, and archive settings
@@ -3830,6 +3841,8 @@ BEGIN
     WHERE ps.profile = p_profile_name
     ORDER BY will_change DESC, ps.key;
 END $$;
+COMMENT ON FUNCTION pgfr_record.explain_profile(TEXT) IS
+'Preview configuration changes for a profile without applying them. Compares current settings against profile values to show what would change.';
 
 -- Applies a named configuration profile to pgfr_record by upserting configuration settings
 -- Returns details of changed settings and adjusts recording mode based on the profile
@@ -3884,6 +3897,8 @@ BEGIN
     RAISE NOTICE 'Profile "%" applied: % settings changed, mode set to %',
         p_profile_name, v_changes_made, v_mode;
 END $$;
+COMMENT ON FUNCTION pgfr_record.apply_profile(TEXT) IS
+'Apply a named configuration profile by upserting all profile settings. Also sets the operating mode (normal or emergency) based on the profile. Returns details of which settings changed.';
 
 -- Identifies the closest matching predefined profile for current configuration and returns match percentage with differences
 -- Helps users understand their configuration state relative to available profiles
@@ -3936,6 +3951,9 @@ BEGIN
             ELSE 'Configuration appears to be custom (not matching any profile)'
         END::text;
 END $$;
+COMMENT ON FUNCTION pgfr_record.get_current_profile() IS
+'Identifies the closest matching predefined profile for current configuration. Returns profile name, match percentage, differences array, and a recommendation.';
+
 DROP FUNCTION IF EXISTS pgfr_record.cleanup(INTERVAL);
 
 -- Removes old snapshot and sample data based on configured retention periods
@@ -4009,6 +4027,9 @@ BEGIN
     RETURN QUERY SELECT v_deleted_snapshots, v_deleted_samples, v_deleted_statements, v_deleted_stats;
 END;
 $$;
+COMMENT ON FUNCTION pgfr_record.cleanup(INTERVAL) IS
+'Remove old data based on configured retention periods (snapshots, statements, collection_stats). Pass an interval to override per-table retention, or NULL to use configured defaults.';
+
 DROP FUNCTION IF EXISTS pgfr_record.ring_buffer_health();
 
 -- Monitor ring buffer health: XID age, dead tuple bloat, HOT update effectiveness, and autovacuum status
@@ -4101,7 +4122,8 @@ BEGIN
     END;
 END;
 $$;
-
+COMMENT ON FUNCTION pgfr_record.disable() IS
+'Stop Flight Recorder by unscheduling all pg_cron jobs (sample, snapshot, flush, archive, cleanup) and setting enabled=false. Use enable() to restart.';
 
 -- Configure autovacuum on ring buffer tables
 -- Ring buffers use pre-allocated rows with UPDATE-only pattern, achieving high HOT update ratios.
@@ -4304,6 +4326,9 @@ BEGIN
     END;
 END;
 $$;
+COMMENT ON FUNCTION pgfr_record.enable() IS
+'Start Flight Recorder by scheduling pg_cron jobs for sample collection, snapshots, flush, archival, and cleanup. Requires pg_cron extension. Configures schedules based on current mode and sample interval.';
+
 DO $$
 DECLARE
     v_pgcron_version TEXT;
@@ -4562,7 +4587,8 @@ BEGIN
     END;
 END;
 $$;
-
+COMMENT ON FUNCTION pgfr_record.health_check() IS
+'Comprehensive system health check reporting status, metrics, and recommended actions for: system state, schema size, circuit breaker, sample/snapshot collection, pg_stat_statements, pg_cron jobs, and data volume.';
 
 -- Exports all data before an upgrade, saving to a file for backup
 -- Returns summary of what was exported and the recommended restore command
@@ -4646,6 +4672,8 @@ BEGIN
     FROM pgfr_record.config;
 END;
 $$;
+COMMENT ON FUNCTION pgfr_record.export_for_upgrade() IS
+'Returns summary of all stored data (snapshots, statements, archives, aggregates, config) with row counts and date ranges. Use before pg_dump to assess export scope.';
 
 -- Analyzes current metrics (schema size, sample duration, retention settings) and returns configuration optimization recommendations
 -- Provides actionable SQL commands for performance, storage, and automation tuning
@@ -4708,6 +4736,8 @@ BEGIN
     END IF;
 END;
 $$;
+COMMENT ON FUNCTION pgfr_record.config_recommendations() IS
+'Analyzes current system metrics (schema size, sample duration, retention) and returns actionable tuning recommendations with SQL commands for performance, storage, and automation.';
 
 
 
