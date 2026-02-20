@@ -74,29 +74,29 @@ SELECT throws_ok(
     'Error: explain_profile() should reject NULL input'
 );
 
--- Test compare() with NULL timestamps
+-- Test _compare() with NULL timestamps
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.compare(NULL, NULL)$$,
-    'Error: compare() should handle both NULL timestamps'
+    $$SELECT * FROM pgfr._compare(NULL, NULL)$$,
+    'Error: _compare() should handle both NULL timestamps'
 );
 
--- Test compare() with invalid timestamp format
+-- Test _compare() with invalid timestamp format
 SELECT throws_ok(
-    $$SELECT * FROM pgfr.compare('not-a-date', now())$$,
+    $$SELECT * FROM pgfr._compare('not-a-date', now())$$,
     NULL,
-    'Error: compare() should reject invalid timestamp format'
+    'Error: _compare() should reject invalid timestamp format'
 );
 
--- Test wait_summary() with backwards date range
+-- Test _wait_summary() with backwards date range
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.wait_summary('2024-12-31', '2024-01-01')$$,
-    'Error: wait_summary() should handle backwards date range'
+    $$SELECT * FROM pgfr._wait_summary('2024-12-31', '2024-01-01')$$,
+    'Error: _wait_summary() should handle backwards date range'
 );
 
--- Test activity_at() with NULL timestamp
+-- Test _activity_at() with NULL timestamp
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.activity_at(NULL)$$,
-    'Error: activity_at() should handle NULL timestamp'
+    $$SELECT * FROM pgfr._activity_at(NULL)$$,
+    'Error: _activity_at() should handle NULL timestamp'
 );
 
 -- Test cleanup() with negative retention
@@ -168,19 +168,19 @@ UPDATE pgfr.config SET value = '120' WHERE key = 'sample_interval_seconds';
 -- 13.2 Division by Zero Protection (10 tests)
 -- -----------------------------------------------------------------------------
 
--- Test hit_ratio calculation in compare() with 0 blocks
+-- Test hit_ratio calculation in _compare() with 0 blocks
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.compare(now() - interval '1 hour', now())$$,
-    'Error: compare() should handle zero blocks in hit ratio calculation'
+    $$SELECT * FROM pgfr._compare(now() - interval '1 hour', now())$$,
+    'Error: _compare() should handle zero blocks in hit ratio calculation'
 );
 
--- Test mean_exec_time with 0 calls in statement_compare()
+-- Test mean_exec_time with 0 calls in _statement_compare()
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.statement_compare(
+    $$SELECT * FROM pgfr._statement_compare(
         now() - interval '1 hour',
         now()
     )$$,
-    'Error: statement_compare() should handle zero calls'
+    'Error: _statement_compare() should handle zero calls'
 );
 
 -- Test pct_of_samples calculation with total_samples = 0
@@ -208,14 +208,14 @@ SELECT lives_ok(
 
 -- Test uptime-based rate calculations with uptime < 1 second
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.compare(now() - interval '1 millisecond', now())$$,
-    'Error: compare() should handle very short uptime in rate calculations'
+    $$SELECT * FROM pgfr._compare(now() - interval '1 millisecond', now())$$,
+    'Error: _compare() should handle very short uptime in rate calculations'
 );
 
--- Verify no NaN or INFINITY in compare() results
+-- Verify no NaN or INFINITY in _compare() results
 SELECT ok(
-    (SELECT count(*) FROM pgfr.compare(now() - interval '1 hour', now())) >= 0,
-    'Error: compare() should execute without producing NaN or Infinity values'
+    (SELECT count(*) FROM pgfr._compare(now() - interval '1 hour', now())) >= 0,
+    'Error: _compare() should execute without producing NaN or Infinity values'
 );
 
 -- Test avg calculation with 0 collections in circuit breaker
@@ -418,19 +418,19 @@ END $$;
 
 SELECT ok(true, 'Error: Rapid mode switching should be safe');
 
--- Test INSERT into snapshots during compare() query
+-- Test INSERT into snapshots during _compare() query
 DO $$
 BEGIN
     PERFORM pgfr.snapshot();
-    PERFORM * FROM pgfr.compare(now() - interval '1 hour', now());
+    PERFORM * FROM pgfr._compare(now() - interval '1 hour', now());
 END $$;
 
-SELECT ok(true, 'Error: Snapshot inserts during compare() should be safe');
+SELECT ok(true, 'Error: Snapshot inserts during _compare() should be safe');
 
--- Test DELETE from aggregates during wait_summary() query
+-- Test DELETE from aggregates during _wait_summary() query
 DO $$
 BEGIN
-    PERFORM * FROM pgfr.wait_summary(now() - interval '1 hour', now());
+    PERFORM * FROM pgfr._wait_summary(now() - interval '1 hour', now());
     DELETE FROM pgfr.wait_event_aggregates
     WHERE start_time < now() - interval '30 days';
 END $$;
@@ -653,7 +653,7 @@ END $$;
 
 SELECT ok(true, 'Phase 4: PG15 deltas view handles NULL io_* columns (skipped if not PG15)');
 
--- Test PG15: compare() with NULL io_* values
+-- Test PG15: _compare() with NULL io_* values
 DO $$
 DECLARE
     v_pg_version INTEGER;
@@ -668,15 +668,15 @@ BEGIN
         PERFORM pgfr.snapshot();
         SELECT id INTO v_end_id FROM pgfr.snapshots ORDER BY id DESC LIMIT 1;
 
-        -- compare() should handle NULL io_* arithmetic
-        PERFORM * FROM pgfr.compare(
+        -- _compare() should handle NULL io_* arithmetic
+        PERFORM * FROM pgfr._compare(
             (SELECT captured_at FROM pgfr.snapshots WHERE id = v_start_id),
             (SELECT captured_at FROM pgfr.snapshots WHERE id = v_end_id)
         );
     END IF;
 END $$;
 
-SELECT ok(true, 'Phase 4: PG15 compare() handles NULL io_* arithmetic (skipped if not PG15)');
+SELECT ok(true, 'Phase 4: PG15 _compare() handles NULL io_* arithmetic (skipped if not PG15)');
 
 -- Test PG15: summary_report() doesn't show io_* sections
 DO $$
@@ -780,8 +780,8 @@ BEGIN
         PERFORM pgfr.snapshot();
 
         -- Test multiple analysis functions
-        PERFORM * FROM pgfr.wait_summary(now() - interval '1 hour', now());
-        PERFORM * FROM pgfr.activity_at(now());
+        PERFORM * FROM pgfr._wait_summary(now() - interval '1 hour', now());
+        PERFORM * FROM pgfr._activity_at(now());
     END IF;
 END $$;
 
@@ -923,7 +923,7 @@ END $$;
 
 SELECT ok(true, 'Phase 4: PG16 has io_bgwriter_* columns populated (skipped if not PG16)');
 
--- Test PG16: compare() includes io_* delta calculations
+-- Test PG16: _compare() includes io_* delta calculations
 DO $$
 DECLARE
     v_pg_version INTEGER;
@@ -938,14 +938,14 @@ BEGIN
         PERFORM pgfr.snapshot();
         SELECT id INTO v_end_id FROM pgfr.snapshots ORDER BY id DESC LIMIT 1;
 
-        PERFORM * FROM pgfr.compare(
+        PERFORM * FROM pgfr._compare(
             (SELECT captured_at FROM pgfr.snapshots WHERE id = v_start_id),
             (SELECT captured_at FROM pgfr.snapshots WHERE id = v_end_id)
         );
     END IF;
 END $$;
 
-SELECT ok(true, 'Phase 4: PG16 compare() includes io_* deltas (skipped if not PG16)');
+SELECT ok(true, 'Phase 4: PG16 _compare() includes io_* deltas (skipped if not PG16)');
 
 -- Test PG16: deltas view includes io_* columns
 DO $$
@@ -1103,7 +1103,7 @@ END $$;
 
 SELECT ok(true, 'Phase 4: PG17 still collects pg_stat_io data (skipped if not PG17)');
 
--- Test PG17: compare() checkpoint delta calculations
+-- Test PG17: _compare() checkpoint delta calculations
 DO $$
 DECLARE
     v_pg_version INTEGER;
@@ -1118,14 +1118,14 @@ BEGIN
         PERFORM pgfr.snapshot();
         SELECT id INTO v_end_id FROM pgfr.snapshots ORDER BY id DESC LIMIT 1;
 
-        PERFORM * FROM pgfr.compare(
+        PERFORM * FROM pgfr._compare(
             (SELECT captured_at FROM pgfr.snapshots WHERE id = v_start_id),
             (SELECT captured_at FROM pgfr.snapshots WHERE id = v_end_id)
         );
     END IF;
 END $$;
 
-SELECT ok(true, 'Phase 4: PG17 compare() calculates checkpoint deltas correctly (skipped if not PG17)');
+SELECT ok(true, 'Phase 4: PG17 _compare() calculates checkpoint deltas correctly (skipped if not PG17)');
 
 -- Test PG17: checkpoint column names correct
 DO $$
@@ -1234,8 +1234,8 @@ BEGIN
         PERFORM pgfr.snapshot();
 
         -- Test multiple analysis functions
-        PERFORM * FROM pgfr.wait_summary(now() - interval '1 hour', now());
-        PERFORM * FROM pgfr.activity_at(now());
+        PERFORM * FROM pgfr._wait_summary(now() - interval '1 hour', now());
+        PERFORM * FROM pgfr._activity_at(now());
         PERFORM * FROM pgfr_analyze.anomaly_report(now() - interval '1 hour', now());
     END IF;
 END $$;
@@ -1258,7 +1258,7 @@ SELECT lives_ok(
     'Phase 4: deltas view should work on all PG versions'
 );
 
--- Test compare() produces consistent results across versions
+-- Test _compare() produces consistent results across versions
 DO $$
 DECLARE
     v_start_id INTEGER;
@@ -1268,14 +1268,14 @@ BEGIN
     SELECT id INTO v_end_id FROM pgfr.snapshots ORDER BY id DESC LIMIT 1;
 
     IF v_start_id IS NOT NULL AND v_end_id IS NOT NULL AND v_start_id != v_end_id THEN
-        PERFORM * FROM pgfr.compare(
+        PERFORM * FROM pgfr._compare(
             (SELECT captured_at FROM pgfr.snapshots WHERE id = v_start_id),
             (SELECT captured_at FROM pgfr.snapshots WHERE id = v_end_id)
         );
     END IF;
 END $$;
 
-SELECT ok(true, 'Phase 4: compare() produces consistent results across versions');
+SELECT ok(true, 'Phase 4: _compare() produces consistent results across versions');
 
 -- Test NULL arithmetic in calculations
 DO $$

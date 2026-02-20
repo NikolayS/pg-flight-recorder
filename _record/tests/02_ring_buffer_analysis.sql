@@ -108,28 +108,28 @@ BEGIN
 END;
 $$;
 
--- Test compare() function
+-- Test _compare() function
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.compare(
+    $$SELECT * FROM pgfr._compare(
         (SELECT start_time FROM test_times),
         (SELECT end_time FROM test_times)
     )$$,
-    'compare() should execute without error'
+    '_compare() should execute without error'
 );
 
--- Test wait_summary() function
+-- Test _wait_summary() function
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.wait_summary(
+    $$SELECT * FROM pgfr._wait_summary(
         (SELECT start_time FROM test_times),
         (SELECT end_time FROM test_times)
     )$$,
-    'wait_summary() should execute without error'
+    '_wait_summary() should execute without error'
 );
 
--- Test activity_at() function
+-- Test _activity_at() function
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.activity_at(now())$$,
-    'activity_at() should execute without error'
+    $$SELECT * FROM pgfr._activity_at(now())$$,
+    '_activity_at() should execute without error'
 );
 
 -- Test anomaly_report() function
@@ -150,22 +150,22 @@ SELECT lives_ok(
     'summary_report() should execute without error'
 );
 
--- Test statement_compare() function
+-- Test _statement_compare() function
 SELECT lives_ok(
-    $$SELECT * FROM pgfr.statement_compare(
+    $$SELECT * FROM pgfr._statement_compare(
         (SELECT start_time FROM test_times),
         (SELECT end_time FROM test_times)
     )$$,
-    'statement_compare() should execute without error'
+    '_statement_compare() should execute without error'
 );
 
 -- Test wait_summary returns data
 SELECT ok(
-    (SELECT count(*) FROM pgfr.wait_summary(
+    (SELECT count(*) FROM pgfr._wait_summary(
         (SELECT start_time FROM test_times),
         (SELECT end_time FROM test_times)
     )) > 0,
-    'wait_summary() should return data'
+    '_wait_summary() should return data'
 );
 
 -- =============================================================================

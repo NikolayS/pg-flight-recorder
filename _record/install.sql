@@ -843,7 +843,7 @@ $$;
 
 -- Non-profile settings (system defaults that profiles don't manage)
 INSERT INTO pgfr.config (key, value) VALUES
-    ('schema_version', '2.26'),
+    ('schema_version', '2.27'),
     ('mode', 'normal'),
     ('statements_enabled', 'auto'),
     ('statements_top_n', '50'),
@@ -3385,7 +3385,7 @@ JOIN pgfr.snapshots prev ON prev.id = (
 )
 ORDER BY s.captured_at DESC;
 -- Compares database metrics between two time points, returning checkpoint, WAL, buffer, and IO activity deltas
-CREATE OR REPLACE FUNCTION pgfr.compare(
+CREATE OR REPLACE FUNCTION pgfr._compare(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -3582,7 +3582,7 @@ COMMENT ON VIEW pgfr.recent_idle_in_transaction IS
 
 -- Retrieves recent wait event samples from the flight recorder ring buffer
 -- Filters by configured retention interval and orders by capture time and occurrence count
-CREATE OR REPLACE FUNCTION pgfr.recent_waits_current()
+CREATE OR REPLACE FUNCTION pgfr._recent_waits_current()
 RETURNS TABLE (
     captured_at TIMESTAMPTZ,
     backend_type TEXT,
@@ -3607,7 +3607,7 @@ LANGUAGE sql STABLE AS $$
 $$;
 -- Retrieves recent backend session activity with query duration and wait event details
 -- Queries the activity ring buffer for sessions within the configured retention window
-CREATE OR REPLACE FUNCTION pgfr.recent_activity_current()
+CREATE OR REPLACE FUNCTION pgfr._recent_activity_current()
 RETURNS TABLE (
     captured_at TIMESTAMPTZ,
     pid INTEGER,
@@ -3642,7 +3642,7 @@ LANGUAGE sql STABLE AS $$
 $$;
 -- Returns recent lock contention events showing which processes are blocked and their blocking processes
 -- Filters data within the configured retention window from ring buffer samples
-CREATE OR REPLACE FUNCTION pgfr.recent_locks_current()
+CREATE OR REPLACE FUNCTION pgfr._recent_locks_current()
 RETURNS TABLE (
     captured_at TIMESTAMPTZ,
     blocked_pid INTEGER,
@@ -3752,7 +3752,7 @@ COMMENT ON VIEW pgfr.archiver_status IS 'WAL archiver status with delta calculat
 
 -- Summarizes wait events within a time range, grouped by backend type and wait event
 -- Returns statistics including sample count, total/avg/max waiters, and percentage of samples
-CREATE OR REPLACE FUNCTION pgfr.wait_summary(
+CREATE OR REPLACE FUNCTION pgfr._wait_summary(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ
 )
@@ -3794,7 +3794,7 @@ $$;
 
 -- Compares statement execution metrics between two snapshots, calculating performance deltas
 -- Identifies queries with significant changes in execution time and resource consumption
-CREATE OR REPLACE FUNCTION pgfr.statement_compare(
+CREATE OR REPLACE FUNCTION pgfr._statement_compare(
     p_start_time TIMESTAMPTZ,
     p_end_time TIMESTAMPTZ,
     p_min_delta_ms DOUBLE PRECISION DEFAULT 100,
@@ -3908,7 +3908,7 @@ $$;
 
 -- Retrieves active session details at a specific point in time
 -- Shows query text, wait events, and session state from archived activity samples
-CREATE OR REPLACE FUNCTION pgfr.activity_at(p_timestamp TIMESTAMPTZ)
+CREATE OR REPLACE FUNCTION pgfr._activity_at(p_timestamp TIMESTAMPTZ)
 RETURNS TABLE(
     sample_captured_at      TIMESTAMPTZ,
     sample_offset_seconds   NUMERIC,
@@ -4018,6 +4018,363 @@ LANGUAGE sql STABLE AS $$
     CROSS JOIN sample_progress sp
     CROSS JOIN wait_array wa
 $$;
+
+-- Detects query storms by comparing recent query execution counts to baseline
+-- Returns queries with execution spikes classified by type and severity
+CREATE OR REPLACE FUNCTION pgfr._detect_query_storms(
+    p_lookback INTERVAL DEFAULT NULL,
+    p_threshold_multiplier NUMERIC DEFAULT NULL
+)
+RETURNS TABLE(
+    queryid BIGINT,
+    query_fingerprint TEXT,
+    storm_type TEXT,
+    severity TEXT,
+    recent_count BIGINT,
+    baseline_count BIGINT,
+    multiplier NUMERIC
+)
+LANGUAGE plpgsql STABLE AS $$
+DECLARE
+    v_lookback INTERVAL;
+    v_threshold NUMERIC;
+    v_baseline_days INTEGER;
+    v_low_max NUMERIC;
+    v_medium_max NUMERIC;
+    v_high_max NUMERIC;
+BEGIN
+    -- Get configuration with defaults
+    v_lookback := COALESCE(
+        p_lookback,
+        pgfr._get_config('storm_lookback_interval', '1 hour')::interval
+    );
+    v_threshold := COALESCE(
+        p_threshold_multiplier,
+        pgfr._get_config('storm_threshold_multiplier', '3.0')::numeric
+    );
+    v_baseline_days := COALESCE(
+        pgfr._get_config('storm_baseline_days', '7')::integer,
+        7
+    );
+
+    -- Get severity thresholds
+    v_low_max := pgfr._get_config('storm_severity_low_max', '5.0')::numeric;
+    v_medium_max := pgfr._get_config('storm_severity_medium_max', '10.0')::numeric;
+    v_high_max := pgfr._get_config('storm_severity_high_max', '50.0')::numeric;
+
+    RETURN QUERY
+    WITH recent_stats AS (
+        -- Recent query counts from statement_snapshots
+        SELECT
+            ss.queryid,
+            left(ss.query_preview, 100) AS query_preview,
+            SUM(ss.calls) AS total_calls
+        FROM pgfr.statement_snapshots ss
+        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
+        WHERE s.captured_at >= now() - v_lookback
+        GROUP BY ss.queryid, left(ss.query_preview, 100)
+    ),
+    baseline_stats AS (
+        -- Baseline query counts (same hour of day over baseline period, excluding recent)
+        SELECT
+            ss.queryid,
+            AVG(ss.calls) AS avg_calls,
+            COUNT(DISTINCT date_trunc('day', s.captured_at)) AS days_sampled
+        FROM pgfr.statement_snapshots ss
+        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
+        WHERE s.captured_at >= now() - (v_baseline_days || ' days')::interval
+          AND s.captured_at < now() - v_lookback
+        GROUP BY ss.queryid
+        HAVING COUNT(DISTINCT date_trunc('day', s.captured_at)) >= 2  -- Need at least 2 days of baseline
+    ),
+    storms AS (
+        SELECT
+            r.queryid,
+            r.query_preview AS query_fingerprint,
+            CASE
+                WHEN r.query_preview ILIKE '%RETRY%' OR r.query_preview ILIKE '%FOR UPDATE%'
+                    THEN 'RETRY_STORM'
+                WHEN r.total_calls > COALESCE(b.avg_calls, 0) * 10
+                    THEN 'CACHE_MISS'
+                WHEN r.total_calls > COALESCE(b.avg_calls, 1) * v_threshold
+                    THEN 'SPIKE'
+                ELSE 'NORMAL'
+            END AS storm_type,
+            r.total_calls::BIGINT AS recent_count,
+            COALESCE(b.avg_calls, 0)::BIGINT AS baseline_count,
+            CASE
+                WHEN COALESCE(b.avg_calls, 0) > 0
+                THEN ROUND(r.total_calls::numeric / b.avg_calls, 2)
+                ELSE NULL
+            END AS multiplier
+        FROM recent_stats r
+        LEFT JOIN baseline_stats b ON b.queryid = r.queryid
+        WHERE r.total_calls > COALESCE(b.avg_calls, 1) * v_threshold
+           OR (r.query_preview ILIKE '%RETRY%' OR r.query_preview ILIKE '%FOR UPDATE%')
+    )
+    SELECT
+        st.queryid,
+        st.query_fingerprint,
+        st.storm_type,
+        CASE
+            WHEN st.storm_type = 'RETRY_STORM' THEN 'CRITICAL'
+            WHEN st.multiplier > v_high_max THEN 'CRITICAL'
+            WHEN st.multiplier > v_medium_max THEN 'HIGH'
+            WHEN st.multiplier > v_low_max THEN 'MEDIUM'
+            ELSE 'LOW'
+        END AS severity,
+        st.recent_count,
+        st.baseline_count,
+        st.multiplier
+    FROM storms st
+    ORDER BY
+        CASE
+            WHEN st.storm_type = 'RETRY_STORM' THEN 1
+            WHEN st.multiplier > v_high_max THEN 2
+            WHEN st.multiplier > v_medium_max THEN 3
+            WHEN st.multiplier > v_low_max THEN 4
+            ELSE 5
+        END,
+        st.recent_count DESC;
+END;
+$$;
+COMMENT ON FUNCTION pgfr._detect_query_storms(INTERVAL, NUMERIC) IS 'Detect query storms by comparing recent execution counts to baseline. Classifies as RETRY_STORM, CACHE_MISS, SPIKE, or NORMAL with severity levels (LOW, MEDIUM, HIGH, CRITICAL).';
+
+-- Diagnose probable causes for a query's performance regression
+-- Analyzes pg_stat_statements and snapshots for indicators
+CREATE OR REPLACE FUNCTION pgfr._diagnose_regression_causes(
+    p_queryid BIGINT
+)
+RETURNS TEXT[]
+LANGUAGE plpgsql STABLE AS $$
+DECLARE
+    v_causes TEXT[] := ARRAY[]::TEXT[];
+    v_stats RECORD;
+    v_recent_snapshot RECORD;
+BEGIN
+    -- Get current stats from pg_stat_statements
+    BEGIN
+        SELECT
+            temp_blks_written,
+            shared_blks_hit,
+            shared_blks_read,
+            rows
+        INTO v_stats
+        FROM pg_stat_statements
+        WHERE queryid = p_queryid
+        LIMIT 1;
+    EXCEPTION
+        WHEN undefined_table THEN
+            v_stats := NULL;
+    END;
+
+    IF v_stats IS NOT NULL THEN
+        -- Check for temp file spills
+        IF COALESCE(v_stats.temp_blks_written, 0) > 0 THEN
+            v_causes := array_append(v_causes, 'Query is spilling to disk (temp files) - consider increasing work_mem');
+        END IF;
+
+        -- Check cache hit ratio
+        IF v_stats.shared_blks_hit IS NOT NULL AND v_stats.shared_blks_read IS NOT NULL THEN
+            IF v_stats.shared_blks_hit + v_stats.shared_blks_read > 0 THEN
+                IF v_stats.shared_blks_hit::numeric / (v_stats.shared_blks_hit + v_stats.shared_blks_read) < 0.9 THEN
+                    v_causes := array_append(v_causes, 'Low cache hit ratio - check shared_buffers or index usage');
+                END IF;
+            END IF;
+        END IF;
+    END IF;
+
+    -- Check for recent checkpoint activity
+    SELECT
+        checkpoint_time,
+        ckpt_write_time,
+        ckpt_sync_time
+    INTO v_recent_snapshot
+    FROM pgfr.snapshots
+    WHERE captured_at >= now() - interval '1 hour'
+    ORDER BY captured_at DESC
+    LIMIT 1;
+
+    IF v_recent_snapshot IS NOT NULL THEN
+        IF v_recent_snapshot.checkpoint_time >= now() - interval '5 minutes' THEN
+            v_causes := array_append(v_causes, 'Recent checkpoint activity may be affecting I/O');
+        END IF;
+    END IF;
+
+    -- Default causes if nothing specific found
+    IF array_length(v_causes, 1) IS NULL THEN
+        v_causes := array_append(v_causes, 'Statistics may be out of date - consider ANALYZE on involved tables');
+        v_causes := array_append(v_causes, 'Query plan may have changed - check with EXPLAIN');
+    END IF;
+
+    RETURN v_causes;
+END;
+$$;
+COMMENT ON FUNCTION pgfr._diagnose_regression_causes(BIGINT) IS 'Internal: Analyze a query to suggest probable causes for performance regression.';
+
+-- Detects performance regressions by comparing recent query metrics to baseline
+-- Uses buffer metrics by default (configurable via regression_detection_metric)
+-- Returns queries with significant regression classified by severity
+CREATE OR REPLACE FUNCTION pgfr._detect_regressions(
+    p_lookback INTERVAL DEFAULT NULL,
+    p_threshold_pct NUMERIC DEFAULT NULL
+)
+RETURNS TABLE(
+    queryid BIGINT,
+    query_fingerprint TEXT,
+    severity TEXT,
+    baseline_avg_ms NUMERIC,
+    current_avg_ms NUMERIC,
+    change_pct NUMERIC,
+    baseline_avg_buffers NUMERIC,
+    current_avg_buffers NUMERIC,
+    buffer_change_pct NUMERIC,
+    detection_metric TEXT,
+    probable_causes TEXT[]
+)
+LANGUAGE plpgsql STABLE AS $$
+DECLARE
+    v_lookback INTERVAL;
+    v_threshold_pct NUMERIC;
+    v_baseline_days INTEGER;
+    v_low_max NUMERIC;
+    v_medium_max NUMERIC;
+    v_high_max NUMERIC;
+    v_detection_metric TEXT;
+BEGIN
+    -- Get configuration with defaults
+    v_lookback := COALESCE(
+        p_lookback,
+        pgfr._get_config('regression_lookback_interval', '1 hour')::interval
+    );
+    v_threshold_pct := COALESCE(
+        p_threshold_pct,
+        pgfr._get_config('regression_threshold_pct', '50.0')::numeric
+    );
+    v_baseline_days := COALESCE(
+        pgfr._get_config('regression_baseline_days', '7')::integer,
+        7
+    );
+
+    -- Get severity thresholds (percentage-based)
+    v_low_max := pgfr._get_config('regression_severity_low_max', '200.0')::numeric;
+    v_medium_max := pgfr._get_config('regression_severity_medium_max', '500.0')::numeric;
+    v_high_max := pgfr._get_config('regression_severity_high_max', '1000.0')::numeric;
+
+    -- Get detection metric (default to buffers)
+    v_detection_metric := pgfr._get_config('regression_detection_metric', 'buffers');
+
+    RETURN QUERY
+    WITH recent_stats AS (
+        -- Recent query metrics from statement_snapshots
+        SELECT
+            ss.queryid,
+            left(ss.query_preview, 100) AS query_preview,
+            AVG(ss.mean_exec_time) AS avg_mean_time,
+            STDDEV(ss.mean_exec_time) AS stddev_mean_time,
+            AVG(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS avg_total_buffers,
+            STDDEV(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS stddev_total_buffers,
+            COUNT(*) AS sample_count
+        FROM pgfr.statement_snapshots ss
+        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
+        WHERE s.captured_at >= now() - v_lookback
+          AND ss.mean_exec_time IS NOT NULL
+          AND ss.mean_exec_time > 0
+        GROUP BY ss.queryid, left(ss.query_preview, 100)
+    ),
+    baseline_stats AS (
+        -- Baseline query metrics (over baseline period, excluding recent)
+        SELECT
+            ss.queryid,
+            AVG(ss.mean_exec_time) AS avg_mean_time,
+            STDDEV(ss.mean_exec_time) AS stddev_mean_time,
+            AVG(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS avg_total_buffers,
+            STDDEV(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS stddev_total_buffers,
+            COUNT(DISTINCT date_trunc('day', s.captured_at)) AS days_sampled
+        FROM pgfr.statement_snapshots ss
+        JOIN pgfr.snapshots s ON s.id = ss.snapshot_id
+        WHERE s.captured_at >= now() - (v_baseline_days || ' days')::interval
+          AND s.captured_at < now() - v_lookback
+          AND ss.mean_exec_time IS NOT NULL
+          AND ss.mean_exec_time > 0
+        GROUP BY ss.queryid
+        HAVING COUNT(DISTINCT date_trunc('day', s.captured_at)) >= 2  -- Need at least 2 days of baseline
+    ),
+    regressions AS (
+        SELECT
+            r.queryid,
+            r.query_preview AS query_fingerprint,
+            -- Timing metrics
+            b.avg_mean_time::numeric AS baseline_avg_ms,
+            r.avg_mean_time::numeric AS current_avg_ms,
+            ROUND(((r.avg_mean_time - b.avg_mean_time) / NULLIF(b.avg_mean_time, 0))::numeric * 100, 2) AS time_change_pct,
+            -- Buffer metrics
+            b.avg_total_buffers::numeric AS baseline_avg_buffers,
+            r.avg_total_buffers::numeric AS current_avg_buffers,
+            ROUND(((r.avg_total_buffers - b.avg_total_buffers) / NULLIF(b.avg_total_buffers, 0))::numeric * 100, 2) AS buffer_change_pct,
+            -- Z-score calculation for statistical significance (based on detection metric)
+            CASE
+                WHEN v_detection_metric = 'time' THEN
+                    CASE
+                        WHEN COALESCE(b.stddev_mean_time, 0) > 0
+                        THEN (r.avg_mean_time - b.avg_mean_time) / b.stddev_mean_time
+                        ELSE 0
+                    END
+                ELSE
+                    CASE
+                        WHEN COALESCE(b.stddev_total_buffers, 0) > 0
+                        THEN (r.avg_total_buffers - b.avg_total_buffers) / b.stddev_total_buffers
+                        ELSE 0
+                    END
+            END AS z_score,
+            -- Change percentage based on detection metric
+            CASE
+                WHEN v_detection_metric = 'time' THEN
+                    ROUND(((r.avg_mean_time - b.avg_mean_time) / NULLIF(b.avg_mean_time, 0))::numeric * 100, 2)
+                ELSE
+                    ROUND(((r.avg_total_buffers - b.avg_total_buffers) / NULLIF(b.avg_total_buffers, 0))::numeric * 100, 2)
+            END AS primary_change_pct
+        FROM recent_stats r
+        JOIN baseline_stats b ON b.queryid = r.queryid
+        WHERE r.sample_count >= 2  -- Need multiple samples to be confident
+          AND CASE
+              WHEN v_detection_metric = 'time' THEN
+                  r.avg_mean_time > b.avg_mean_time * (1 + v_threshold_pct / 100)
+              ELSE
+                  COALESCE(r.avg_total_buffers, 0) > COALESCE(b.avg_total_buffers, 0) * (1 + v_threshold_pct / 100)
+                  AND b.avg_total_buffers IS NOT NULL AND b.avg_total_buffers > 0
+          END
+    )
+    SELECT
+        reg.queryid,
+        reg.query_fingerprint,
+        CASE
+            WHEN reg.primary_change_pct > v_high_max THEN 'CRITICAL'
+            WHEN reg.primary_change_pct > v_medium_max THEN 'HIGH'
+            WHEN reg.primary_change_pct > v_low_max THEN 'MEDIUM'
+            ELSE 'LOW'
+        END AS severity,
+        ROUND(reg.baseline_avg_ms, 2) AS baseline_avg_ms,
+        ROUND(reg.current_avg_ms, 2) AS current_avg_ms,
+        reg.time_change_pct AS change_pct,
+        ROUND(reg.baseline_avg_buffers, 0) AS baseline_avg_buffers,
+        ROUND(reg.current_avg_buffers, 0) AS current_avg_buffers,
+        reg.buffer_change_pct,
+        v_detection_metric AS detection_metric,
+        pgfr._diagnose_regression_causes(reg.queryid) AS probable_causes
+    FROM regressions reg
+    WHERE reg.z_score > 2 OR reg.primary_change_pct > v_medium_max  -- Statistical filter or significant change
+    ORDER BY
+        CASE
+            WHEN reg.primary_change_pct > v_high_max THEN 1
+            WHEN reg.primary_change_pct > v_medium_max THEN 2
+            WHEN reg.primary_change_pct > v_low_max THEN 3
+            ELSE 4
+        END,
+        reg.primary_change_pct DESC;
+END;
+$$;
+COMMENT ON FUNCTION pgfr._detect_regressions(INTERVAL, NUMERIC) IS 'Detect performance regressions using buffer metrics (default) or timing. Classifies severity based on percentage change (LOW <200%, MEDIUM <500%, HIGH <1000%, CRITICAL >1000%). Configure via regression_detection_metric.';
 
 
 -- Switches flight recorder to specified mode (normal/light/emergency) with different overhead and retention trade-offs
@@ -5206,8 +5563,8 @@ BEGIN
     RAISE NOTICE '  1. Flight Recorder collects automatically in the background';
     RAISE NOTICE '';
     RAISE NOTICE '  2. Query any time window to diagnose performance:';
-    RAISE NOTICE '     SELECT * FROM pgfr.compare(''2024-12-16 14:00'', ''2024-12-16 15:00'');';
-    RAISE NOTICE '     SELECT * FROM pgfr.wait_summary(''2024-12-16 14:00'', ''2024-12-16 15:00'');';
+    RAISE NOTICE '     SELECT * FROM pgfr_analyze.compare(''2024-12-16 14:00'', ''2024-12-16 15:00'');';
+    RAISE NOTICE '     SELECT * FROM pgfr_analyze.wait_summary(''2024-12-16 14:00'', ''2024-12-16 15:00'');';
     RAISE NOTICE '';
     RAISE NOTICE '  3. Check capacity and right-sizing:';
     RAISE NOTICE '     SELECT * FROM pgfr_analyze.capacity_dashboard;';

@@ -87,10 +87,10 @@ SELECT has_function('pgfr', '_record_collection_skip', 'P0 Safety: Function pgfr
 SELECT has_function('pgfr', '_check_schema_size', 'P1 Safety: Function pgfr._check_schema_size should exist');
 SELECT has_function('pgfr', 'snapshot', 'Function pgfr.snapshot should exist');
 SELECT has_function('pgfr', 'sample', 'Function pgfr.sample should exist');
-SELECT has_function('pgfr', 'compare', 'Function pgfr.compare should exist');
-SELECT has_function('pgfr', 'wait_summary', 'Function pgfr.wait_summary should exist');
-SELECT has_function('pgfr', 'statement_compare', 'Function pgfr.statement_compare should exist');
-SELECT has_function('pgfr', 'activity_at', 'Function pgfr.activity_at should exist');
+SELECT has_function('pgfr', '_compare', 'Function pgfr._compare should exist');
+SELECT has_function('pgfr', '_wait_summary', 'Function pgfr._wait_summary should exist');
+SELECT has_function('pgfr', '_statement_compare', 'Function pgfr._statement_compare should exist');
+SELECT has_function('pgfr', '_activity_at', 'Function pgfr._activity_at should exist');
 SELECT has_function('pgfr_analyze', 'anomaly_report', 'Function pgfr_analyze.anomaly_report should exist');
 SELECT has_function('pgfr_analyze', 'summary_report', 'Function pgfr_analyze.summary_report should exist');
 SELECT has_function('pgfr', 'get_mode', 'Function pgfr.get_mode should exist');
