@@ -569,7 +569,7 @@ UPDATE pgfr_record.config SET value = '300' WHERE key = 'sample_interval_seconds
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `schema_version` | `2.25` | Schema version (do not modify) |
+| `schema_version` | `2.28` | Schema version (do not modify) |
 | `mode` | `normal` | Collection mode: `normal`, `light`, `emergency`, `kill` |
 | `enabled` | `true` | Whether collection is enabled |
 
@@ -629,7 +629,7 @@ UPDATE pgfr_record.config SET value = '300' WHERE key = 'sample_interval_seconds
 | `statements_enabled` | `auto` | Enable pg_stat_statements collection: `auto`, `true`, `false` |
 | `statements_top_n` | `20` | Number of top queries to collect per snapshot |
 | `statements_ranking_metric` | `buffers` | Metric for ranking queries: `buffers` or `time` |
-| `statements_interval_minutes` | `15` | Minutes between statement collections |
+| `statements_interval_minutes` | `1` | Minutes between statement collections |
 | `statements_min_calls` | `1` | Minimum call count to include a query |
 
 ### Table and index collection
@@ -709,7 +709,7 @@ Profiles configure groups of related settings for different environments. Key di
 | `section_timeout_ms` | 250 | 200 | 250 | 500 | 100 |
 | `statement_timeout_ms` | 1000 | 800 | 1000 | 2000 | 500 |
 | `work_mem_kb` | 2048 | 1024 | 2048 | 4096 | 1024 |
-| `statements_interval_minutes` | 15 | 30 | 15 | 5 | 30 |
+| `statements_interval_minutes` | 1 | 15 | 1 | 2 | 15 |
 | `statements_min_calls` | 1 | 5 | 1 | 1 | 10 |
 | `table_stats_top_n` | 50 | 30 | 50 | 100 | 20 |
 | `table_stats_enabled` | true | true | true | true | false |
