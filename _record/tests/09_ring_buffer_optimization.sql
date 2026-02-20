@@ -98,13 +98,13 @@ SELECT ok(
 
 -- Reset to default
 UPDATE pgfr_record.config SET value = '120' WHERE key = 'ring_buffer_slots';
-UPDATE pgfr_record.config SET value = '180' WHERE key = 'sample_interval_seconds';
+UPDATE pgfr_record.config SET value = '60' WHERE key = 'sample_interval_seconds';
 
 -- Test validate_ring_configuration() returns OK for good config
 SELECT ok(
     (SELECT status FROM pgfr_record.validate_ring_configuration()
      WHERE check_name = 'ring_buffer_retention') = 'OK',
-    'validate_ring_configuration() should return OK for 6h retention'
+    'validate_ring_configuration() should return OK for 2h retention'
 );
 
 -- =============================================================================
@@ -131,10 +131,10 @@ SELECT ok(
         SELECT 1 FROM pgfr_record.get_optimization_profiles()
         WHERE profile_name = 'standard'
           AND slots = 120
-          AND sample_interval_seconds = 180
+          AND sample_interval_seconds = 60
           AND archive_frequency_min = 15
     ),
-    'standard profile should have slots=120, interval=180s, archive=15min'
+    'standard profile should have slots=120, interval=60s, archive=15min'
 );
 
 -- Test fine_grained profile has correct values

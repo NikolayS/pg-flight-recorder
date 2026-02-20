@@ -87,9 +87,9 @@ SELECT * FROM pgfr_record.deltas;
 
 | Profile            | Sample Interval | Use Case                               |
 |--------------------|-----------------|----------------------------------------|
-| `default`          | 180s            | General purpose monitoring             |
+| `default`          | 60s             | General purpose monitoring             |
 | `production_safe`  | 300s            | Production with maximum safety margins |
-| `development`      | 180s            | Staging and development                |
+| `development`      | 60s             | Staging and development                |
 | `troubleshooting`  | 60s             | Active incident response               |
 | `minimal_overhead` | 300s            | Resource-constrained systems           |
 

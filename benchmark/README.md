@@ -11,7 +11,7 @@ We measure **absolute costs** (CPU time per collection), not relative impact (TP
 **Why?** Because the cost is constant:
 
 - Running `SELECT * FROM pg_stat_activity` takes ~150ms whether your DB is idle or processing 10,000 TPS
-- The question isn't "does this slow my queries?" but "do I have 150ms headroom every 180 seconds?"
+- The question isn't "does this slow my queries?" but "do I have 150ms headroom every 60 seconds?"
 
 See [BENCHMARKING.md](../BENCHMARKING.md) for full methodology.
 
@@ -48,10 +48,10 @@ Collection Timing:
   P95:    168.2 ms
 
 Sustained CPU Impact:
-  At 180s intervals: 0.071%
+  At 60s intervals: 0.21%
 
 Peak Impact:
-  Brief 127ms CPU spike every 180 seconds
+  Brief 127ms CPU spike every 60 seconds
 
 Headroom Assessment:
   ✓ 2+ vCPU system: SAFE - minimal impact
@@ -77,7 +77,7 @@ Measure how often and how long flight recorder blocks DDL operations (ALTER TABL
 ```bash
 cd benchmark
 
-# Run 5-minute test (default: 180s interval, normal mode)
+# Run 5-minute test (default: 60s interval, normal mode)
 ./measure_ddl_impact.sh
 
 # Custom duration and interval
@@ -110,10 +110,10 @@ Blocked Operations Only:
 
 Average Delay from Blocking: 6.6 ms
 
-Impact Assessment (180s intervals):
-  Flight recorder runs: 480 collections/day
-  Expected DDL collisions: ~26.8 per day
-  If you run 100 DDL ops/hour: ~2.2 will encounter blocking
+Impact Assessment (60s intervals):
+  Flight recorder runs: 1440 collections/day
+  Expected DDL collisions: ~80.4 per day
+  If you run 100 DDL ops/hour: ~6.6 will encounter blocking
 
 Risk Level: LOW - Minimal DDL impact
 Recommendation: Safe for production use with high DDL workloads
@@ -139,7 +139,7 @@ Recommendation: Safe for production use with high DDL workloads
 
 The test:
 
-1. Runs flight recorder at specified interval (default: 180s)
+1. Runs flight recorder at specified interval (default: 60s)
 2. Continuously executes DDL operations (ALTER, CREATE INDEX, DROP, VACUUM)
 3. Detects when DDL waits for locks via pg_locks
 4. Identifies if flight recorder's catalog queries are the blocker
@@ -243,13 +243,13 @@ cat results/*/comparison_*.md
 **Collection time <100ms:**
 
 - ✓ Safe everywhere (1+ vCPU)
-- Negligible sustained CPU (<0.06% at 180s)
+- Negligible sustained CPU (<0.17% at 60s)
 
 **Collection time 100-200ms:**
 
 - ✓ Safe on 2+ vCPU systems
 - ⚠ Test on 1 vCPU systems first
-- Low sustained CPU (<0.11% at 180s)
+- Low sustained CPU (<0.33% at 60s)
 
 **Collection time >200ms:**
 
@@ -296,7 +296,7 @@ SELECT pgfr_record.set_mode('emergency');  -- 300s
 SELECT * FROM pgfr_record.collection_health;
 
 -- Upgrade if comfortable
-SELECT pgfr_record.set_mode('normal');  -- 180s
+SELECT pgfr_record.set_mode('normal');  -- 60s
 ```
 
 ### For 1 vCPU Systems
@@ -309,7 +309,7 @@ Test in staging for 24h first:
 
 ### For Troubleshooting
 
-Normal mode is fine (180s) - only runs during incidents.
+Normal mode is fine (60s) - only runs during incidents.
 
 ## FAQ
 
@@ -344,8 +344,8 @@ Ways to help:
 
 1. `cd benchmark && ./measure_absolute.sh` (5 min)
 2. Review: "Mean: X ms"
-3. Calculate: X / 180000 = sustained CPU %
-4. Assess: Do I have X ms headroom every 3 minutes?
+3. Calculate: X / 60000 = sustained CPU %
+4. Assess: Do I have X ms headroom every 60 seconds?
 5. Deploy accordingly
 
 **Philosophy:**

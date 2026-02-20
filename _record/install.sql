@@ -3634,7 +3634,7 @@ LANGUAGE sql STABLE AS $$
         CASE pgfr_record._get_config('mode', 'normal')
             WHEN 'normal' THEN '* * * * *'
             WHEN 'light' THEN '* * * * *'
-            WHEN 'emergency' THEN '120 seconds'
+            WHEN 'emergency' THEN '300 seconds'
             ELSE 'unknown'
         END AS sample_interval,
         COALESCE(pgfr_record._get_config('enable_locks', 'true')::boolean, true) AS locks_enabled,
@@ -3695,9 +3695,9 @@ RETURNS TABLE(
 LANGUAGE sql STABLE AS $$
     SELECT * FROM (VALUES
         ('standard',
-         120, 180, 15,
-         ROUND(120 * 180 / 3600.0, 1),
-         'Default: 6h retention, 3min granularity, 0.014% CPU'),
+         120, 60, 15,
+         ROUND(120 * 60 / 3600.0, 1),
+         'Default: 2h retention, 1min granularity, 0.042% CPU'),
         ('fine_grained',
          360, 60, 15,
          ROUND(360 * 60 / 3600.0, 1),
@@ -4346,15 +4346,15 @@ BEGIN
     END IF;
     PERFORM cron.schedule(
         'pgfr_snapshot',
-        '*/5 * * * *',
+        '* * * * *',
         'SET statement_timeout = ''10s''; SELECT pgfr_record.snapshot()'
     );
     PERFORM cron.schedule(
         'pgfr_sample',
-        '*/2 * * * *',
+        '* * * * *',
         'SET statement_timeout = ''5s''; SELECT pgfr_record.sample()'
     );
-    v_sample_schedule := 'every 120 seconds (ring buffer)';
+    v_sample_schedule := 'every 60 seconds (ring buffer)';
     RAISE NOTICE 'Flight Recorder installed. Sampling %', v_sample_schedule;
     PERFORM cron.schedule(
         'pgfr_flush',

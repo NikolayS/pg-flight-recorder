@@ -577,7 +577,7 @@ UPDATE pgfr_record.config SET value = '300' WHERE key = 'sample_interval_seconds
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `sample_interval_seconds` | `180` | Seconds between ring buffer samples |
+| `sample_interval_seconds` | `60` | Seconds between ring buffer samples |
 | `ring_buffer_slots` | `120` | Ring buffer slot count (72-2880) |
 | `retention_snapshots_days` | `30` | Snapshot retention (days) |
 | `retention_samples_days` | `7` | Archive/aggregate retention (days) |

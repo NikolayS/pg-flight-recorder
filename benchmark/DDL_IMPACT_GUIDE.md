@@ -15,7 +15,7 @@ This benchmark measures how often flight recorder blocks DDL operations (ALTER T
 ```bash
 cd pgfr_record/benchmark
 
-# Run 5-minute test (default: 180s sampling interval)
+# Run 5-minute test (default: 60s sampling interval)
 ./measure_ddl_impact.sh
 
 # Custom duration and interval
@@ -47,10 +47,10 @@ Blocked Operations Only:
 
 Average Delay from Blocking: 6.6 ms
 
-Impact Assessment (180s intervals):
-  Flight recorder runs: 480 collections/day
-  Expected DDL collisions: ~26.8 per day
-  If you run 100 DDL ops/hour: ~2.2 will encounter blocking
+Impact Assessment (60s intervals):
+  Flight recorder runs: 1440 collections/day
+  Expected DDL collisions: ~80.4 per day
+  If you run 100 DDL ops/hour: ~6.6 will encounter blocking
 
 Risk Level: LOW - Minimal DDL impact
 ```
@@ -91,7 +91,7 @@ DDL operations need **AccessExclusiveLock** (exclusive).
 
 ### Test Methodology
 
-1. Runs flight recorder at specified interval (default: 180s)
+1. Runs flight recorder at specified interval (default: 60s)
 2. Continuously executes DDL operations:
    - ALTER TABLE ADD/DROP COLUMN
    - CREATE/DROP INDEX
@@ -137,7 +137,7 @@ SELECT pgfr_record.enable();
 
 ### Option 4: Schedule DDL During Low-Traffic
 
-- Flight recorder runs every 180s (normal mode)
+- Flight recorder runs every 60s (normal mode)
 - Schedule DDL between collection cycles
 - Use `collection_stats` table to find recent collection times
 
@@ -160,8 +160,8 @@ SELECT pgfr_record.enable();
 ### Test Different Modes
 
 ```bash
-# Normal mode (180s)
-./measure_ddl_impact.sh 300 180
+# Normal mode (60s)
+./measure_ddl_impact.sh 300 60
 
 # Emergency mode (300s)
 ./measure_ddl_impact.sh 300 300
@@ -202,7 +202,7 @@ Use the Python analyzer for custom analysis:
 python3 lib/ddl_analyzer.py \
     results/ddl_impact_*/ddl_timings.json \
     300 \
-    180
+    60
 ```
 
 ## Troubleshooting
@@ -247,7 +247,7 @@ WHERE relation IN (
 Reduce duration:
 
 ```bash
-./measure_ddl_impact.sh 60 180  # 1 minute test
+./measure_ddl_impact.sh 60 60  # 1 minute test
 ```
 
 Minimum recommended: 60 seconds (allows at least one collection cycle to occur).
