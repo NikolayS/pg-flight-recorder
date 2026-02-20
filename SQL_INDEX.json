@@ -1970,207 +1970,207 @@
       },
       {
         "name": "pgfr.sample",
-        "line": 1519,
+        "line": 1520,
         "returns": "timestamptz"
       },
       {
         "name": "pgfr.flush_ring_to_aggregates",
-        "line": 1908,
+        "line": 1909,
         "returns": "void"
       },
       {
         "name": "pgfr.archive_ring_samples",
-        "line": 1993,
+        "line": 1994,
         "returns": "void"
       },
       {
         "name": "pgfr.cleanup_aggregates",
-        "line": 2131,
+        "line": 2132,
         "returns": "void"
       },
       {
         "name": "pgfr._collect_table_stats",
-        "line": 2182,
+        "line": 2183,
         "returns": "void"
       },
       {
         "name": "pgfr._collect_index_stats",
-        "line": 2366,
+        "line": 2367,
         "returns": "void"
       },
       {
         "name": "pgfr._collect_config_snapshot",
-        "line": 2404,
+        "line": 2405,
         "returns": "void"
       },
       {
         "name": "pgfr._collect_db_role_config_snapshot",
-        "line": 2534,
+        "line": 2535,
         "returns": "void"
       },
       {
         "name": "pgfr.snapshot",
-        "line": 2627,
+        "line": 2628,
         "returns": "timestamptz"
       },
       {
         "name": "pgfr.compare",
-        "line": 3355,
+        "line": 3356,
         "returns": "record"
       },
       {
         "name": "pgfr._get_ring_retention_interval",
-        "line": 3463,
+        "line": 3464,
         "returns": "interval"
       },
       {
         "name": "pgfr.recent_waits_current",
-        "line": 3552,
+        "line": 3553,
         "returns": "record"
       },
       {
         "name": "pgfr.recent_activity_current",
-        "line": 3577,
+        "line": 3578,
         "returns": "record"
       },
       {
         "name": "pgfr.recent_locks_current",
-        "line": 3612,
+        "line": 3613,
         "returns": "record"
       },
       {
         "name": "pgfr.wait_summary",
-        "line": 3722,
+        "line": 3723,
         "returns": "record"
       },
       {
         "name": "pgfr.statement_compare",
-        "line": 3764,
+        "line": 3765,
         "returns": "record"
       },
       {
         "name": "pgfr.activity_at",
-        "line": 3878,
+        "line": 3879,
         "returns": "record"
       },
       {
         "name": "pgfr.set_mode",
-        "line": 3992,
+        "line": 3993,
         "returns": "text"
       },
       {
         "name": "pgfr.get_mode",
-        "line": 4064,
+        "line": 4065,
         "returns": "record"
       },
       {
         "name": "pgfr.list_profiles",
-        "line": 4087,
+        "line": 4088,
         "returns": "record"
       },
       {
         "name": "pgfr.get_optimization_profiles",
-        "line": 4127,
+        "line": 4128,
         "returns": "record"
       },
       {
         "name": "pgfr.apply_optimization_profile",
-        "line": 4168,
+        "line": 4169,
         "returns": "record"
       },
       {
         "name": "pgfr.explain_profile",
-        "line": 4249,
+        "line": 4250,
         "returns": "record"
       },
       {
         "name": "pgfr.apply_profile",
-        "line": 4277,
+        "line": 4278,
         "returns": "record"
       },
       {
         "name": "pgfr.get_current_profile",
-        "line": 4331,
+        "line": 4332,
         "returns": "record"
       },
       {
         "name": "pgfr.cleanup",
-        "line": 4384,
+        "line": 4385,
         "returns": "record"
       },
       {
         "name": "pgfr.ring_buffer_health",
-        "line": 4456,
+        "line": 4457,
         "returns": "record"
       },
       {
         "name": "pgfr.disable",
-        "line": 4511,
+        "line": 4512,
         "returns": "text"
       },
       {
         "name": "pgfr.configure_ring_autovacuum",
-        "line": 4553,
+        "line": 4554,
         "returns": "text"
       },
       {
         "name": "pgfr.rebuild_ring_buffers",
-        "line": 4579,
+        "line": 4580,
         "returns": "text"
       },
       {
         "name": "pgfr.enable",
-        "line": 4666,
+        "line": 4667,
         "returns": "text"
       },
       {
         "name": "pgfr.health_check",
-        "line": 4825,
+        "line": 4826,
         "returns": "record"
       },
       {
         "name": "pgfr.export_for_upgrade",
-        "line": 5010,
+        "line": 5011,
         "returns": "record"
       },
       {
         "name": "pgfr.config_recommendations",
-        "line": 5093,
+        "line": 5094,
         "returns": "record"
       }
     ],
     "views": [
       {
         "name": "pgfr.deltas",
-        "line": 3304
+        "line": 3305
       },
       {
         "name": "pgfr.recent_waits",
-        "line": 3472
+        "line": 3473
       },
       {
         "name": "pgfr.recent_activity",
-        "line": 3485
+        "line": 3486
       },
       {
         "name": "pgfr.recent_locks",
-        "line": 3508
+        "line": 3509
       },
       {
         "name": "pgfr.recent_idle_in_transaction",
-        "line": 3530
+        "line": 3531
       },
       {
         "name": "pgfr.recent_replication",
-        "line": 3647
+        "line": 3648
       },
       {
         "name": "pgfr.recent_vacuum_progress",
-        "line": 3670
+        "line": 3671
       },
       {
         "name": "pgfr.archiver_status",
-        "line": 3698
+        "line": 3699
       }
     ],
     "types": []
