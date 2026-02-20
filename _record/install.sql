@@ -170,10 +170,42 @@ CREATE TABLE IF NOT EXISTS pgfr.statement_snapshots (
     blk_write_time      DOUBLE PRECISION,
     wal_records         BIGINT,
     wal_bytes           NUMERIC,
+    calls_delta                 BIGINT,
+    total_exec_time_delta       DOUBLE PRECISION,
+    rows_delta                  BIGINT,
+    shared_blks_hit_delta       BIGINT,
+    shared_blks_read_delta      BIGINT,
+    shared_blks_dirtied_delta   BIGINT,
+    shared_blks_written_delta   BIGINT,
+    temp_blks_read_delta        BIGINT,
+    temp_blks_written_delta     BIGINT,
+    blk_read_time_delta         DOUBLE PRECISION,
+    blk_write_time_delta        DOUBLE PRECISION,
+    wal_records_delta           BIGINT,
+    wal_bytes_delta             NUMERIC,
     PRIMARY KEY (snapshot_id, queryid, dbid)
 );
 CREATE INDEX IF NOT EXISTS statement_snapshots_queryid_idx
     ON pgfr.statement_snapshots(queryid);
+
+-- Add delta columns to existing installations (additive-only upgrade)
+DO $$
+BEGIN
+    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS calls_delta BIGINT;
+    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS total_exec_time_delta DOUBLE PRECISION;
+    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS rows_delta BIGINT;
+    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS shared_blks_hit_delta BIGINT;
+    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS shared_blks_read_delta BIGINT;
+    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS shared_blks_dirtied_delta BIGINT;
+    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS shared_blks_written_delta BIGINT;
+    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS temp_blks_read_delta BIGINT;
+    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS temp_blks_written_delta BIGINT;
+    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS blk_read_time_delta DOUBLE PRECISION;
+    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS blk_write_time_delta DOUBLE PRECISION;
+    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS wal_records_delta BIGINT;
+    ALTER TABLE pgfr.statement_snapshots ADD COLUMN IF NOT EXISTS wal_bytes_delta NUMERIC;
+END $$;
+
 CREATE UNLOGGED TABLE IF NOT EXISTS pgfr.samples_ring (
     slot_id             INTEGER PRIMARY KEY CHECK (slot_id >= 0 AND slot_id < 2880),
     captured_at         TIMESTAMPTZ NOT NULL,
@@ -693,8 +725,9 @@ LANGUAGE sql STABLE AS $$
         ('default', 'work_mem_kb', '2048', 'work_mem 2MB for collection queries'),
         ('default', 'skip_locks_threshold', '50', 'Skip lock collection if > 50 blocked'),
         ('default', 'skip_activity_conn_threshold', '100', 'Skip activity if > 100 active'),
-        ('default', 'statements_interval_minutes', '15', 'Collect statements every 15 minutes'),
+        ('default', 'statements_interval_minutes', '5', 'Collect statements every 5 minutes'),
         ('default', 'statements_min_calls', '1', 'Include queries with >= 1 call'),
+        ('default', 'statements_top_n', '50', 'Collect top 50 queries'),
         ('default', 'table_stats_top_n', '50', 'Track top 50 tables'),
         ('production_safe', 'sample_interval_seconds', '300', 'Sample every 5 minutes (40% less overhead)'),
         ('production_safe', 'load_shedding_enabled', 'true', 'Skip during high load'),
@@ -719,8 +752,9 @@ LANGUAGE sql STABLE AS $$
         ('production_safe', 'work_mem_kb', '1024', 'Lower work_mem to reduce overhead'),
         ('production_safe', 'skip_locks_threshold', '30', 'More aggressive lock skip'),
         ('production_safe', 'skip_activity_conn_threshold', '50', 'More aggressive activity skip'),
-        ('production_safe', 'statements_interval_minutes', '30', 'Less frequent statement collection'),
+        ('production_safe', 'statements_interval_minutes', '15', 'Less frequent statement collection'),
         ('production_safe', 'statements_min_calls', '5', 'Only queries with >= 5 calls'),
+        ('production_safe', 'statements_top_n', '30', 'Collect top 30 queries'),
         ('production_safe', 'table_stats_top_n', '30', 'Track fewer tables'),
         ('development', 'sample_interval_seconds', '180', 'Sample every 3 minutes'),
         ('development', 'load_shedding_enabled', 'true', 'Skip during high load'),
@@ -742,8 +776,9 @@ LANGUAGE sql STABLE AS $$
         ('development', 'work_mem_kb', '2048', 'Standard work_mem'),
         ('development', 'skip_locks_threshold', '50', 'Standard lock skip threshold'),
         ('development', 'skip_activity_conn_threshold', '100', 'Standard activity skip threshold'),
-        ('development', 'statements_interval_minutes', '15', 'Collect statements every 15 minutes'),
+        ('development', 'statements_interval_minutes', '5', 'Collect statements every 5 minutes'),
         ('development', 'statements_min_calls', '1', 'Include all queries'),
+        ('development', 'statements_top_n', '50', 'Collect top 50 queries'),
         ('development', 'table_stats_top_n', '50', 'Track top 50 tables'),
         ('troubleshooting', 'sample_interval_seconds', '60', 'Sample every minute (detailed data)'),
         ('troubleshooting', 'load_shedding_enabled', 'false', 'Collect even under load'),
@@ -752,7 +787,7 @@ LANGUAGE sql STABLE AS $$
         ('troubleshooting', 'enable_locks', 'true', 'Collect all lock data'),
         ('troubleshooting', 'enable_progress', 'true', 'Collect all progress data'),
         ('troubleshooting', 'snapshot_based_collection', 'true', 'Snapshot-based collection'),
-        ('troubleshooting', 'statements_top_n', '50', 'Collect top 50 queries (vs 20)'),
+        ('troubleshooting', 'statements_top_n', '100', 'Collect top 100 queries'),
         ('troubleshooting', 'retention_snapshots_days', '7', 'Keep 7 days'),
         ('troubleshooting', 'aggregate_retention_days', '3', 'Keep 3 days'),
         ('troubleshooting', 'table_stats_enabled', 'true', 'Collect table statistics'),
@@ -773,7 +808,7 @@ LANGUAGE sql STABLE AS $$
         ('troubleshooting', 'work_mem_kb', '4096', 'More work_mem for complex queries'),
         ('troubleshooting', 'skip_locks_threshold', '100', 'Higher threshold - collect more'),
         ('troubleshooting', 'skip_activity_conn_threshold', '200', 'Higher threshold - collect more'),
-        ('troubleshooting', 'statements_interval_minutes', '5', 'More frequent statement collection'),
+        ('troubleshooting', 'statements_interval_minutes', '2', 'More frequent statement collection'),
         ('troubleshooting', 'statements_min_calls', '1', 'Include all queries'),
         ('troubleshooting', 'table_stats_top_n', '100', 'Track more tables'),
         ('minimal_overhead', 'sample_interval_seconds', '300', 'Sample every 5 minutes'),
@@ -799,18 +834,19 @@ LANGUAGE sql STABLE AS $$
         ('minimal_overhead', 'work_mem_kb', '1024', 'Minimal work_mem'),
         ('minimal_overhead', 'skip_locks_threshold', '20', 'Very aggressive lock skip'),
         ('minimal_overhead', 'skip_activity_conn_threshold', '30', 'Very aggressive activity skip'),
-        ('minimal_overhead', 'statements_interval_minutes', '30', 'Infrequent statement collection'),
+        ('minimal_overhead', 'statements_interval_minutes', '15', 'Infrequent statement collection'),
         ('minimal_overhead', 'statements_min_calls', '10', 'Only hot queries'),
+        ('minimal_overhead', 'statements_top_n', '20', 'Collect top 20 queries'),
         ('minimal_overhead', 'table_stats_top_n', '20', 'Track fewer tables')
     ) AS t(profile, key, value, description);
 $$;
 
 -- Non-profile settings (system defaults that profiles don't manage)
 INSERT INTO pgfr.config (key, value) VALUES
-    ('schema_version', '2.25'),
+    ('schema_version', '2.26'),
     ('mode', 'normal'),
     ('statements_enabled', 'auto'),
-    ('statements_top_n', '20'),
+    ('statements_top_n', '50'),
     ('circuit_breaker_threshold_ms', '1000'),
     ('circuit_breaker_window_minutes', '15'),
     ('lock_timeout_ms', '100'),
@@ -3052,17 +3088,21 @@ BEGIN
             v_last_statements_collection TIMESTAMPTZ;
             v_statements_interval_minutes INTEGER;
             v_should_collect BOOLEAN := TRUE;
+            v_prev_snapshot_id INTEGER;
         BEGIN
             v_statements_interval_minutes := COALESCE(
-                pgfr._get_config('statements_interval_minutes', '15')::integer,
-                15
+                pgfr._get_config('statements_interval_minutes', '5')::integer,
+                5
             );
-            SELECT max(s.captured_at) INTO v_last_statements_collection
+            SELECT s.id, s.captured_at
+              INTO v_prev_snapshot_id, v_last_statements_collection
             FROM pgfr.snapshots s
             WHERE EXISTS (
                 SELECT 1 FROM pgfr.statement_snapshots ss
                 WHERE ss.snapshot_id = s.id
-            );
+            )
+            ORDER BY s.captured_at DESC
+            LIMIT 1;
             IF v_last_statements_collection IS NOT NULL
                AND v_last_statements_collection > now() - (v_statements_interval_minutes || ' minutes')::interval
             THEN
@@ -3098,46 +3138,93 @@ BEGIN
                     IF v_stmt_status = 'HIGH_CHURN' THEN
                         RAISE WARNING 'pgfr_record: Skipping pg_stat_statements collection - high churn detected (>95%% utilization)';
                     ELSE
+                WITH current_stmts AS (
+                    SELECT
+                        s.queryid,
+                        s.userid,
+                        s.dbid,
+                        left(s.query, 500) AS query_preview,
+                        s.calls,
+                        s.total_exec_time,
+                        s.min_exec_time,
+                        s.max_exec_time,
+                        s.mean_exec_time,
+                        s.rows,
+                        s.shared_blks_hit,
+                        s.shared_blks_read,
+                        s.shared_blks_dirtied,
+                        s.shared_blks_written,
+                        s.temp_blks_read,
+                        s.temp_blks_written,
+                        s.blk_read_time,
+                        s.blk_write_time,
+                        s.wal_records,
+                        s.wal_bytes
+                    FROM pg_stat_statements s
+                    WHERE s.dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+                      AND s.calls >= COALESCE(pgfr._get_config('statements_min_calls', '1')::integer, 1)
+                    ORDER BY CASE
+                        WHEN pgfr._get_config('statements_ranking_metric', 'buffers') = 'time'
+                        THEN s.total_exec_time
+                        ELSE s.shared_blks_hit + s.shared_blks_read + s.temp_blks_read + s.temp_blks_written
+                    END DESC
+                    LIMIT COALESCE(pgfr._get_config('statements_top_n', '50')::integer, 50)
+                )
                 INSERT INTO pgfr.statement_snapshots (
-                snapshot_id, queryid, userid, dbid, query_preview,
-                calls, total_exec_time, min_exec_time, max_exec_time,
-                mean_exec_time, rows,
-                shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written,
-                temp_blks_read, temp_blks_written,
-                blk_read_time, blk_write_time,
-                wal_records, wal_bytes
-            )
-            SELECT
-                v_snapshot_id,
-                s.queryid,
-                s.userid,
-                s.dbid,
-                left(s.query, 500),
-                s.calls,
-                s.total_exec_time,
-                s.min_exec_time,
-                s.max_exec_time,
-                s.mean_exec_time,
-                s.rows,
-                s.shared_blks_hit,
-                s.shared_blks_read,
-                s.shared_blks_dirtied,
-                s.shared_blks_written,
-                s.temp_blks_read,
-                s.temp_blks_written,
-                s.blk_read_time,
-                s.blk_write_time,
-                s.wal_records,
-                s.wal_bytes
-            FROM pg_stat_statements s
-            WHERE s.dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
-              AND s.calls >= COALESCE(pgfr._get_config('statements_min_calls', '1')::integer, 1)
-            ORDER BY CASE
-                WHEN pgfr._get_config('statements_ranking_metric', 'buffers') = 'time'
-                THEN s.total_exec_time
-                ELSE s.shared_blks_hit + s.shared_blks_read + s.temp_blks_read + s.temp_blks_written
-            END DESC
-            LIMIT COALESCE(pgfr._get_config('statements_top_n', '20')::integer, 20);
+                    snapshot_id, queryid, userid, dbid, query_preview,
+                    calls, total_exec_time, min_exec_time, max_exec_time,
+                    mean_exec_time, rows,
+                    shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written,
+                    temp_blks_read, temp_blks_written,
+                    blk_read_time, blk_write_time,
+                    wal_records, wal_bytes,
+                    calls_delta, total_exec_time_delta, rows_delta,
+                    shared_blks_hit_delta, shared_blks_read_delta,
+                    shared_blks_dirtied_delta, shared_blks_written_delta,
+                    temp_blks_read_delta, temp_blks_written_delta,
+                    blk_read_time_delta, blk_write_time_delta,
+                    wal_records_delta, wal_bytes_delta
+                )
+                SELECT
+                    v_snapshot_id,
+                    c.queryid,
+                    c.userid,
+                    c.dbid,
+                    c.query_preview,
+                    c.calls,
+                    c.total_exec_time,
+                    c.min_exec_time,
+                    c.max_exec_time,
+                    c.mean_exec_time,
+                    c.rows,
+                    c.shared_blks_hit,
+                    c.shared_blks_read,
+                    c.shared_blks_dirtied,
+                    c.shared_blks_written,
+                    c.temp_blks_read,
+                    c.temp_blks_written,
+                    c.blk_read_time,
+                    c.blk_write_time,
+                    c.wal_records,
+                    c.wal_bytes,
+                    CASE WHEN prev.calls IS NOT NULL AND c.calls >= prev.calls THEN c.calls - prev.calls ELSE NULL END,
+                    CASE WHEN prev.total_exec_time IS NOT NULL AND c.total_exec_time >= prev.total_exec_time THEN c.total_exec_time - prev.total_exec_time ELSE NULL END,
+                    CASE WHEN prev.rows IS NOT NULL AND c.rows >= prev.rows THEN c.rows - prev.rows ELSE NULL END,
+                    CASE WHEN prev.shared_blks_hit IS NOT NULL AND c.shared_blks_hit >= prev.shared_blks_hit THEN c.shared_blks_hit - prev.shared_blks_hit ELSE NULL END,
+                    CASE WHEN prev.shared_blks_read IS NOT NULL AND c.shared_blks_read >= prev.shared_blks_read THEN c.shared_blks_read - prev.shared_blks_read ELSE NULL END,
+                    CASE WHEN prev.shared_blks_dirtied IS NOT NULL AND c.shared_blks_dirtied >= prev.shared_blks_dirtied THEN c.shared_blks_dirtied - prev.shared_blks_dirtied ELSE NULL END,
+                    CASE WHEN prev.shared_blks_written IS NOT NULL AND c.shared_blks_written >= prev.shared_blks_written THEN c.shared_blks_written - prev.shared_blks_written ELSE NULL END,
+                    CASE WHEN prev.temp_blks_read IS NOT NULL AND c.temp_blks_read >= prev.temp_blks_read THEN c.temp_blks_read - prev.temp_blks_read ELSE NULL END,
+                    CASE WHEN prev.temp_blks_written IS NOT NULL AND c.temp_blks_written >= prev.temp_blks_written THEN c.temp_blks_written - prev.temp_blks_written ELSE NULL END,
+                    CASE WHEN prev.blk_read_time IS NOT NULL AND c.blk_read_time >= prev.blk_read_time THEN c.blk_read_time - prev.blk_read_time ELSE NULL END,
+                    CASE WHEN prev.blk_write_time IS NOT NULL AND c.blk_write_time >= prev.blk_write_time THEN c.blk_write_time - prev.blk_write_time ELSE NULL END,
+                    CASE WHEN prev.wal_records IS NOT NULL AND c.wal_records >= prev.wal_records THEN c.wal_records - prev.wal_records ELSE NULL END,
+                    CASE WHEN prev.wal_bytes IS NOT NULL AND c.wal_bytes >= prev.wal_bytes THEN c.wal_bytes - prev.wal_bytes ELSE NULL END
+                FROM current_stmts c
+                LEFT JOIN pgfr.statement_snapshots prev
+                    ON prev.snapshot_id = v_prev_snapshot_id
+                   AND prev.queryid = c.queryid
+                   AND prev.dbid = c.dbid;
                     PERFORM pgfr._record_section_success(v_stat_id);
                     END IF;
                 END IF;
