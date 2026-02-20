@@ -1,13 +1,3 @@
--- =============================================================================
--- pgfr_record: Reporting & Analysis Functions
--- =============================================================================
--- Optional add-on for _record/install.sql. Provides analysis, forensics, and reporting.
--- Requires: _record/install.sql must be run first (creates tables and core functions).
---
--- Install: psql --single-transaction -f _analyze/install.sql
--- =============================================================================
-
--- Verify core is installed
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'schema_version') THEN
