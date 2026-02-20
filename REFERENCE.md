@@ -31,21 +31,6 @@ Complete reference for [pg-flight-recorder](README.md). For installation and get
 | `pgfr.cleanup()` | `record` | Remove expired data based on retention settings |
 | `pgfr.cleanup_aggregates()` | `void` | Remove old aggregate and archive data |
 
-### Comparison and analysis (internal)
-
-| Function | Returns | Description |
-|----------|---------|-------------|
-| `pgfr._compare(start timestamptz, end timestamptz)` | `record` | Compare two snapshots side-by-side with deltas |
-| `pgfr._wait_summary(start timestamptz, end timestamptz)` | `record` | Wait event breakdown over a time range |
-| `pgfr._statement_compare(start timestamptz, end timestamptz, min_delta_ms float8, limit int)` | `record` | Query performance changes between two points |
-| `pgfr._activity_at(ts timestamptz)` | `record` | Activity snapshot closest to a timestamp |
-| `pgfr._recent_waits_current()` | `record` | Current wait event data from ring buffer |
-| `pgfr._recent_activity_current()` | `record` | Current activity data from ring buffer |
-| `pgfr._recent_locks_current()` | `record` | Current lock data from ring buffer |
-| `pgfr._detect_query_storms(lookback interval, threshold numeric)` | `record` | Find queries with abnormal execution counts |
-| `pgfr._diagnose_regression_causes(queryid bigint)` | `text[]` | Diagnose causes of a query regression |
-| `pgfr._detect_regressions(lookback interval, threshold numeric)` | `record` | Find performance regressions via buffer metrics or timing |
-
 ### Profile management
 
 | Function | Returns | Description |

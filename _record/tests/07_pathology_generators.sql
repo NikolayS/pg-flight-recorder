@@ -73,8 +73,8 @@ SELECT ok(
 
 -- Test _recent_locks_current() function works
 SELECT lives_ok(
-    $$SELECT * FROM pgfr._recent_locks_current()$$,
-    'LOCK PATHOLOGY: _recent_locks_current() should execute without error'
+    $$SELECT * FROM pgfr_analyze.recent_locks_current()$$,
+    'LOCK PATHOLOGY: recent_locks_current() should execute without error'
 );
 
 -- Test that pg_locks system view shows our activity
@@ -286,8 +286,8 @@ SELECT ok(
 
 -- Test that _recent_activity_current() works (used for real-time CPU monitoring)
 SELECT lives_ok(
-    $$SELECT * FROM pgfr._recent_activity_current()$$,
-    'CPU PATHOLOGY: _recent_activity_current() should execute for CPU monitoring'
+    $$SELECT * FROM pgfr_analyze.recent_activity_current()$$,
+    'CPU PATHOLOGY: recent_activity_current() should execute for CPU monitoring'
 );
 
 -- Cleanup
@@ -349,14 +349,14 @@ SELECT ok(
 
 -- Test that _recent_activity_current() works for real-time monitoring
 SELECT lives_ok(
-    $$SELECT * FROM pgfr._recent_activity_current() ORDER BY query_start NULLS LAST LIMIT 10$$,
-    'SLOW REALTIME PATHOLOGY: _recent_activity_current() should execute for triage'
+    $$SELECT * FROM pgfr_analyze.recent_activity_current() ORDER BY query_start NULLS LAST LIMIT 10$$,
+    'SLOW REALTIME PATHOLOGY: recent_activity_current() should execute for triage'
 );
 
 -- Test that _recent_waits_current() works for wait event analysis
 SELECT lives_ok(
-    $$SELECT * FROM pgfr._recent_waits_current() ORDER BY count DESC$$,
-    'SLOW REALTIME PATHOLOGY: _recent_waits_current() should execute for wait analysis'
+    $$SELECT * FROM pgfr_analyze.recent_waits_current() ORDER BY count DESC$$,
+    'SLOW REALTIME PATHOLOGY: recent_waits_current() should execute for wait analysis'
 );
 
 -- Cleanup
@@ -466,7 +466,7 @@ BEGIN
 
     -- Verify _compare() executes
     SELECT count(*) INTO v_compare_count
-    FROM pgfr._compare(v_start_time, v_end_time);
+    FROM pgfr_analyze.compare(v_start_time, v_end_time);
 
     -- Store result
     INSERT INTO pathology_test_results VALUES ('compare_executed', v_compare_count >= 0)
@@ -481,7 +481,7 @@ $$;
 
 SELECT ok(
     (SELECT result FROM pathology_test_results WHERE test_name = 'compare_executed'),
-    'SLOW QUERIES PATHOLOGY: _compare() should execute for before/after analysis'
+    'SLOW QUERIES PATHOLOGY: compare() should execute for before/after analysis'
 );
 
 -- Cleanup
@@ -568,8 +568,8 @@ SELECT ok(
 
 -- Test that _recent_activity_current() is queryable
 SELECT ok(
-    (SELECT count(*) FROM pgfr._recent_activity_current()) >= 0,
-    'CONNECTION PATHOLOGY: _recent_activity_current() should be queryable'
+    (SELECT count(*) FROM pgfr_analyze.recent_activity_current()) >= 0,
+    'CONNECTION PATHOLOGY: recent_activity_current() should be queryable'
 );
 
 -- Test we can see connection utilization data
@@ -667,11 +667,11 @@ SELECT lives_ok(
 
 -- Test that _wait_summary() function works for historical wait analysis
 SELECT lives_ok(
-    $$SELECT * FROM pgfr._wait_summary(
+    $$SELECT * FROM pgfr_analyze.wait_summary(
         current_setting('pathology.historical_start')::timestamptz,
         current_setting('pathology.historical_end')::timestamptz
     )$$,
-    'HISTORICAL PATHOLOGY: _wait_summary() should execute for time range'
+    'HISTORICAL PATHOLOGY: wait_summary() should execute for time range'
 );
 
 -- Test that activity_samples_archive is queryable (may be empty if archiving hasn't run)
@@ -748,13 +748,13 @@ SELECT pgfr.snapshot();
 -- Test that wait_summary can filter by IO wait events
 SELECT lives_ok(
     $$SELECT wait_event, total_waiters, avg_waiters
-      FROM pgfr._wait_summary(
+      FROM pgfr_analyze.wait_summary(
           now() - interval '1 minute',
           now()
       )
       WHERE wait_event_type = 'IO' OR wait_event_type IS NULL
       LIMIT 10$$,
-    'DISK IO PATHOLOGY: _wait_summary() should be able to filter IO events'
+    'DISK IO PATHOLOGY: wait_summary() should be able to filter IO events'
 );
 
 -- Test that we can query disk read metrics from statement_snapshots
@@ -880,7 +880,7 @@ BEGIN
 
     -- Verify _compare() executes for checkpoint analysis
     SELECT count(*) INTO v_compare_count
-    FROM pgfr._compare(v_start_time, v_end_time);
+    FROM pgfr_analyze.compare(v_start_time, v_end_time);
 
     -- Store result
     INSERT INTO pathology_test_results VALUES ('checkpoint_compare_executed', v_compare_count >= 0)
@@ -894,7 +894,7 @@ $$;
 
 SELECT ok(
     (SELECT result FROM pathology_test_results WHERE test_name = 'checkpoint_compare_executed'),
-    'CHECKPOINT PATHOLOGY: _compare() should execute for checkpoint analysis'
+    'CHECKPOINT PATHOLOGY: compare() should execute for checkpoint analysis'
 );
 
 -- =============================================================================

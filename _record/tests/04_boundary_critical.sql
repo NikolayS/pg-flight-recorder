@@ -229,26 +229,26 @@ SELECT lives_ok(
 
 -- Test _compare() with NULL timestamps
 SELECT lives_ok(
-    $$SELECT * FROM pgfr._compare(NULL, NULL)$$,
-    'Boundary: _compare(NULL, NULL) should not crash'
+    $$SELECT * FROM pgfr_analyze.compare(NULL, NULL)$$,
+    'Boundary: compare(NULL, NULL) should not crash'
 );
 
 -- Test _compare() with start > end (backwards range)
 SELECT lives_ok(
-    $$SELECT * FROM pgfr._compare('2025-12-31', '2024-01-01')$$,
-    'Boundary: _compare() with backwards range should not crash'
+    $$SELECT * FROM pgfr_analyze.compare('2025-12-31', '2024-01-01')$$,
+    'Boundary: compare() with backwards range should not crash'
 );
 
 -- Test _compare() with future dates
 SELECT lives_ok(
-    $$SELECT * FROM pgfr._compare(now() + interval '1 year', now() + interval '2 years')$$,
-    'Boundary: _compare() with future dates should not crash'
+    $$SELECT * FROM pgfr_analyze.compare(now() + interval '1 year', now() + interval '2 years')$$,
+    'Boundary: compare() with future dates should not crash'
 );
 
 -- Test _compare() with very old dates (epoch)
 SELECT lives_ok(
-    $$SELECT * FROM pgfr._compare('1970-01-01'::timestamptz, '1970-01-02'::timestamptz)$$,
-    'Boundary: _compare() with epoch dates should not crash'
+    $$SELECT * FROM pgfr_analyze.compare('1970-01-01'::timestamptz, '1970-01-02'::timestamptz)$$,
+    'Boundary: compare() with epoch dates should not crash'
 );
 
 -- Test _wait_summary() with '0 seconds' interval
@@ -261,11 +261,11 @@ BEGIN
     FROM pgfr.samples_ring WHERE captured_at IS NOT NULL;
 
     IF v_start IS NOT NULL THEN
-        PERFORM * FROM pgfr._wait_summary(v_start, v_end);
+        PERFORM * FROM pgfr_analyze.wait_summary(v_start, v_end);
     END IF;
 END $$;
 
-SELECT ok(true, 'Boundary: _wait_summary() with 0-second interval should not crash');
+SELECT ok(true, 'Boundary: wait_summary() with 0-second interval should not crash');
 
 -- Test _wait_summary() with negative interval
 DO $$
@@ -277,16 +277,16 @@ BEGIN
     FROM pgfr.samples_ring WHERE captured_at IS NOT NULL;
 
     IF v_start IS NOT NULL AND v_end IS NOT NULL THEN
-        PERFORM * FROM pgfr._wait_summary(v_start, v_end);
+        PERFORM * FROM pgfr_analyze.wait_summary(v_start, v_end);
     END IF;
 END $$;
 
-SELECT ok(true, 'Boundary: _wait_summary() with negative interval should not crash');
+SELECT ok(true, 'Boundary: wait_summary() with negative interval should not crash');
 
 -- Test activity_at() with NULL timestamp
 SELECT lives_ok(
-    $$SELECT * FROM pgfr._activity_at(NULL)$$,
-    'Boundary: _activity_at(NULL) should not crash'
+    $$SELECT * FROM pgfr_analyze.activity_at(NULL)$$,
+    'Boundary: activity_at(NULL) should not crash'
 );
 
 -- Test cleanup() with '0 days' retention
@@ -630,50 +630,50 @@ SELECT pgfr.apply_profile('default');
 
 -- Test _recent_waits_current() with current data
 SELECT ok(
-    (SELECT count(*) FROM pgfr._recent_waits_current()) >= 0,
-    'Real-Time: _recent_waits_current() should execute without error'
+    (SELECT count(*) FROM pgfr_analyze.recent_waits_current()) >= 0,
+    'Real-Time: recent_waits_current() should execute without error'
 );
 
 -- Test _recent_waits_current() structure
 SELECT ok(
     EXISTS(
-        SELECT 1 FROM pgfr._recent_waits_current()
+        SELECT 1 FROM pgfr_analyze.recent_waits_current()
         WHERE captured_at IS NOT NULL
         LIMIT 1
-    ) OR NOT EXISTS(SELECT 1 FROM pgfr._recent_waits_current()),
-    'Real-Time: _recent_waits_current() should have captured_at column'
+    ) OR NOT EXISTS(SELECT 1 FROM pgfr_analyze.recent_waits_current()),
+    'Real-Time: recent_waits_current() should have captured_at column'
 );
 
 -- Test _recent_activity_current() with current data
 SELECT ok(
-    (SELECT count(*) FROM pgfr._recent_activity_current()) >= 0,
-    'Real-Time: _recent_activity_current() should execute without error'
+    (SELECT count(*) FROM pgfr_analyze.recent_activity_current()) >= 0,
+    'Real-Time: recent_activity_current() should execute without error'
 );
 
 -- Test _recent_activity_current() structure
 SELECT ok(
     EXISTS(
-        SELECT 1 FROM pgfr._recent_activity_current()
+        SELECT 1 FROM pgfr_analyze.recent_activity_current()
         WHERE captured_at IS NOT NULL
         LIMIT 1
-    ) OR NOT EXISTS(SELECT 1 FROM pgfr._recent_activity_current()),
-    'Real-Time: _recent_activity_current() should have captured_at column'
+    ) OR NOT EXISTS(SELECT 1 FROM pgfr_analyze.recent_activity_current()),
+    'Real-Time: recent_activity_current() should have captured_at column'
 );
 
 -- Test _recent_locks_current() with current data
 SELECT ok(
-    (SELECT count(*) FROM pgfr._recent_locks_current()) >= 0,
-    'Real-Time: _recent_locks_current() should execute without error'
+    (SELECT count(*) FROM pgfr_analyze.recent_locks_current()) >= 0,
+    'Real-Time: recent_locks_current() should execute without error'
 );
 
 -- Test _recent_locks_current() structure
 SELECT ok(
     EXISTS(
-        SELECT 1 FROM pgfr._recent_locks_current()
+        SELECT 1 FROM pgfr_analyze.recent_locks_current()
         WHERE captured_at IS NOT NULL
         LIMIT 1
-    ) OR NOT EXISTS(SELECT 1 FROM pgfr._recent_locks_current()),
-    'Real-Time: _recent_locks_current() should have captured_at column'
+    ) OR NOT EXISTS(SELECT 1 FROM pgfr_analyze.recent_locks_current()),
+    'Real-Time: recent_locks_current() should have captured_at column'
 );
 
 -- Test mode-aware retention (normal mode = 6h)
@@ -681,18 +681,18 @@ SELECT pgfr.set_mode('normal');
 
 SELECT ok(
     NOT EXISTS(
-        SELECT 1 FROM pgfr._recent_waits_current()
+        SELECT 1 FROM pgfr_analyze.recent_waits_current()
         WHERE captured_at < now() - interval '6 hours'
     ),
-    'Real-Time: _recent_waits_current() should respect 6h retention in normal mode'
+    'Real-Time: recent_waits_current() should respect 6h retention in normal mode'
 );
 
 -- Test mode-aware retention (emergency mode = 10h)
 SELECT pgfr.set_mode('emergency');
 
 SELECT lives_ok(
-    $$SELECT * FROM pgfr._recent_waits_current()$$,
-    'Real-Time: _recent_waits_current() should work in emergency mode'
+    $$SELECT * FROM pgfr_analyze.recent_waits_current()$$,
+    'Real-Time: recent_waits_current() should work in emergency mode'
 );
 
 -- Reset to normal mode
@@ -701,9 +701,9 @@ SELECT pgfr.set_mode('normal');
 -- Test all 3 views with concurrent query
 SELECT lives_ok(
     $$SELECT
-        (SELECT count(*) FROM pgfr._recent_waits_current()) +
-        (SELECT count(*) FROM pgfr._recent_activity_current()) +
-        (SELECT count(*) FROM pgfr._recent_locks_current())
+        (SELECT count(*) FROM pgfr_analyze.recent_waits_current()) +
+        (SELECT count(*) FROM pgfr_analyze.recent_activity_current()) +
+        (SELECT count(*) FROM pgfr_analyze.recent_locks_current())
     $$,
     'Real-Time: All 3 real-time views should work concurrently'
 );
