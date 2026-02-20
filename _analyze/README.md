@@ -35,6 +35,12 @@ SELECT pgfr.enable();
 ## Quick start
 
 ```sql
+-- Compare two snapshots
+SELECT * FROM pgfr_analyze.compare(now() - '1 hour', now());
+
+-- Wait event summary over a time range
+SELECT * FROM pgfr_analyze.wait_summary(now() - '1 hour', now());
+
 -- Generate a diagnostic report for the last hour
 SELECT pgfr_analyze.report('1 hour');
 
@@ -61,6 +67,18 @@ SELECT * FROM pgfr_analyze.capacity_summary('7 days');
 ```
 
 ## Functions
+
+### Comparison and analysis
+
+| Function                                         | Description                                |
+|--------------------------------------------------|--------------------------------------------|
+| `compare(start, end)`                            | Compare two snapshots side-by-side         |
+| `wait_summary(start, end)`                       | Wait event breakdown over a time range     |
+| `statement_compare(start, end)`                  | Query performance changes between points   |
+| `activity_at(timestamp)`                         | Activity snapshot closest to a timestamp   |
+| `recent_waits_current()`                         | Current wait event data from ring buffer   |
+| `recent_activity_current()`                      | Current activity data from ring buffer     |
+| `recent_locks_current()`                         | Current lock data from ring buffer         |
 
 ### Reporting
 

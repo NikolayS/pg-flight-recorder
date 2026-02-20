@@ -53,12 +53,6 @@ SELECT * FROM pgfr.recent_activity;
 -- View recent lock contention
 SELECT * FROM pgfr.recent_locks;
 
--- Compare two snapshots
-SELECT * FROM pgfr_analyze.compare(now() - '1 hour', now());
-
--- Wait event summary over a time range
-SELECT * FROM pgfr_analyze.wait_summary(now() - '1 hour', now());
-
 -- Snapshot-over-snapshot deltas
 SELECT * FROM pgfr.deltas;
 ```
@@ -83,8 +77,6 @@ SELECT * FROM pgfr.deltas;
 | `pgfr.enable()`                 | Start collection jobs         |
 | `pgfr.disable()`                | Stop collection jobs          |
 | `pgfr.health_check()`           | System health status          |
-| `pgfr_analyze.compare(start, end)`        | Compare two snapshots |
-| `pgfr_analyze.wait_summary(start, end)`   | Wait event breakdown  |
 | `pgfr.set_mode(mode)`           | Set collection mode           |
 | `pgfr.apply_profile(name)`      | Apply a configuration profile |
 | `pgfr.list_profiles()`          | List available profiles       |
