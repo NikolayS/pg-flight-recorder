@@ -3389,7 +3389,7 @@ ORDER BY s.captured_at DESC;
 CREATE OR REPLACE FUNCTION pgfr_record._get_ring_retention_interval()
 RETURNS INTERVAL
 LANGUAGE sql STABLE AS $$
-    SELECT ((120 * COALESCE(
+    SELECT ((pgfr_record._get_ring_buffer_slots() * COALESCE(
         pgfr_record._get_config('sample_interval_seconds', '60')::integer,
         60
     ))::text || ' seconds')::interval;

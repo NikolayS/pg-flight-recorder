@@ -156,7 +156,7 @@ BEGIN
 END $$;
 
 SELECT throws_ok(
-    $$SELECT pgfr_record._get_config('sample_interval_seconds', '120')::integer$$,
+    $$SELECT pgfr_record._get_config('sample_interval_seconds', '60')::integer$$,
     NULL,
     'Error: Should raise error for non-numeric config values when casting to integer'
 );
