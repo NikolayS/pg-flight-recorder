@@ -705,7 +705,7 @@ RETURNS TABLE(
 )
 LANGUAGE sql STABLE AS $$
     SELECT * FROM (VALUES
-        ('default', 'sample_interval_seconds', '180', 'Sample every 3 minutes'),
+        ('default', 'sample_interval_seconds', '60', 'Sample every minute'),
         ('default', 'load_shedding_enabled', 'true', 'Skip during high load (>70% connections)'),
         ('default', 'circuit_breaker_enabled', 'true', 'Auto-skip if collections run slow'),
         ('default', 'enable_locks', 'true', 'Collect lock contention data'),
@@ -756,7 +756,7 @@ LANGUAGE sql STABLE AS $$
         ('production_safe', 'statements_min_calls', '5', 'Only queries with >= 5 calls'),
         ('production_safe', 'statements_top_n', '30', 'Collect top 30 queries'),
         ('production_safe', 'table_stats_top_n', '30', 'Track fewer tables'),
-        ('development', 'sample_interval_seconds', '180', 'Sample every 3 minutes'),
+        ('development', 'sample_interval_seconds', '60', 'Sample every minute'),
         ('development', 'load_shedding_enabled', 'true', 'Skip during high load'),
         ('development', 'circuit_breaker_enabled', 'true', 'Auto-skip if slow'),
         ('development', 'enable_locks', 'true', 'Collect lock data'),
@@ -1188,8 +1188,8 @@ BEGIN
     -- Get current configuration
     v_slots := pgfr_record._get_ring_buffer_slots();
     v_sample_interval := COALESCE(
-        pgfr_record._get_config('sample_interval_seconds', '180')::integer,
-        180
+        pgfr_record._get_config('sample_interval_seconds', '60')::integer,
+        60
     );
     v_archive_interval := COALESCE(
         pgfr_record._get_config('archive_sample_frequency_minutes', '15')::integer,
@@ -3751,7 +3751,7 @@ BEGIN
 
     -- Get current values
     v_old_slots := pgfr_record._get_config('ring_buffer_slots', '120');
-    v_old_interval := pgfr_record._get_config('sample_interval_seconds', '180');
+    v_old_interval := pgfr_record._get_config('sample_interval_seconds', '60');
     v_old_archive := pgfr_record._get_config('archive_sample_frequency_minutes', '15');
 
     -- Check if rebuild will be needed

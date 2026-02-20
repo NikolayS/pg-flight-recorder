@@ -14,7 +14,7 @@ Flight Recorder collects two types of data:
 
 | System               | What it captures                       | Frequency | Retention                         |
 |----------------------|----------------------------------------|-----------|-----------------------------------|
-| **Sampled Activity** | Wait events, sessions, locks           | 3 min     | Ring buffer: 6-10h, Archives: 7d  |
+| **Sampled Activity** | Wait events, sessions, locks           | 1 min     | Ring buffer: 2h, Archives: 7d     |
 | **Snapshots**        | WAL, checkpoints, I/O, tables, indexes | 5 min     | 30 days                           |
 
 Data flows through UNLOGGED ring buffers (hot, low-overhead) into durable archives and aggregates (cold, long-retention). Safety mechanisms -- circuit breaker, load shedding, per-section timeouts, and pg_cron job timeouts -- prevent the recorder from impacting production workloads.

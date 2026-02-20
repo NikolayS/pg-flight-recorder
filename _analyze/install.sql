@@ -2179,7 +2179,7 @@ BEGIN
             'Scheduling (pg_cron)'::text,
             'GO'::text,
             'pg_cron extension detected',
-            'Automatic scheduling will work. Flight recorder will run automatically every 3 minutes.'::text;
+            'Automatic scheduling will work. Flight recorder will run automatically every minute.'::text;
     ELSE
         RETURN QUERY SELECT
             'Scheduling (pg_cron)'::text,
