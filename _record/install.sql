@@ -859,8 +859,6 @@ INSERT INTO pgfr.config (key, value) VALUES
     ('alert_schema_size_mb', '8000'),
     ('lock_timeout_strategy', 'fail_fast'),
     ('check_ddl_before_collection', 'true'),
-    ('check_replica_lag', 'true'),
-    ('replica_lag_threshold', '10 seconds'),
     ('check_checkpoint_backup', 'true'),
     ('check_pss_conflicts', 'true'),
     ('schema_size_use_percentage', 'true'),
@@ -1635,39 +1633,16 @@ $$;
 COMMENT ON FUNCTION pgfr._check_catalog_ddl_locks() IS 'Pre-check for DDL locks on system catalogs to avoid lock contention';
 
 
--- Evaluates replica lag, active checkpoints, and backups to determine collection eligibility
+-- Evaluates active checkpoints and backups to determine collection eligibility
 -- Returns skip reason message or NULL if collection can proceed
 CREATE OR REPLACE FUNCTION pgfr._should_skip_collection()
 RETURNS TEXT
 LANGUAGE plpgsql AS $$
 DECLARE
-    v_replica_lag_check BOOLEAN;
     v_checkpoint_check BOOLEAN;
-    v_replica_lag INTERVAL;
-    v_replica_lag_threshold INTERVAL;
     v_checkpoint_in_progress BOOLEAN;
     v_backup_running BOOLEAN;
 BEGIN
-    v_replica_lag_check := COALESCE(
-        pgfr._get_config('check_replica_lag', 'true')::boolean,
-        true
-    );
-    IF v_replica_lag_check AND pg_is_in_recovery() THEN
-        v_replica_lag_threshold := COALESCE(
-            pgfr._get_config('replica_lag_threshold', '10 seconds')::interval,
-            '10 seconds'::interval
-        );
-        BEGIN
-            SELECT age(now(), pg_last_xact_replay_timestamp())
-            INTO v_replica_lag;
-            IF v_replica_lag > v_replica_lag_threshold THEN
-                RETURN format('Replica lag %s exceeds threshold %s',
-                    v_replica_lag::text, v_replica_lag_threshold::text);
-            END IF;
-        EXCEPTION WHEN OTHERS THEN
-            NULL;
-        END;
-    END IF;
     v_checkpoint_check := COALESCE(
         pgfr._get_config('check_checkpoint_backup', 'true')::boolean,
         true
@@ -1701,7 +1676,7 @@ EXCEPTION WHEN OTHERS THEN
     RETURN NULL;
 END;
 $$;
-COMMENT ON FUNCTION pgfr._should_skip_collection() IS 'Pre-flight checks for replication lag, checkpoints, and backups';
+COMMENT ON FUNCTION pgfr._should_skip_collection() IS 'Pre-flight checks for checkpoints and backups';
 
 
 -- Sampled activity: Collect performance samples (wait events, active sessions, locks) into ring buffers

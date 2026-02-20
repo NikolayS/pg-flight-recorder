@@ -612,8 +612,6 @@ UPDATE pgfr.config SET value = '300' WHERE key = 'sample_interval_seconds';
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `check_ddl_before_collection` | `true` | Check for DDL locks before collecting |
-| `check_replica_lag` | `true` | Check replica lag before collecting |
-| `replica_lag_threshold` | `10 seconds` | Max replica lag before skipping collection |
 | `check_checkpoint_backup` | `true` | Check for active checkpoints/backups |
 | `check_pss_conflicts` | `true` | Check for pg_stat_statements conflicts |
 
@@ -767,7 +765,6 @@ SELECT * FROM pgfr.get_mode();     -- Check current mode
 | **Load Throttle** | Transaction rate exceeds `load_throttle_xact_threshold` or block rate exceeds `load_throttle_blk_threshold` | Skips collection |
 | **Adaptive Sampling** | Active connections below `adaptive_sampling_idle_threshold` | Skips collection (system is idle) |
 | **DDL Lock Check** | `AccessExclusiveLock` held on system catalogs | Skips collection to avoid lock contention |
-| **Replica Lag Check** | Replay lag exceeds `replica_lag_threshold` | Skips collection on replicas with high lag |
 | **Checkpoint/Backup Check** | Active checkpoint or backup detected | Skips collection to avoid I/O contention |
 
 ### Automatic mode switching

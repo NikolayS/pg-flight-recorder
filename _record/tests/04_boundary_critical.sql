@@ -7,7 +7,7 @@
 -- =============================================================================
 
 BEGIN;
-SELECT plan(101);
+SELECT plan(100);
 
 -- Disable checkpoint detection during tests to prevent snapshot skipping
 UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
@@ -689,22 +689,6 @@ SELECT ok(
 -- Re-enable checkpoint check
 UPDATE pgfr.config SET value = 'true' WHERE key = 'check_checkpoint_backup';
 
--- Test _should_skip_collection() with check_replica_lag disabled (also disable checkpoint check)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'check_replica_lag';
-UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
-
--- Disable adaptive sampling during tests (would skip collection when <5 active connections)
-UPDATE pgfr.config SET value = 'false' WHERE key = 'adaptive_sampling';
-
-SELECT ok(
-    pgfr._should_skip_collection() IS NULL,
-    'Pre-Collection: _should_skip_collection() should return NULL when check_replica_lag disabled'
-);
-
--- Re-enable both checks
-UPDATE pgfr.config SET value = 'true' WHERE key = 'check_replica_lag';
-UPDATE pgfr.config SET value = 'true' WHERE key = 'check_checkpoint_backup';
-
 -- Test _should_skip_collection() with check_checkpoint_backup disabled
 UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
@@ -764,7 +748,6 @@ SELECT lives_ok(
 -- Test pre-collection checks with all disabled
 DO $$
 BEGIN
-    UPDATE pgfr.config SET value = 'false' WHERE key = 'check_replica_lag';
     UPDATE pgfr.config SET value = 'false' WHERE key = 'check_checkpoint_backup';
 
 -- Disable adaptive sampling during tests (would skip collection when <5 active connections)
@@ -777,7 +760,6 @@ SELECT ok(
 );
 
 -- Re-enable checks
-UPDATE pgfr.config SET value = 'true' WHERE key = 'check_replica_lag';
 UPDATE pgfr.config SET value = 'true' WHERE key = 'check_checkpoint_backup';
 
 -- Disable checkpoint detection again for remaining tests
