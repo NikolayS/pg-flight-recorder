@@ -1206,16 +1206,16 @@ BEGIN
     RETURN QUERY SELECT
         'ring_buffer_retention'::text,
         CASE
-            WHEN v_retention_hours < 2 THEN 'ERROR'
-            WHEN v_retention_hours < 4 THEN 'WARNING'
+            WHEN v_retention_hours < 1 THEN 'ERROR'
+            WHEN v_retention_hours < 2 THEN 'WARNING'
             ELSE 'OK'
         END::text,
         format('%s hours retention (%s slots × %ss interval)',
                ROUND(v_retention_hours, 1), v_slots, v_sample_interval)::text,
         CASE
-            WHEN v_retention_hours < 4 THEN
-                format('Consider increasing ring_buffer_slots to %s for 6-hour retention',
-                    CEIL((6 * 3600.0 / v_sample_interval))::integer)
+            WHEN v_retention_hours < 2 THEN
+                format('Consider increasing ring_buffer_slots to %s for 2-hour retention',
+                    CEIL((2 * 3600.0 / v_sample_interval))::integer)
             ELSE 'Retention is adequate for most incident investigations'
         END::text;
 
@@ -4724,7 +4724,7 @@ BEGIN
     RAISE NOTICE '';
     RAISE NOTICE 'Collection schedule:';
     RAISE NOTICE '  - Snapshots: every minute (WAL, checkpoints, I/O stats) - DURABLE';
-    RAISE NOTICE '  - Samples: every 120 seconds (ring buffer, 120 slots, 4-hour retention)';
+    RAISE NOTICE '  - Samples: every 60 seconds (ring buffer, 120 slots, 2-hour retention)';
     RAISE NOTICE '  - Flush: every 5 minutes (ring buffer → durable aggregates)';
     RAISE NOTICE '  - Cleanup: daily at 3 AM (aggregates: 7 days, snapshots: 30 days)';
     RAISE NOTICE '';
