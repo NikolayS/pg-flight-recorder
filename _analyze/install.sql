@@ -471,6 +471,8 @@ BEGIN
     RETURN;
 END;
 $$;
+COMMENT ON FUNCTION pgfr_analyze.anomaly_report(TIMESTAMPTZ, TIMESTAMPTZ) IS
+'Analyzes database metrics within a time window and reports detected anomalies (checkpoints, buffer pressure, lock contention, XID wraparound, bloat, replication lag) with severity levels and remediation recommendations.';
 
 -- Generates a comprehensive performance report with metrics and interpretations for a specified time window
 -- Aggregates data from compare, anomaly detection, wait events, and lock contention to provide human-readable insights
@@ -590,6 +592,9 @@ BEGIN
     RETURN;
 END;
 $$;
+COMMENT ON FUNCTION pgfr_analyze.summary_report(TIMESTAMPTZ, TIMESTAMPTZ) IS
+'Generates a comprehensive performance report aggregating compare, anomaly detection, wait events, and lock contention data into human-readable metrics and interpretations.';
+
 -- =============================================================================
 -- ANALYSIS FUNCTIONS (full implementations, cross-schema reads from pgfr_record.*)
 -- =============================================================================
@@ -1574,6 +1579,8 @@ BEGIN
         END::text;
 END;
 $$;
+COMMENT ON FUNCTION pgfr_analyze.performance_report(INTERVAL) IS
+'Reports on flight recorder collection performance: sample/snapshot timing, success rates, schema size, and qualitative health assessments over a configurable lookback window.';
 
 -- Monitors flight recorder system health by checking for circuit breaker trips, schema size limits, collection failures, and stale data
 -- Returns alerts with severity levels (CRITICAL/WARNING) and recommendations when thresholds are exceeded
@@ -1664,6 +1671,8 @@ BEGIN
     END;
 END;
 $$;
+COMMENT ON FUNCTION pgfr_analyze.check_alerts(INTERVAL) IS
+'Monitors flight recorder system health and returns alerts with severity levels (CRITICAL/WARNING) for circuit breaker trips, schema size limits, collection failures, and stale data.';
 
 -- Exports flight recorder diagnostic data as human-readable Markdown
 -- Produces a report with tables that is legible to both humans and AI
