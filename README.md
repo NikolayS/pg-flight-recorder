@@ -6,6 +6,8 @@
 
 Server-side flight recorder for PostgreSQL. Answers "what was happening in my database?"
 
+**[View the project website](https://dventimisupabase.github.io/pg-flight-recorder/)**
+
 pg-flight-recorder continuously samples PostgreSQL system state in the background via pg_cron -- no external agents, sidecars, or polling required. It captures wait events, active sessions, locks, WAL activity, checkpoints, I/O, table and index stats, query performance, replication state, and configuration changes. When something goes wrong, the data is already there.
 
 ## Architecture
