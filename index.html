@@ -781,8 +781,8 @@
     .step .code-block {
       position: relative;
     }
-    .step code {
-      display: block;
+    .step pre {
+      margin: 0;
       padding: 10px 12px;
       padding-right: 36px;
       background: var(--bg-alternative);
@@ -1451,9 +1451,9 @@
             <button class="copy-btn" aria-label="Copy to clipboard">
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 012 9.5v-7A1.5 1.5 0 013.5 1h7A1.5 1.5 0 0112 2.5V5"/></svg>
             </button>
-            <code>psql --single-transaction -f _record/install.sql
+            <pre>psql --single-transaction -f _record/install.sql
 psql --single-transaction -f _analyze/install.sql
-psql --single-transaction -f _control/install.sql</code>
+psql --single-transaction -f _control/install.sql</pre>
           </div>
         </div>
         <div class="step reveal">
@@ -1464,8 +1464,8 @@ psql --single-transaction -f _control/install.sql</code>
             <button class="copy-btn" aria-label="Copy to clipboard">
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 012 9.5v-7A1.5 1.5 0 013.5 1h7A1.5 1.5 0 0112 2.5V5"/></svg>
             </button>
-            <code><span class="t-kw">SELECT</span> <span class="t-fn">pgfr_record.enable</span>();
-<span class="t-kw">SELECT</span> * <span class="t-kw">FROM</span> <span class="t-fn">pgfr_record.health_check</span>();</code>
+            <pre><span class="t-kw">SELECT</span> <span class="t-fn">pgfr_record.enable</span>();
+<span class="t-kw">SELECT</span> * <span class="t-kw">FROM</span> <span class="t-fn">pgfr_record.health_check</span>();</pre>
           </div>
         </div>
         <div class="step reveal">
@@ -1476,8 +1476,8 @@ psql --single-transaction -f _control/install.sql</code>
             <button class="copy-btn" aria-label="Copy to clipboard">
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 012 9.5v-7A1.5 1.5 0 013.5 1h7A1.5 1.5 0 0112 2.5V5"/></svg>
             </button>
-            <code><span class="t-kw">SELECT</span> <span class="t-fn">pgfr_analyze.report</span>(<span class="t-str">'1 hour'</span>);
-<span class="t-kw">SELECT</span> * <span class="t-kw">FROM</span> pgfr_record.snapshots <span class="t-kw">ORDER BY</span> captured_at <span class="t-kw">DESC</span>;</code>
+            <pre><span class="t-kw">SELECT</span> <span class="t-fn">pgfr_analyze.report</span>(<span class="t-str">'1 hour'</span>);
+<span class="t-kw">SELECT</span> * <span class="t-kw">FROM</span> pgfr_record.snapshots <span class="t-kw">ORDER BY</span> captured_at <span class="t-kw">DESC</span>;</pre>
           </div>
         </div>
       </div>
@@ -1563,7 +1563,7 @@ psql --single-transaction -f _control/install.sql</code>
     // Copy buttons
     document.querySelectorAll('.copy-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const code = btn.closest('.code-block').querySelector('code');
+        const code = btn.closest('.code-block').querySelector('pre');
         navigator.clipboard.writeText(code.textContent).then(() => {
           btn.classList.add('copied');
           btn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>';
