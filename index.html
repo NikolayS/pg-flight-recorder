@@ -778,9 +778,13 @@
       line-height: 1.6;
       margin-bottom: 14px;
     }
+    .step .code-block {
+      position: relative;
+    }
     .step code {
       display: block;
       padding: 10px 12px;
+      padding-right: 36px;
       background: var(--bg-alternative);
       border: 1px solid var(--border-muted);
       border-radius: 6px;
@@ -790,6 +794,34 @@
       line-height: 1.7;
       overflow-x: auto;
     }
+    .copy-btn {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-surface-300);
+      border: 1px solid var(--border-muted);
+      border-radius: 5px;
+      color: var(--fg-muted);
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s, color 0.2s, background 0.2s;
+    }
+    .step .code-block:hover .copy-btn { opacity: 1; }
+    .copy-btn:hover {
+      color: var(--fg-light);
+      background: var(--bg-surface-300);
+      border-color: var(--border-default);
+    }
+    .copy-btn.copied {
+      color: var(--brand);
+      opacity: 1;
+    }
+    .copy-btn svg { width: 14px; height: 14px; }
 
     /* ========== SUPABASE BANNER ========== */
     .supabase-banner {
@@ -1415,39 +1447,38 @@
           <div class="step-number">01</div>
           <h3>Install</h3>
           <p>Download from GitHub Releases or clone the repo, then run the SQL scripts.</p>
-          <code><span class="t-cm"># Core (required)</span>
-psql --single-transaction \
-  -f _record/install.sql
-
-<span class="t-cm"># Optional add-ons</span>
-psql --single-transaction \
-  -f _analyze/install.sql
-psql --single-transaction \
-  -f _control/install.sql</code>
+          <div class="code-block">
+            <button class="copy-btn" aria-label="Copy to clipboard">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 012 9.5v-7A1.5 1.5 0 013.5 1h7A1.5 1.5 0 0112 2.5V5"/></svg>
+            </button>
+            <code>psql --single-transaction -f _record/install.sql
+psql --single-transaction -f _analyze/install.sql
+psql --single-transaction -f _control/install.sql</code>
+          </div>
         </div>
         <div class="step reveal">
           <div class="step-number">02</div>
           <h3>Enable</h3>
           <p>One function call schedules all pg_cron jobs and starts continuous collection.</p>
-          <code><span class="t-kw">SELECT</span> <span class="t-fn">pgfr_record.enable</span>();
-
-<span class="t-cm">-- Verify it's working</span>
-<span class="t-kw">SELECT</span> * <span class="t-kw">FROM</span>
-  <span class="t-fn">pgfr_record.health_check</span>();</code>
+          <div class="code-block">
+            <button class="copy-btn" aria-label="Copy to clipboard">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 012 9.5v-7A1.5 1.5 0 013.5 1h7A1.5 1.5 0 0112 2.5V5"/></svg>
+            </button>
+            <code><span class="t-kw">SELECT</span> <span class="t-fn">pgfr_record.enable</span>();
+<span class="t-kw">SELECT</span> * <span class="t-kw">FROM</span> <span class="t-fn">pgfr_record.health_check</span>();</code>
+          </div>
         </div>
         <div class="step reveal">
           <div class="step-number">03</div>
           <h3>Query</h3>
           <p>Your database is now recording. Use the built-in analysis functions or query the tables directly.</p>
-          <code><span class="t-cm">-- Generate a report</span>
-<span class="t-kw">SELECT</span> <span class="t-fn">pgfr_analyze.report</span>(
-  <span class="t-str">'1 hour'</span>
-);
-
-<span class="t-cm">-- Or query tables directly</span>
-<span class="t-kw">SELECT</span> * <span class="t-kw">FROM</span>
-  pgfr_record.snapshots
-<span class="t-kw">ORDER BY</span> captured_at <span class="t-kw">DESC</span>;</code>
+          <div class="code-block">
+            <button class="copy-btn" aria-label="Copy to clipboard">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 012 9.5v-7A1.5 1.5 0 013.5 1h7A1.5 1.5 0 0112 2.5V5"/></svg>
+            </button>
+            <code><span class="t-kw">SELECT</span> <span class="t-fn">pgfr_analyze.report</span>(<span class="t-str">'1 hour'</span>);
+<span class="t-kw">SELECT</span> * <span class="t-kw">FROM</span> pgfr_record.snapshots <span class="t-kw">ORDER BY</span> captured_at <span class="t-kw">DESC</span>;</code>
+          </div>
         </div>
       </div>
     </div>
@@ -1526,6 +1557,21 @@ psql --single-transaction \
         document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
         tab.classList.add('active');
         document.getElementById(tab.dataset.tab).classList.add('active');
+      });
+    });
+
+    // Copy buttons
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.closest('.code-block').querySelector('code');
+        navigator.clipboard.writeText(code.textContent).then(() => {
+          btn.classList.add('copied');
+          btn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>';
+          setTimeout(() => {
+            btn.classList.remove('copied');
+            btn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 012 9.5v-7A1.5 1.5 0 013.5 1h7A1.5 1.5 0 0112 2.5V5"/></svg>';
+          }, 1500);
+        });
       });
     });
   </script>
