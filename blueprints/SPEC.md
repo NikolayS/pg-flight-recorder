@@ -76,8 +76,8 @@ current behavior.
 
 | Table | Naive rows at 30d | ~MiB (naive) | Actual insert behavior | ~MiB (actual) | Priority |
 |-------|-------------------|--------------|------------------------|----------------|----------|
-| `config_snapshots` | 216,000,000 | ~26,000 | **Change-log only** — already implemented upstream | ~1 | — |
-| `db_role_config_snapshots` | ~43,000,000 | ~4,400 | **Change-log only** — already implemented upstream | ~1 | — |
+| `config_snapshots` | 216,000,000 | ~26,000 | **Change-log only** — already implemented upstream | ~1 ⚠️ estimated, not measured | P1 |
+| `db_role_config_snapshots` | ~43,000,000 | ~4,400 | **Change-log only** — already implemented upstream | ~1 ⚠️ estimated, not measured | P1 |
 | `statement_snapshots` | 216,000,000 | ~60,000 | Full insert every minute, no dedup | **~60,000/day** | **P0** |
 | `table_snapshots` | 2,160,000 | 552 | Full insert every minute, no dedup | **552** | **P0** |
 | `index_snapshots` | 2,160,000 | 262 | Full insert every minute, no dedup | **262** | **P0** |
@@ -89,10 +89,17 @@ current behavior.
 
 ### Key findings
 
-**`config_snapshots` is already solved.** The upstream `_collect_config_snapshot()`
-function stores only parameters that changed since the last snapshot. In a stable
-environment this produces near-zero rows after the initial snapshot. This is the
-correct design and the template for the remaining tables.
+**`config_snapshots` uses the right approach but has not been benchmarked.**
+The upstream `_collect_config_snapshot()` function stores only parameters that
+changed since the last snapshot — the correct design and the template for the
+remaining tables. However, the `~1 MiB (actual)` figure in the table above is an
+estimate, not a measured value. Real-world behavior depends on factors not yet
+quantified: how often cloud providers silently reload configuration, how frequently
+`pg_reload_conf()` is called, whether connection-level `SET` or `ALTER SYSTEM`
+commands affect tracked parameters, and whether the change-detection logic handles
+all edge cases correctly. The baseline measurement in §9.2 will establish the true
+numbers. There may still be room for improvement — do not treat this as closed
+until benchmarks confirm it.
 
 **`statement_snapshots` is the dominant problem.** At `pg_stat_statements.max = 5000`
 (the PostgreSQL default), the naive model inserts 5,000 rows every minute regardless
