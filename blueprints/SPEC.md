@@ -2,7 +2,7 @@
 
 | Version | Date | Author |
 |---------|------|--------|
-| 2.5 | 2026-02-26 | @NikolayS |
+| 2.6 | 2026-02-26 | @NikolayS |
 
 ---
 
@@ -10,6 +10,7 @@
 
 | Version | Changes |
 |---------|---------|
+| 2.6 | Sixth-pass reviews: clean-restart desync trap fixed (check stats_reset not just emptiness); TRUNCATE lock_timeout 2s→50ms (FIFO queue stall); dealloc is cluster-wide not per-db; logical replication TRUNCATE poison pill + publication workaround; _partition_inventory() runtime assertions; JIT call-discipline for EXECUTE |
 | 2.5 | Fifth-pass reviews: Q5 BigInt column type + sequence both required; BRIN/B-tree non-overlapping paths + pages_per_range workload note; advisory xact_lock held for full snapshot run; JIT inheritance via EXECUTE clarified; _partition_inventory() bound parsing fragility + single-column RANGE assumption; GC cadence configurable; best-effort retention under lock contention; ring EXECUTE plan-cache trade-off documented; skip-tick observability counter |
 | 2.4 | Fourth-pass reviews: two-tier GC (nightly TRUNCATE + monthly drop_ancient_partitions); fix TRUNCATE lock framing; fix advisory lock race — skip tick if rebuild in flight; lock_timeout on TRUNCATE; _partition_inventory() defined; _ensure_partition() O(1) happy path; BRIN pages_per_range=8 + correlation check; WAL section updated for TRUNCATE vs DROP vs DELETE; benchmark headers fixed; pg_stat_reset_single_table_counters() note; ring buffer reader uses EXECUTE by partition name; Q8 guardrails updated for accumulation math |
 | 2.3 | Replace DROP/DETACH with TRUNCATE for retention — eliminates dblink dependency, transaction-context trap, orphan tracking, and two-phase state machine; partition definitions accumulate but empty partitions are pruned automatically; `drop_old_partitions()` → `truncate_old_partitions()` throughout |
@@ -314,21 +315,44 @@ not just the rebuild phase. This is intentional: a human DBA manually running
 `SELECT pgfr_record.snapshot()` during an incident will hit the skip condition
 immediately and exit cleanly, leaving the pg_cron job to finish uninterrupted.
 
+**Clean-restart desync trap:** UNLOGGED tables are only truncated during *crash*
+recovery. On a *clean* shutdown (`pg_ctl stop`), the UNLOGGED table is flushed to
+disk and retains its data on restart. If `pg_stat_statements.save = off` (or the
+stats file is deleted), PGSS wakes up empty while `statement_last_state` still
+holds large cumulative values — causing `pss.calls < ls.calls` for every query on
+the next tick and a spurious cluster-wide "reset" event.
+
+The emptiness check alone is insufficient. Also check whether PGSS has been reset
+since the last stored `sample_ts`:
+
 ```sql
 -- inside snapshot(), before the main collection:
-if not exists (select 1 from pgfr_record.statement_last_state limit 1) then
-    -- advisory lock: only one session rebuilds at a time
-    if pg_try_advisory_xact_lock(hashtext('pgfr_last_state_rebuild')) then
-        perform pgfr_record._rebuild_statement_last_state();
-    else
-        -- another session is rebuilding; skip this tick entirely
-        -- do NOT proceed with collection against a partially-filled side table
-        -- record the skip for observability (operators will ask "why is a minute missing?")
-        -- set a flag in the snapshots parent row or increment a cumulative counter
-        return;
+declare
+    v_pgss_reset timestamptz;
+    v_last_sample_ts int4;
+begin
+    -- detect PGSS reset or clean restart with stats loss
+    select stats_reset into v_pgss_reset from pg_stat_statements_info;
+    select max(sample_ts) into v_last_sample_ts from pgfr_record.statement_last_state;
+
+    if v_last_sample_ts is null  -- empty (crash recovery)
+    or v_pgss_reset > (pgfr_record.epoch() + v_last_sample_ts * interval '1 second')
+    then
+        -- side table is stale or PGSS was reset since last sample
+        if pg_try_advisory_xact_lock(hashtext('pgfr_last_state_rebuild')) then
+            perform pgfr_record._rebuild_statement_last_state();
+        else
+            -- another session is rebuilding; skip this tick entirely
+            -- record skip for observability (increment counter in snapshots parent row)
+            return;
+        end if;
     end if;
-end if;
+end;
 ```
+
+The rebuild lock is intentionally held for the full `snapshot()` transaction.
+If `snapshot()` latency grows (future regressions, slow systems), skip frequency
+will increase proportionally — this is observable via the skip counter.
 
 `_rebuild_statement_last_state()` must:
 1. `TRUNCATE pgfr_record.statement_last_state`
@@ -370,6 +394,14 @@ Additionally, track `pg_stat_statements_info.dealloc` (PG14+) — if the dealloc
 counter increases between ticks, flag the snapshot as potentially incomplete.
 Store this in the `snapshots` parent row so readers can warn consumers that
 interval-activity queries spanning a deallocation event may undercount.
+
+**`dealloc` is cluster-wide, not per-database:** `pg_stat_statements_info` is a
+single cluster-level view. A query storm on database A that causes mass evictions
+increments `dealloc` for all databases. A pg-flight-recorder instance on database B
+will see the increment and flag its snapshot as incomplete — even though database B
+lost zero queries. Reader function warnings must say **"cluster-level PGSS evictions
+detected during this window"**, not "data for this database is missing." This
+prevents operator panic on multi-tenant clusters.
 
 **Expected reduction:** on a typical server with 5,000 tracked queries, 50–200
 queries fire on any given minute tick. The sparse model inserts 50–200 rows
@@ -484,8 +516,9 @@ same transaction context, so inner functions called by reader functions inherit
 `jit = off`. However, dynamically executed strings via `EXECUTE format(...)` do
 not inherit function-level settings — they plan in the current session context.
 If reader functions use `EXECUTE` (as ring buffer readers do), ensure the dynamic
-query string is wrapped in a function that also declares `SET jit = off`, or set
-it explicitly at the top-level API boundary before any `EXECUTE` calls.
+query string is reached only after the top-level reader function (with `SET jit = off`)
+has been entered — not called from outside that context. Set `jit = off` explicitly
+at the top-level API boundary before any `EXECUTE` calls to guarantee coverage.
 
 ---
 
@@ -632,13 +665,16 @@ only on their target partition and are unaffected.
 
 A sloppy analytical query against the parent table *without* a time bound will
 prevent the planner from pruning, causing it to acquire `ACCESS SHARE` on all
-child partitions including the one being truncated. Always wrap TRUNCATE calls in
-a `lock_timeout`:
+child partitions including the one being truncated. Always wrap TRUNCATE calls in a short `lock_timeout`. PostgreSQL's lock queue is
+FIFO: while the TRUNCATE waits for `ACCESS EXCLUSIVE`, all subsequent reader
+queries queue behind it — creating a system-wide stall for the duration of the
+timeout. Use an aggressive timeout for background GC:
 ```sql
-set local lock_timeout = '2s';
+set local lock_timeout = '50ms';  -- not 2s: FIFO queue stalls all readers
 truncate pgfr_record.statement_snapshots_2026_01_01;
 ```
-If the timeout fires, skip and retry next hour. Under persistent lock contention
+If the timeout fires, skip and retry next hour. The system catches up automatically
+once the blocking query completes — lag does not accumulate permanently. Under persistent lock contention
 (a pathological long-running query holding `ACCESS SHARE` for hours), expired
 partitions will lag behind the retention target. This is intentional:
 **retention is best-effort under persistent lock contention** — never stalling
@@ -710,6 +746,11 @@ Used by `truncate_old_partitions()`, `drop_ancient_partitions()`, and
 guaranteed stable across major PostgreSQL versions. Whitespace variations, syntax
 nuances for LIST/RANGE, and future changes can silently break parsing. Mitigations:
 - Use defensive regex with strict assertions (fail loudly on unexpected format)
+- Add runtime assertions at function entry:
+  - verify parent is RANGE partitioned (`pg_partitioned_table.partstrat = 'r'`)
+  - verify single partition key column (`pg_partitioned_table.partnatts = 1`)
+  - verify key column type is `int4` (`pg_attribute.atttypid = 23`)
+  - if any assertion fails: raise exception immediately — silent corruption is worse than a loud failure
 - Add pgTAP tests that validate bound parsing on each supported PG version
 - Document explicitly: **this function assumes single-column RANGE partitioning on
   `int4`**. Multi-column or non-int4 partition keys are not supported.
@@ -808,6 +849,21 @@ partitions, oldest dropped nightly.
 Old config keys (`aggregate_retention_days`, `archive_retention_days`,
 `retention_samples_days`) remain as deprecated aliases until removed in a later
 phase.
+
+**Logical replication warning:** `TRUNCATE` is replicated by logical replication
+(`pgoutput` and compatible plugins). If pg-flight-recorder tables are published to
+a downstream data warehouse (ClickHouse, Snowflake, Redshift) for long-term
+retention, the nightly `truncate_old_partitions()` will replicate downstream and
+wipe the warehouse history. Users streaming telemetry via logical replication must
+exclude `TRUNCATE` from publication parameters:
+
+```sql
+create publication pgfr_telemetry_pub
+    for all tables in schema pgfr_record
+    with (publish = 'insert, update, delete');  -- truncate intentionally omitted
+```
+
+Document this prominently in the installation guide.
 
 ---
 
