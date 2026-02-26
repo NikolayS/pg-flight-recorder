@@ -2,7 +2,7 @@
 
 | Version | Date | Author |
 |---------|------|--------|
-| 2.3 | 2026-02-26 | @NikolayS |
+| 2.4 | 2026-02-26 | @NikolayS |
 
 ---
 
@@ -10,6 +10,7 @@
 
 | Version | Changes |
 |---------|---------|
+| 2.4 | Fourth-pass reviews: two-tier GC (nightly TRUNCATE + monthly drop_ancient_partitions); fix TRUNCATE lock framing; fix advisory lock race — skip tick if rebuild in flight; lock_timeout on TRUNCATE; _partition_inventory() defined; _ensure_partition() O(1) happy path; BRIN pages_per_range=8 + correlation check; WAL section updated for TRUNCATE vs DROP vs DELETE; benchmark headers fixed; pg_stat_reset_single_table_counters() note; ring buffer reader uses EXECUTE by partition name; Q8 guardrails updated for accumulation math |
 | 2.3 | Replace DROP/DETACH with TRUNCATE for retention — eliminates dblink dependency, transaction-context trap, orphan tracking, and two-phase state machine; partition definitions accumulate but empty partitions are pruned automatically; `drop_old_partitions()` → `truncate_old_partitions()` throughout |
 | 2.2 | Third-pass reviews: DETACH CONCURRENTLY transaction trap + dblink/externalize options; advisory lock on _rebuild_statement_last_state; ANALYZE after rebuild; INSERT...ON CONFLICT DO UPDATE mandated (HOT); HOT DDL comment + pgTAP guard; remove thundering-herd spread suggestion; ring buffer reader views exclude "next" partition; two-phase GC orphan detection; partition_gc_health view; partition_gc_state self-cleanup (7-day TTL); BRIN index on sample_ts for time-range queries; generic plan pruning test; Phase 2 BIGSERIAL sequence monotonicity; PGSS collection failure isolation |
 | 2.1 | Second-pass reviews: add `toplevel` to composite key (PG14+ correctness); HOT-friendly `statement_last_state` with fillfactor+autovacuum; explicit crash recovery protocol (_rebuild_statement_last_state); daily TRUNCATE+rebuild semantics; PG14 minimum version declared in §2; `drop_old_partitions()` runs hourly + loops all eligible + partition_gc_state table + statement_timeout; dual-write cutover checklist; BIGSERIAL+dual-write synergy; soften Q3 partition pruning; relcache safety envelope in Q8; §9.8 references last-state join not DISTINCT ON; §9.12 pass/fail criteria |
@@ -74,7 +75,6 @@ frequency, or what telemetry is available.
 - `stats_since` column in `pg_stat_statements`
 - `toplevel` column in `pg_stat_statements` (affects composite key — see §5.2)
 - `pg_stat_wal` (WAL volume measurement)
-- `pg_stat_statements_info` (dealloc, stats_reset), `stats_since`, `toplevel`
 
 PG13 is not in scope. Features that require PG14+ are not gated with version
 conditionals — the minimum version assumption is load-bearing throughout.
@@ -315,9 +315,11 @@ if not exists (select 1 from pgfr_record.statement_last_state limit 1) then
     -- advisory lock: only one session rebuilds at a time
     if pg_try_advisory_xact_lock(hashtext('pgfr_last_state_rebuild')) then
         perform pgfr_record._rebuild_statement_last_state();
+    else
+        -- another session is rebuilding; skip this tick entirely
+        -- do NOT proceed with collection against a partially-filled side table
+        return;
     end if;
-    -- if lock not acquired: another session is rebuilding; proceed normally
-    -- (ls.queryid IS NULL path handles missing entries correctly)
 end if;
 ```
 
@@ -397,6 +399,14 @@ Do not spread this across ticks: spreading destroys the partition boundary guara
 and makes reader reconstruction logic significantly more complex. If the circuit
 breaker trips on the 00:00 tick, tune the breaker to allow higher latency tolerance
 specifically for that tick rather than compromising the data model.
+
+**`pg_stat_reset_single_table_counters(oid)` handling:** this function resets all
+stats for a specific table (seq_scan, idx_scan, n_tup_ins, etc.) to zero. Since
+the sparse sentinel detects "any tracked counter changed," a reset from nonzero to
+zero is caught automatically — the values changed, so a row is stored. The only
+edge case (all counters already zero before reset) produces no false behavior: if
+nothing changed, there is nothing to record. No special handling required, but add
+a pgTAP test confirming detection.
 
 **Expected reduction:** the long tail of static tables (reference tables, infrequently
 written application tables, system catalogs) produces no rows after the daily
@@ -532,8 +542,25 @@ comparison (avoids heap fetch for the most common access pattern).
 Additionally, evaluate a **BRIN index on `sample_ts`** as a secondary index for
 pure time-range queries ("show me everything from the last hour"). Within a daily
 partition, rows are inserted in `sample_ts` order — natural correlation makes BRIN
-highly effective. A BRIN index is a few KiB vs tens of MiB for a B-tree, and
-covers the most common operational query pattern without the B-tree overhead.
+highly effective. A BRIN index is a few KiB vs tens of MiB for a B-tree.
+
+The default `pages_per_range = 128` (1 MiB of heap) is too coarse for sparse
+inserts: at 50–200 rows/tick, 1 MiB spans several hours of data, causing a 5-minute
+query to scan hours of heap blocks. Tune explicitly:
+
+```sql
+create index on statement_snapshots_YYYY_MM_DD
+    using brin (sample_ts) with (pages_per_range = 8);
+```
+
+Validate correlation before relying on BRIN — long transactions crossing midnight
+can disturb insertion order:
+```sql
+select correlation from pg_stats
+where tablename = 'statement_snapshots_YYYY_MM_DD' and attname = 'sample_ts';
+-- should be close to 1.0; if < 0.9, BRIN effectiveness degrades
+```
+
 The B-tree on `(queryid, dbid, userid, sample_ts DESC)` remains necessary for
 point-in-time reconstruction. Benchmark both in Phase 1 — BRIN is low risk and
 potentially significant index storage savings at scale.
@@ -574,38 +601,107 @@ Benefits over DROP:
 - No DETACH CONCURRENTLY transaction-context trap
 - No orphaned detached tables to track
 - No two-phase state machine needed
-- `TRUNCATE` on a partition acquires `ACCESS EXCLUSIVE` only on that partition,
-  briefly — far less contention than DROP
 
-The only tradeoff: partition definitions accumulate. At `retention_snapshots_days = 365`
-you hold 365 child table definitions per partitioned table in pg_catalog. This is
-acceptable — empty partitions have near-zero runtime overhead and the planner
-prunes them immediately on time-bounded queries. See Q8 for partition count guidance.
+**`TRUNCATE` locking — correct framing:**
+`TRUNCATE` acquires `ACCESS EXCLUSIVE` on the target partition — the same lock
+level as DROP. The advantage is narrower scope: unlike DROP, TRUNCATE does not
+modify the parent table's `pg_inherits` catalog entry or invalidate the parent's
+relcache. Concurrent `snapshot()` inserts into the current partition acquire locks
+only on their target partition and are unaffected.
 
-**`TRUNCATE` locking is safe:**
-`TRUNCATE` on a child partition briefly acquires `ACCESS EXCLUSIVE` on that partition
-only. Unlike DROP, it does not require locks on the parent table or sibling
-partitions. Concurrent `snapshot()` inserts (targeting a different, current
-partition) are unaffected.
+A sloppy analytical query against the parent table *without* a time bound will
+prevent the planner from pruning, causing it to acquire `ACCESS SHARE` on all
+child partitions including the one being truncated. Always wrap TRUNCATE calls in
+a `lock_timeout`:
+```sql
+set local lock_timeout = '2s';
+truncate pgfr_record.statement_snapshots_2026_01_01;
+```
+If the timeout fires, skip and retry next hour.
+
+**Partition definition accumulation — two-tier approach:**
+Partition definitions accumulate over time. At 365-day retention running for 2
+years, you reach ~7,300 partitions across 10 tables — approaching the Q8 safety
+threshold. Use a two-tier approach:
+
+- **Fast-path (nightly):** `truncate_old_partitions()` — empties expired partitions, O(1) per partition, no catalog modification
+- **Slow-path (monthly):** `drop_ancient_partitions()` — drops empty partitions older than `2 × retention_snapshots_days`, keeping total partition count permanently bounded
+
+The slow-path targets only *empty* (already truncated) partitions that have been
+empty for a full extra retention cycle. These have no concurrent readers. A plain
+`DROP TABLE` with `lock_timeout = '2s'` suffices — no DETACH CONCURRENTLY needed
+since the table has been empty for weeks.
+
+```sql
+-- drop_ancient_partitions(): run monthly via pg_cron
+-- targets empty partitions with upper bound older than 2× retention
+set local lock_timeout = '2s';
+drop table if exists pgfr_record.statement_snapshots_ancient;
+-- on lock_not_available: skip and try next month
+```
 
 **Use pg_catalog to identify eligible partitions — not suffix parsing:**
-`truncate_old_partitions()` must identify expired partitions via `pg_inherits` +
-`pg_class` + partition bound metadata (`pg_get_expr(relpartbound, oid)`), comparing
-the partition's upper bound against the retention cutoff. Suffix parsing is fragile.
+Both `truncate_old_partitions()` and `drop_ancient_partitions()` must identify
+partitions via `_partition_inventory()` (see below), not by parsing `_YYYY_MM_DD`
+suffixes from table names.
+
+**`_partition_inventory()` — shared catalog query:**
+```sql
+create or replace function pgfr_record._partition_inventory()
+returns table (
+    parent_table   text,
+    partition_name text,
+    bound_start    int4,
+    bound_end      int4,
+    is_expired     boolean,  -- upper bound < retention cutoff sample_ts
+    is_ancient     boolean,  -- upper bound < 2× retention cutoff sample_ts
+    is_empty       boolean   -- reltuples = 0 and pg_relation_size = 0
+) language sql stable as $$
+    select
+        parent.relname::text,
+        child.relname::text,
+        (pg_catalog.pg_get_expr(child.relpartbound, child.oid)
+            -- parse lower int4 bound from expression)::int4,
+        (pg_catalog.pg_get_expr(child.relpartbound, child.oid)
+            -- parse upper int4 bound from expression)::int4,
+        -- is_expired, is_ancient, is_empty computed from bounds and pg_class.reltuples
+        ...
+    from pg_catalog.pg_inherits i
+    join pg_catalog.pg_class child  on child.oid = i.inhrelid
+    join pg_catalog.pg_class parent on parent.oid = i.inhparent
+    join pg_catalog.pg_namespace n  on n.oid = child.relnamespace
+    where n.nspname = 'pgfr_record';
+$$;
+```
+Used by `truncate_old_partitions()`, `drop_ancient_partitions()`, and
+`partition_gc_health`. Exact bound-parsing SQL to be finalized in implementation.
+
+**`_ensure_partition()` must be O(1) on the happy path:**
+On every tick, `snapshot()` calls `_ensure_partition()` as a runtime safety net.
+The function must open with a catalog existence check that returns immediately if
+the partition already exists — no DDL, no lock acquisition:
+```sql
+if exists (select 1 from pg_catalog.pg_class ...) then return; end if;
+-- only reaches DDL if partition is missing
+```
+This makes the common case a single catalog lookup with no side effects.
 
 **`partition_gc_health` view for operator visibility:**
 ```sql
 create or replace view pgfr_record.partition_gc_health as
 select
     parent_table,
-    count(*)                                               as total_partitions,
-    count(*) filter (where is_expired and not is_empty)    as pending_truncation,
-    count(*) filter (where is_expired and is_empty)        as truncated,
-    max(bound_end) filter (where is_expired and not is_empty) as oldest_pending
+    count(*)                                                as total_partitions,
+    count(*) filter (where is_expired and not is_empty)     as pending_truncation,
+    count(*) filter (where is_expired and is_empty
+                     and not is_ancient)                    as truncated_recent,
+    count(*) filter (where is_ancient and is_empty)         as pending_drop,
+    max(bound_end) filter (where is_expired and not is_empty) as oldest_pending_truncation
 from pgfr_record._partition_inventory()
 group by parent_table;
 ```
-Exposes at a glance which tables have partitions awaiting truncation.
+Exposes pending truncations, recently truncated, and ancient partitions awaiting
+the monthly slow-path drop.
 
 ### 7.3 Hot ring buffers: TRUNCATE rotation
 
@@ -622,12 +718,25 @@ At rotation: advance the current slot, TRUNCATE the "next" partition. Zero dead
 tuples. No semantic change to the ring window or reader behavior.
 
 **Reader views must exclude the "next" partition:** `TRUNCATE` requires
-`ACCESS EXCLUSIVE` on the target partition. A concurrent `SELECT` against a view
-that covers all three partitions acquires `ACCESS SHARE` on each — including the
-one being truncated. This blocks the TRUNCATE, which blocks the collector. Reader
-views must filter strictly to the `previous` and `current` partitions by
-`sample_ts` range, ensuring the planner never acquires a lock on the partition
-undergoing TRUNCATE.
+`ACCESS EXCLUSIVE` on the target partition. A concurrent `SELECT` that touches
+all three partitions acquires `ACCESS SHARE` on each — including the one being
+truncated — blocking the TRUNCATE and stalling the collector.
+
+Do not rely on `sample_ts`-range pruning to exclude the "next" partition: if the
+rotation metadata (which partition is "next") is read at runtime from a table, the
+planner does not know the bounds at plan time and will not prune. Instead, reader
+functions must query the `previous` and `current` partitions by name, assembled
+dynamically and executed via `EXECUTE` in PL/pgSQL:
+
+```sql
+-- reader function: query only known-safe partitions by name
+execute format(
+    'select ... from pgfr_record.%I union all select ... from pgfr_record.%I',
+    v_current_partition, v_previous_partition
+);
+```
+
+This guarantees no lock on the "next" partition regardless of planner behavior.
 
 ### 7.4 Scope of partition-based retention
 
@@ -841,7 +950,7 @@ order by schemaname, relname;
 
 Expected:
 
-| Metric | Old schema (DELETE) | New schema (partition DROP) |
+| Metric | Old schema (DELETE) | New schema (partition TRUNCATE) |
 |--------|--------------------|-----------------------------|
 | `n_dead_tup` after cleanup | = rows deleted | 0 always |
 | Heap size trend | Growing | Flat |
@@ -945,21 +1054,28 @@ For each: trigger 10 resets over 1 hour while collecting. Verify:
 
 ### 9.11 WAL volume benchmark
 
-One of the strongest arguments for partition DROP over DELETE is WAL reduction.
-Quantify it explicitly.
+WAL reduction is one of the strongest arguments for the partition approach.
+Measure all three retention methods for completeness — DELETE, TRUNCATE, and DROP
+(the latter used by the monthly `drop_ancient_partitions()` slow path).
 
 ```sql
 -- measure WAL generated by each retention operation:
 select pg_current_wal_lsn() as before_lsn;
--- run cleanup (DELETE or DROP)
+-- run cleanup (DELETE / TRUNCATE / DROP)
 select pg_current_wal_lsn() as after_lsn;
 -- delta = WAL bytes generated
 ```
 
-On PG14+ use `pg_stat_wal` for cumulative WAL stats. Expected: DELETE of 7.2M rows
-generates hundreds of MiB of WAL; partition DROP generates kilobytes (catalog change
-only). On replicas, this difference is the dominant replication lag factor during
-cleanup windows.
+On PG14+ use `pg_stat_wal` for cumulative WAL stats.
+
+Expected WAL profile:
+- **DELETE** of 7.2M rows: hundreds of MiB (one WAL record per row)
+- **TRUNCATE** of a partition: few KiB (single WAL record for relfilenode change + fork metadata) — not near-zero like DROP, but orders of magnitude less than DELETE. The TRUNCATE trade-off is intentional: slightly more WAL than DROP in exchange for drastically simpler operations (no DETACH, no dblink, no orphan tracking).
+- **DROP** of an empty partition (monthly slow-path): kilobytes (catalog change only)
+
+On replicas, the DELETE vs TRUNCATE/DROP difference is the dominant replication lag
+factor during cleanup windows. Quantify replica apply lag (`pg_last_xact_replay_timestamp()`)
+under each method.
 
 ### 9.12 High queryid churn benchmark
 
@@ -1002,8 +1118,12 @@ All existing tests must pass without modification. New tests for Phase 1:
 - `toplevel` column included in composite key; two entries differing only in `toplevel` tracked independently
 - Partition boundary baseline: first row of each day covers all active queryids
 - `n_dead_tup = 0` and `n_live_tup = 0` on truncated partitions
-- `partition_gc_health` view returns correct counts for pending-truncation vs truncated partitions
-- truncated partitions are still attached and pruned correctly by time-bounded queries
+- truncated partitions still attached, pruned correctly by time-bounded queries
+- `drop_ancient_partitions()` drops only empty partitions older than 2× retention
+- `partition_gc_health` view returns correct counts: pending-truncation, truncated-recent, pending-drop
+- `_ensure_partition()` returns immediately (O(1)) when partition already exists — no DDL executed
+- `pg_stat_reset_single_table_counters()` reset detected by table_snapshots sparse sentinel
+- ring buffer reader functions query partitions by name via EXECUTE — never touch "next" partition
 - Reader output matches old schema for the same time window
 - Partition pruning confirmed via `EXPLAIN` (no `ANALYZE`) at planning time — both custom and generic plan paths
 - Partition creation with non-UTC session timezone produces identical bounds to UTC session
@@ -1094,15 +1214,21 @@ row each tick so readers can detect capacity changes when interpreting deallocat
 patterns.
 
 **Q8: Partition count guardrails.**
-At `retention_snapshots_days = 365`, each partitioned table has 365 child
-partitions. Across ~10 tables this is ~3,650 partitions. PostgreSQL handles this,
-but relcache and syscache pressure grow with partition count — every backend pays
-a startup cost to load partition metadata. Practical safety envelope:
+With TRUNCATE-based retention, empty partition definitions accumulate until the
+monthly `drop_ancient_partitions()` slow-path cleans them. At steady state, total
+partition count across all tables is approximately `3 × retention_days × table_count`
+(active + recently truncated + awaiting drop). At 365-day retention across 10
+tables: ~10,950 partitions at peak. This exceeds safe limits without the slow-path.
 
-- ≤ 2,000 total partitions across all tables: safe, no special measures needed
-- 2,000–5,000: monitor planning time and relcache miss rate; consider weekly partitions for low-volume tables
+The monthly DROP of ancient empty partitions is essential — not optional — to keep
+the catalog bounded. With it, steady-state count is ~2 × retention_days × table_count.
+
+Practical safety envelope (relcache and syscache pressure; every backend pays
+startup cost to load partition metadata; pgbouncer transaction mode amplifies this):
+
+- ≤ 2,000 total: safe
+- 2,000–5,000: monitor `pg_stat_database.blk_read_time` and planning time during connection storms
 - > 5,000: weekly partitions for archives and aggregates; daily only for hot tables
 
-Emit a warning at install time if configured retention would exceed 2,000 partitions.
-Weekly partitions for low-volume tables (ring archives, aggregates) vs daily for
-hot tables is worth evaluating in Phase 3.
+Emit a warning at install time if `2 × retention_days × partitioned_table_count > 2,000`.
+Weekly partitions for low-volume tables is worth evaluating in Phase 3.
