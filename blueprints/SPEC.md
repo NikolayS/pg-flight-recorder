@@ -479,11 +479,12 @@ order by avg_ms desc;
 ```
 
 ```sql
--- Actual rows inserted per hour (run after 24h of collection)
+-- Actual rows inserted per hour (run after 24h of collection, against current schema)
 select
-    date_trunc('hour', pgfr_record.epoch() + sample_ts * interval '1 second') as hour,
+    date_trunc('hour', s.captured_at) as hour,
     count(*) as rows_inserted
-from pgfr_record.statement_snapshots
+from pgfr_record.statement_snapshots ss
+join pgfr_record.snapshots s on s.id = ss.snapshot_id
 group by 1
 order by 1;
 ```
@@ -601,8 +602,10 @@ Expected:
 
 ### 9.5 Extreme bloat: autovacuum disabled
 
-The real production failure mode: autovacuum throttled or falling behind on a
-heavily loaded server.
+The real production failure mode: all autovacuum workers (default: 3) occupied
+with other tables — common during bulk loads, post-maintenance, or on schemas with
+high update churn. When no worker is available, the ring buffer and snapshot tables
+accumulate bloat without bound.
 
 ```sql
 alter table pgfr_record_old.statement_snapshots set (autovacuum_enabled = false);
@@ -610,7 +613,7 @@ alter table pgfr_record_old.statement_snapshots set (autovacuum_enabled = false)
 
 Run the same 2-hour simulation (§9.4). Expected: heap grows unboundedly in the old
 schema (2–5× live data size after 2 hours). New schema: zero dead tuples, no heap
-growth beyond live data.
+growth beyond live data — partition DROP has no dependency on autovacuum at all.
 
 ### 9.6 Cleanup duration scaling
 
