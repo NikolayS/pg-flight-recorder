@@ -75,7 +75,7 @@ The collection functions for `statement_snapshots`, `table_snapshots`, and
 `index_snapshots` will skip inserting rows when nothing changed since the last
 snapshot — following the model already implemented in `config_snapshots`. A missing
 row means "no change since the last stored row." Reader functions reconstruct the
-full state at any timestamp via `DISTINCT ON ... ORDER BY captured_at DESC`.
+full state at any timestamp via `DISTINCT ON ... ORDER BY sample_ts DESC`.
 
 ---
 
@@ -201,8 +201,8 @@ with latest as (
     select distinct on (queryid, dbid, userid)
         queryid, dbid, userid, calls
     from pgfr_record.statement_snapshots
-    where captured_at >= current_date  -- today's partition only
-    order by queryid, dbid, userid, captured_at desc
+    where sample_ts >= extract(epoch from current_date - pgfr_record.epoch())::int4
+    order by queryid, dbid, userid, sample_ts desc
 )
 insert into pgfr_record.statement_snapshots (...)
 select ...
@@ -272,14 +272,14 @@ handle reconstruction internally.
 Because every sparse table has a full baseline row at the start of each daily
 partition, any point-in-time read needs to look back at most one partition
 boundary. Reconstruction cost is O(log n) per queryid or relid — a single index
-scan on `(queryid, captured_at DESC)`.
+scan on `(queryid, dbid, userid, sample_ts DESC)`.
 
 ### 6.2 Required reader patterns
 
 Three read patterns cover all use cases:
 
 **Point-in-time state** — full state of all objects at timestamp T.
-Use `DISTINCT ON (queryid, dbid, userid) ORDER BY queryid, dbid, userid, captured_at DESC WHERE captured_at <= T`.
+Use `DISTINCT ON (queryid, dbid, userid) ORDER BY queryid, dbid, userid, sample_ts DESC WHERE sample_ts <= <T as int4 offset>`.
 The partition boundary baseline guarantees a result within one partition.
 
 **Interval activity** — what was active between T1 and T2.
@@ -304,7 +304,7 @@ these functions are used during incidents.
 
 ### 7.1 Partition structure
 
-Partition every table by day using `partition by range (captured_at)`. Retention =
+Partition every table by day using `partition by range (sample_ts)`. Retention =
 N days = N partitions. Drop the oldest partition when it falls outside the
 retention window. No DELETE. No dead tuples. No autovacuum pressure from retention.
 
@@ -322,10 +322,9 @@ create table pgfr_record.statement_snapshots_2026_02_26
 ```
 
 The `sample_ts` column is an `int4` offset from a fixed installation epoch —
-the same approach used by pg_ash. This makes each row 4 bytes smaller than
-`timestamptz` (8 bytes vs 8 bytes... wait: `int4` is 4 bytes, `timestamptz` is
-8 bytes — saving 4 bytes/row). At 216M rows that is ~824 MB saved on `statement_snapshots`
-alone before any sparse optimization.
+the same approach used by pg_ash. `int4` is 4 bytes vs 8 bytes for `timestamptz`,
+saving 4 bytes/row. At 216M naive rows that is ~824 MiB saved on `statement_snapshots`
+alone, before any sparse optimization.
 
 **Epoch function (borrowed from pg_ash):**
 ```sql
@@ -478,8 +477,8 @@ order by avg_ms desc;
 ```sql
 -- Actual rows inserted per hour (run after 24h of collection)
 select
-    date_trunc('hour', captured_at) as hour,
-    count(*)                         as rows_inserted
+    date_trunc('hour', pgfr_record.epoch() + sample_ts * interval '1 second') as hour,
+    count(*) as rows_inserted
 from pgfr_record.statement_snapshots
 group by 1
 order by 1;
@@ -531,7 +530,7 @@ The `DISTINCT ON` lookup overhead must not add unacceptable latency.
 ```sql
 select
     'new (sparse)' as schema,
-    date_trunc('hour', captured_at) as hour,
+    date_trunc('hour', pgfr_record.epoch() + sample_ts * interval '1 second') as hour,
     count(*) as rows_inserted
 from pgfr_record.statement_snapshots
 group by 2
@@ -651,7 +650,7 @@ eliminate irrelevant partitions:
 explain (analyze, buffers)
 select count(*)
 from pgfr_record.statement_snapshots
-where captured_at > now() - interval '1 hour';
+where sample_ts > extract(epoch from now() - interval '1 hour' - pgfr_record.epoch())::int4;
 -- expect: "Partitions selected: 1 out of N"
 ```
 
@@ -695,10 +694,10 @@ significantly more complex. Evaluate based on target deployment size.
 
 **Q3: Sparse insert overhead at 5,000 queryids.**
 The `DISTINCT ON` lookup within today's partition is bounded by the partition size
-(at most one day of data) and uses the `(queryid, captured_at)` index. At 5,000
-queryids and 1-minute intervals, the partition contains at most 5,000 × 1,440 =
-7.2M rows in the worst case — still within the range where an index scan is fast.
-Measure in §9.8 and tune the index if needed.
+(at most one day of data) and uses the `(queryid, dbid, userid, sample_ts)` index.
+At 5,000 queryids and 1-minute intervals, the partition contains at most
+5,000 × 1,440 = 7.2M rows in the worst case — still within the range where an
+index scan is fast. Measure in §9.8 and tune the index if needed.
 
 **Q4: Managed provider compatibility.**
 Partitioned tables, `drop table`, and pg_cron are supported on RDS, Cloud SQL,
