@@ -5225,3 +5225,333 @@ BEGIN
     RAISE NOTICE '';
 END;
 $$;
+-- =============================================================================
+-- Phase 1: Sparse statement_snapshots collector
+-- SPEC §5.2 — storage-overhaul-spec branch
+-- PG14+ minimum (requires pg_stat_statements_info, toplevel column)
+-- =============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 2. statement_snapshots_v2  — partitioned by range (sample_ts int4)
+--    Dual-write: old statement_snapshots stays untouched (see SPEC Q2)
+-- ---------------------------------------------------------------------------
+create table if not exists pgfr_record.statement_snapshots_v2 (
+    snapshot_id             bigint          not null,  -- BIGINT per SPEC Q5; accepts INT serial values safely
+    sample_ts               INT4            not null,  -- seconds since pgfr_record.epoch()
+    queryid                 bigint          not null,
+    userid                  oid             not null,
+    dbid                    oid             not null,
+    toplevel                boolean         not null,  -- PG14+; part of PGSS uniqueness key
+    query_preview           text,
+    calls                   bigint,
+    total_exec_time         DOUBLE PRECISION,
+    min_exec_time           DOUBLE PRECISION,
+    max_exec_time           DOUBLE PRECISION,
+    mean_exec_time          DOUBLE PRECISION,
+    rows                    bigint,
+    shared_blks_hit         bigint,
+    shared_blks_read        bigint,
+    shared_blks_dirtied     bigint,
+    shared_blks_written     bigint,
+    temp_blks_read          bigint,
+    temp_blks_written       bigint,
+    blk_read_time           DOUBLE PRECISION,
+    blk_write_time          DOUBLE PRECISION,
+    wal_records             bigint,
+    wal_bytes               numeric,
+    pgss_dealloc_warning    boolean         not null default false  -- cluster-level PGSS eviction event
+) partition by range (sample_ts);
+
+comment on table pgfr_record.statement_snapshots_v2 is
+'Sparse PGSS history partitioned by int4 sample_ts (seconds since pgfr_record.epoch()). '
+'Dual-write: old statement_snapshots retained. Missing row = no change since last stored row. '
+'Readers reconstruct full state via DISTINCT ON ... ORDER BY sample_ts DESC. '
+'See SPEC §5.2.';
+
+comment on column pgfr_record.statement_snapshots_v2.pgss_dealloc_warning is
+'TRUE when pg_stat_statements_info.dealloc increased since last tick. '
+'This is a CLUSTER-WIDE signal: evictions on any database set this flag. '
+'Do NOT interpret as "data for this database is missing" — say "cluster-level PGSS evictions".';
+
+-- ---------------------------------------------------------------------------
+-- 3. statement_last_state — UNLOGGED HOT-optimized side table
+-- ---------------------------------------------------------------------------
+create unlogged table if not exists pgfr_record.statement_last_state (
+    queryid     bigint  not null,
+    dbid        oid     not null,
+    userid      oid     not null,
+    toplevel    boolean not null,  -- PG14+; part of PGSS uniqueness key
+    calls       bigint  not null,
+    sample_ts   INT4    not null,
+    primary key (queryid, dbid, userid, toplevel)
+) with (
+    fillfactor = 70,                        -- leave room for HOT updates
+    autovacuum_vacuum_scale_factor  = 0.01, -- vacuum after 1% dead tuples
+    autovacuum_analyze_scale_factor = 0.01
+);
+
+comment on table pgfr_record.statement_last_state is
+'HOT-sensitive: do NOT index mutable columns (calls, sample_ts). '
+'HOT updates require changed columns to be unindexed. '
+'See: https://github.com/NikolayS/pg-flight-recorder/blueprints/SPEC.md §5.2';
+
+-- ---------------------------------------------------------------------------
+-- 4. _rebuild_statement_last_state()
+-- ---------------------------------------------------------------------------
+create or replace function pgfr_record._rebuild_statement_last_state()
+returns void
+language plpgsql as $$
+begin
+    truncate pgfr_record.statement_last_state;
+    insert into pgfr_record.statement_last_state (queryid, dbid, userid, toplevel, calls, sample_ts)
+    select
+        queryid,
+        dbid,
+        userid,
+        toplevel,
+        calls,
+        extract(EPOCH from now() - pgfr_record.epoch())::INT4
+    from pg_stat_statements;
+    analyze pgfr_record.statement_last_state;
+end;
+$$;
+comment on function pgfr_record._rebuild_statement_last_state() is
+'Full rebuild of statement_last_state from pg_stat_statements. '
+'Called on crash recovery (UNLOGGED table empty) or clean-restart desync '
+'(PGSS stats_reset newer than max(sample_ts) in last_state). '
+'Caller must hold pg_try_advisory_xact_lock before calling. '
+'ANALYZE is called immediately to lock in planner statistics post-TRUNCATE.';
+
+-- ---------------------------------------------------------------------------
+-- 5. _collect_statement_snapshot_sparse() — the core sparse collector
+-- ---------------------------------------------------------------------------
+create or replace function pgfr_record._collect_statement_snapshot_sparse(p_snapshot_id bigint)
+returns void
+language plpgsql as $$
+declare
+    v_sample_ts         INT4;
+    v_pgss_reset        TIMESTAMPTZ;
+    v_last_sample_ts    INT4;
+    v_last_dealloc      bigint;
+    v_curr_dealloc      bigint;
+    v_dealloc_warning   boolean := false;
+    v_last_state_day    INT4;
+    v_today_start_ts    INT4;
+    v_at_boundary       boolean := false;
+    v_locked            boolean;
+    v_rows_inserted     INT;
+begin
+    -- Ensure partition exists for today (O(1) on happy path)
+    perform pgfr_record._ensure_partition('statement_snapshots_v2', CURRENT_DATE);
+
+    v_sample_ts := extract(EPOCH from now() - pgfr_record.epoch())::INT4;
+
+    -- -----------------------------------------------------------------------
+    -- PGSS collection section — wrapped in BEGIN/EXCEPTION so failure here
+    -- does not abort other collection sections (SPEC §5.2)
+    -- -----------------------------------------------------------------------
+    begin
+
+        -- -------------------------------------------------------------------
+        -- Step 1: Check clean-restart desync (SPEC §5.2)
+        --         pg_stat_statements_info.stats_reset is PG14+ (always present
+        --         per §2 minimum version requirement)
+        -- -------------------------------------------------------------------
+        select stats_reset into v_pgss_reset from pg_stat_statements_info;
+        select MAX(sample_ts) into v_last_sample_ts from pgfr_record.statement_last_state;
+
+        -- -------------------------------------------------------------------
+        -- Step 2: Check PGSS dealloc counter (cluster-wide, not per-db)
+        -- -------------------------------------------------------------------
+        select dealloc into v_curr_dealloc from pg_stat_statements_info;
+        select value::bigint into v_last_dealloc
+        from pgfr_record.config
+        where key = 'pgss_last_dealloc';
+
+        if v_last_dealloc is not null and v_curr_dealloc > v_last_dealloc then
+            v_dealloc_warning := true;
+        end if;
+        -- Store current dealloc for next tick comparison
+        insert into pgfr_record.config (key, value, updated_at)
+        values ('pgss_last_dealloc', v_curr_dealloc::text, now())
+        on conflict (key) do update set value = EXCLUDED.value, updated_at = EXCLUDED.updated_at;
+
+        -- -------------------------------------------------------------------
+        -- Step 3: Decide if rebuild is needed
+        --         Conditions:
+        --           (a) last_state is empty (crash recovery — UNLOGGED truncated)
+        --           (b) PGSS stats_reset is newer than our last sample_ts
+        --               (clean restart with pg_stat_statements.save=off, or
+        --                explicit pg_stat_statements_reset())
+        -- -------------------------------------------------------------------
+        if v_last_sample_ts is null
+           or (v_pgss_reset is not null
+               and v_pgss_reset > (pgfr_record.epoch() + v_last_sample_ts * interval '1 second'))
+        then
+            -- Advisory lock prevents two concurrent callers from both rebuilding.
+            -- Lock held for entire transaction (intentional per SPEC §5.2).
+            v_locked := pg_try_advisory_xact_lock(7382961::integer, hashtext('pgfr_last_state_rebuild')::integer);
+            if not v_locked then
+                -- Another session is rebuilding; skip this tick
+                insert into pgfr_record.config (key, value, updated_at)
+                values ('pgss_rebuild_skip_count',
+                        (coalesce((select value from pgfr_record.config where key = 'pgss_rebuild_skip_count'), '0')::bigint + 1)::text,
+                        now())
+                on conflict (key) do update
+                    set value = (coalesce(pgfr_record.config.value, '0')::bigint + 1)::text,
+                        updated_at = EXCLUDED.updated_at;
+                return;
+            end if;
+            perform pgfr_record._rebuild_statement_last_state();
+            -- After rebuild, re-read last_sample_ts for boundary check below
+            select MAX(sample_ts) into v_last_sample_ts from pgfr_record.statement_last_state;
+        end if;
+
+        -- -------------------------------------------------------------------
+        -- Step 4: Daily partition boundary — TRUNCATE + rebuild last_state
+        --         This keeps the side table aligned with current PGSS contents
+        --         and prevents stale entries from accumulating (SPEC §5.2).
+        -- -------------------------------------------------------------------
+        v_today_start_ts := extract(EPOCH from (CURRENT_DATE::TIMESTAMPTZ at TIME zone 'UTC') - pgfr_record.epoch())::INT4;
+
+        -- If the most recent last_state entry is from before today, we are at
+        -- the first tick of a new day partition.
+        if v_last_sample_ts is not null and v_last_sample_ts < v_today_start_ts then
+            v_at_boundary := true;
+            -- Acquire rebuild lock (if not already held from above)
+            v_locked := pg_try_advisory_xact_lock(7382961::integer, hashtext('pgfr_last_state_rebuild')::integer);
+            if not v_locked then
+                insert into pgfr_record.config (key, value, updated_at)
+                values ('pgss_rebuild_skip_count',
+                        (coalesce((select value from pgfr_record.config where key = 'pgss_rebuild_skip_count'), '0')::bigint + 1)::text,
+                        now())
+                on conflict (key) do update
+                    set value = (coalesce(pgfr_record.config.value, '0')::bigint + 1)::text,
+                        updated_at = EXCLUDED.updated_at;
+                return;
+            end if;
+            perform pgfr_record._rebuild_statement_last_state();
+            select MAX(sample_ts) into v_last_sample_ts from pgfr_record.statement_last_state;
+        end if;
+
+        -- -------------------------------------------------------------------
+        -- Step 5: Hash join PGSS against last_state; insert only changed rows
+        --         Insert condition: new queryid OR calls increased OR calls dropped
+        --         (calls drop = pg_stat_statements_reset() partial/full reset)
+        -- -------------------------------------------------------------------
+        insert into pgfr_record.statement_snapshots_v2 (
+            snapshot_id,
+            sample_ts,
+            queryid,
+            userid,
+            dbid,
+            toplevel,
+            query_preview,
+            calls,
+            total_exec_time,
+            min_exec_time,
+            max_exec_time,
+            mean_exec_time,
+            rows,
+            shared_blks_hit,
+            shared_blks_read,
+            shared_blks_dirtied,
+            shared_blks_written,
+            temp_blks_read,
+            temp_blks_written,
+            blk_read_time,
+            blk_write_time,
+            wal_records,
+            wal_bytes,
+            pgss_dealloc_warning
+        )
+        select
+            p_snapshot_id,
+            v_sample_ts,
+            pss.queryid,
+            pss.userid,
+            pss.dbid,
+            pss.toplevel,
+            left(pss.query, 500),
+            pss.calls,
+            pss.total_exec_time,
+            pss.min_exec_time,
+            pss.max_exec_time,
+            pss.mean_exec_time,
+            pss.rows,
+            pss.shared_blks_hit,
+            pss.shared_blks_read,
+            pss.shared_blks_dirtied,
+            pss.shared_blks_written,
+            pss.temp_blks_read,
+            pss.temp_blks_written,
+            pss.blk_read_time,
+            pss.blk_write_time,
+            pss.wal_records,
+            pss.wal_bytes,
+            v_dealloc_warning
+        from pg_stat_statements pss
+        left join pgfr_record.statement_last_state ls
+            using (queryid, dbid, userid, toplevel)
+        where
+            ls.queryid is null          -- first appearance (new queryid or post-rebuild baseline)
+            or pss.calls > ls.calls     -- query was called since last tick
+            or pss.calls < ls.calls;    -- calls dropped: pg_stat_statements_reset() occurred
+
+        get diagnostics v_rows_inserted = ROW_COUNT;
+
+        -- -------------------------------------------------------------------
+        -- Step 6: Upsert last_state for all rows we just saw in PGSS
+        --         Must use ON CONFLICT DO UPDATE (not DELETE+INSERT) to preserve
+        --         HOT eligibility. Only calls and sample_ts change — never key
+        --         columns — so HOT is always eligible (SPEC §5.2).
+        -- -------------------------------------------------------------------
+        if v_at_boundary then
+            -- At boundary we already did a full rebuild; no incremental upsert needed
+            -- (rebuild already reflects current PGSS state)
+            null;
+        else
+            insert into pgfr_record.statement_last_state (queryid, dbid, userid, toplevel, calls, sample_ts)
+            select
+                pss.queryid,
+                pss.dbid,
+                pss.userid,
+                pss.toplevel,
+                pss.calls,
+                v_sample_ts
+            from pg_stat_statements pss
+            on conflict (queryid, dbid, userid, toplevel) do update
+                set calls     = EXCLUDED.calls,
+                    sample_ts = EXCLUDED.sample_ts;
+        end if;
+
+    exception
+        when undefined_table then
+            -- pg_stat_statements not loaded; do NOT truncate last_state (SPEC §5.2)
+            raise warning 'pgfr_record: pg_stat_statements unavailable (extension not loaded): %', sqlerrm;
+        when others then
+            -- Any other failure must not abort other collection sections
+            raise warning 'pgfr_record: PGSS sparse collection failed [%]: %', sqlstate, sqlerrm;
+    end;
+end;
+$$;
+comment on function pgfr_record._collect_statement_snapshot_sparse(bigint) is
+'Sparse PGSS collector per SPEC §5.2. '
+'Inserts rows into statement_snapshots_v2 only when calls changed. '
+'Maintains statement_last_state as HOT-update-friendly side table. '
+'Handles: crash recovery (UNLOGGED empty), clean-restart desync (stats_reset check), '
+'daily partition boundary (TRUNCATE+rebuild), advisory lock (skip if rebuild in flight), '
+'PGSS dealloc tracking (cluster-wide, not per-db). '
+'Wrapped in EXCEPTION block — failure does not abort other collection sections.';
+
+-- Register config keys for sparse collector observability
+-- Initialize pgss_last_dealloc to current dealloc value to avoid false-positive
+-- dealloc warnings on first run (pre-existing evictions are not our fault).
+insert into pgfr_record.config (key, value, updated_at)
+select 'pgss_last_dealloc', dealloc::text, now()
+from pg_stat_statements_info
+on conflict (key) do nothing;
+
+insert into pgfr_record.config (key, value) values
+    ('pgss_rebuild_skip_count', '0')
+on conflict (key) do nothing;
