@@ -6,6 +6,17 @@
 
 ---
 
+## Changelog
+
+| Version | Changes |
+|---------|---------|
+| 1.3 | Adopt `int4 sample_ts` + `epoch()` from pg_ash (Q6); flag `snapshot_id` integer overflow risk (Q5); fix `DISTINCT ON (queryid, dbid, userid)` — queryid alone is not unique in PGSS; all MiB figures marked as estimates with single section-level note; fix cross-references §9.5, Q3 |
+| 1.2 | Add §9.2 baseline measurement (run first); correct storage estimates to use `pg_stat_statements.max = 5000`; `config_snapshots` flagged as not benchmarked, not closed; row size assumption (280 bytes/row) made explicit |
+| 1.1 | Add sparse storage design (§5); reader function patterns (§6); expand benchmarking with extreme scenarios, simulated long runs, bloat comparison (§9) |
+| 1.0 | Initial spec: partition-based retention, zero DELETE, TRUNCATE rotation for ring buffers |
+
+---
+
 ## Table of Contents
 
 1. [Background and Motivation](#1-background-and-motivation)
