@@ -2,7 +2,7 @@
 
 | Version | Date | Author |
 |---------|------|--------|
-| 1.2 | 2026-02-26 | @NikolayS |
+| 1.3 | 2026-02-26 | @NikolayS |
 
 ---
 
@@ -31,9 +31,9 @@ with DELETE-based retention managed by periodic `cleanup()` calls.
 
 At default configuration (1-minute snapshot interval, 30-day retention,
 `pg_stat_statements.max = 5000`), the naive full-insert model for `statement_snapshots`
-alone generates approximately 2,024 MiB per day — and every `cleanup()` run
-generates that volume as dead tuples in a single transaction, leaving autovacuum to
-reclaim gigabytes of bloat per cycle.
+alone generates approximately 2,024 MiB per day (5,000 queryids × 1,440 ticks/day
+× ~280 bytes/row) — and every `cleanup()` run generates that volume as dead tuples
+in a single transaction, leaving autovacuum to reclaim gigabytes of bloat per cycle.
 
 This document proposes a storage redesign that eliminates DELETE-based retention
 entirely and stops storing redundant data. No changes to what is collected, at what
@@ -78,7 +78,7 @@ current behavior.
 |-------|-------------------|--------------|------------------------|----------------|----------|
 | `config_snapshots` | 216,000,000 | ~26,000 | **Change-log only** — already implemented upstream | ~1 ⚠️ estimated, not measured | P1 |
 | `db_role_config_snapshots` | ~43,000,000 | ~4,400 | **Change-log only** — already implemented upstream | ~1 ⚠️ estimated, not measured | P1 |
-| `statement_snapshots` | 216,000,000 | ~60,000 | Full insert every minute, no dedup | **~60,000/day** | **P0** |
+| `statement_snapshots` | 216,000,000 | ~60,000 | Full insert every minute, no dedup | **~60,000** | **P0** |
 | `table_snapshots` | 2,160,000 | 552 | Full insert every minute, no dedup | **552** | **P0** |
 | `index_snapshots` | 2,160,000 | 262 | Full insert every minute, no dedup | **262** | **P0** |
 | `snapshots` (parent) | 43,200 | 23 | Full insert every minute | 23 | **P1** |
@@ -106,8 +106,10 @@ until benchmarks confirm it.
 of query activity — approximately 2,024 MiB per day, or 60 GiB at 30-day retention.
 A query that ran once 29 days ago has 43,200 identical rows, every one redundant.
 
-The earlier estimate of 608 MiB was based on a 50-queryid assumption and is not
-representative of real deployments.
+Note: estimates based on `statements_top_n = 50` (the configurable collection
+limit) significantly understate the problem. The relevant ceiling is
+`pg_stat_statements.max = 5000` — the number of distinct queryids PostgreSQL
+tracks, regardless of how many are collected per tick.
 
 **The problem has two independent axes that compound each other:**
 
@@ -164,8 +166,9 @@ The upstream `_collect_config_snapshot()` function:
    recent stored values via `DISTINCT ON (name) ORDER BY snapshot_id DESC`
 3. Inserts only rows where `setting`, `source`, or `sourcefile` changed
 
-Result: in a stable environment, `config_snapshots` accumulates ~65 rows total
-over 30 days. This is the template for all other tables.
+In a stable environment this produces very few rows after the initial snapshot.
+Whether "very few" means dozens or thousands in real deployments has not yet been
+measured — see §9.2. This is the template for all other tables.
 
 ### 5.2 Apply to `statement_snapshots` (PGSS)
 
@@ -204,14 +207,15 @@ called. Always store the post-reset row — it marks the reset boundary for read
 
 **Expected reduction:** on a typical server with 5,000 tracked queries, 50–200
 queries fire on any given minute tick. The sparse model inserts 50–200 rows
-instead of 5,000 — a 25–100× reduction per tick. Over 30 days:
+instead of 5,000 — a 25–100× reduction per tick. Over 30 days (assuming ~280
+bytes/row based on schema analysis — to be confirmed by §9.2 baseline measurement):
 
 | Scenario | Rows/day | ~MiB/day | vs naive |
 |----------|----------|----------|---------|
-| Naive (full insert) | 7,200,000 | 2,024 | baseline |
-| Sparse — heavy OLTP (200 active/tick) | ~290,000 | ~81 | 25× better |
-| Sparse — typical OLTP (50 active/tick) | ~75,000 | ~21 | 96× better |
-| Sparse — idle (0 active/tick) | 5,000 (baseline) | ~1.4 | 1,445× better |
+| Naive (full insert) | 7,200,000 | ~2,024 | baseline |
+| Sparse — heavy OLTP (200 active/tick) | ~290,000 | ~81 | ~25× better |
+| Sparse — typical OLTP (50 active/tick) | ~75,000 | ~21 | ~96× better |
+| Sparse — idle (0 active/tick) | 5,000 (baseline only) | ~1.4 | ~1,400× better |
 
 ### 5.3 Apply to `table_snapshots` and `index_snapshots`
 
@@ -416,7 +420,7 @@ order by pg_total_relation_size(relid) desc;
 ```
 
 ```sql
--- Rows inserted per tick (sample from collection_stats)
+-- Collection latency per section (from collection_stats)
 select
     section_name,
     avg(duration_ms)  as avg_ms,
@@ -426,6 +430,16 @@ from pgfr_record.collection_stats
 where captured_at > now() - interval '1 hour'
 group by section_name
 order by avg_ms desc;
+```
+
+```sql
+-- Actual rows inserted per hour (run after 24h of collection)
+select
+    date_trunc('hour', captured_at) as hour,
+    count(*)                         as rows_inserted
+from pgfr_record.statement_snapshots
+group by 1
+order by 1;
 ```
 
 Record for each table:
@@ -548,7 +562,7 @@ heavily loaded server.
 alter table pgfr_record_old.statement_snapshots set (autovacuum_enabled = false);
 ```
 
-Run the same 2-hour simulation (§9.3). Expected: heap grows unboundedly in the old
+Run the same 2-hour simulation (§9.4). Expected: heap grows unboundedly in the old
 schema (2–5× live data size after 2 hours). New schema: zero dead tuples, no heap
 growth beyond live data.
 
@@ -641,7 +655,7 @@ The `DISTINCT ON` lookup within today's partition is bounded by the partition si
 (at most one day of data) and uses the `(queryid, captured_at)` index. At 5,000
 queryids and 1-minute intervals, the partition contains at most 5,000 × 1,440 =
 7.2M rows in the worst case — still within the range where an index scan is fast.
-Measure in §9.7 and tune the index if needed.
+Measure in §9.8 and tune the index if needed.
 
 **Q4: Managed provider compatibility.**
 Partitioned tables, `drop table`, and pg_cron are supported on RDS, Cloud SQL,
