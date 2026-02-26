@@ -2,7 +2,7 @@
 
 | Version | Date | Author |
 |---------|------|--------|
-| 1.4 | 2026-02-26 | @NikolayS |
+| 1.5 | 2026-02-26 | @NikolayS |
 
 ---
 
@@ -10,6 +10,7 @@
 
 | Version | Changes |
 |---------|---------|
+| 1.5 | Distinguish `pg_stat_statements_reset()` (PGSS) from `pg_stat_reset()` (global stats) — both must be tested, §9.10 expanded |
 | 1.4 | Fix stale `captured_at` references throughout — queries, indexes, prose all use `sample_ts` consistently |
 | 1.3 | Adopt `int4 sample_ts` + `epoch()` from pg_ash (Q6); flag `snapshot_id` integer overflow risk (Q5); fix `DISTINCT ON (queryid, dbid, userid)` — queryid alone is not unique in PGSS; all MiB figures marked as estimates with single section-level note; fix cross-references §9.5, Q3 |
 | 1.2 | Add §9.2 baseline measurement (run first); correct storage estimates to use `pg_stat_statements.max = 5000`; `config_snapshots` flagged as not benchmarked, not closed; row size assumption (280 bytes/row) made explicit |
@@ -212,15 +213,17 @@ left join latest l using (queryid, dbid, userid)
 where
     l.queryid is null        -- first appearance today (baseline)
     or pss.calls > l.calls   -- query was called
-    or pss.calls < l.calls;  -- calls dropped: pg_stat_reset() occurred
+    or pss.calls < l.calls;  -- calls dropped: pg_stat_statements_reset() occurred
 ```
 
 **Partition boundary guarantee:** at the start of each new day's partition, store
 a full baseline row for every tracked queryid currently in `pg_stat_statements`.
 This ensures point-in-time reads never need to look back more than one partition.
 
-**Reset detection:** when `calls` drops between snapshots, `pg_stat_reset()` was
-called. Always store the post-reset row — it marks the reset boundary for readers.
+**Reset detection:** when `calls` drops between snapshots, `pg_stat_statements_reset()`
+was called (resets PGSS counters only — independent of `pg_stat_reset()` which resets
+bgwriter/WAL/I/O stats). Always store the post-reset row — it marks the reset boundary
+for readers.
 
 **Expected reduction:** on a typical server with 5,000 tracked queries, 50–200
 queries fire on any given minute tick. The sparse model inserts 50–200 rows
@@ -657,11 +660,23 @@ where sample_ts > extract(epoch from now() - interval '1 hour' - pgfr_record.epo
 
 Old schema has no partitioning — every time-bounded query scans the full table.
 
-### 9.10 `pg_stat_reset()` handling
+### 9.10 Reset handling
 
-Trigger 10 resets over 1 hour while collecting. Verify reader functions return
-non-negative delta values and correctly identify reset boundaries. No negative
-`calls_delta` values should be surfaced to callers.
+Two independent reset functions must be tested:
+
+**`pg_stat_statements_reset()`** — resets PGSS counters. `calls` drops to zero
+for affected queryids. The sparse insert condition detects this via `pss.calls < l.calls`
+and stores the post-reset baseline row.
+
+**`pg_stat_reset()`** — resets global stats (`pg_stat_bgwriter`, `pg_stat_wal`,
+`pg_stat_io`, etc.) tracked in the `snapshots` parent table. Counters in those
+columns drop to zero. The parent table is not sparse (1 row/min regardless), but
+reader functions computing deltas must detect and handle the reset boundary.
+
+For each: trigger 10 resets over 1 hour while collecting. Verify:
+- Reader functions return non-negative delta values across a reset boundary
+- Reset events are correctly identified and surfaced (not silently dropped)
+- No negative `calls_delta` or counter-delta values reach callers
 
 ### 9.11 pgTAP regression suite
 
