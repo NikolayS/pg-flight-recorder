@@ -2,7 +2,7 @@
 
 | Version | Date | Author |
 |---------|------|--------|
-| 2.2 | 2026-02-26 | @NikolayS |
+| 2.3 | 2026-02-26 | @NikolayS |
 
 ---
 
@@ -10,6 +10,7 @@
 
 | Version | Changes |
 |---------|---------|
+| 2.3 | Replace DROP/DETACH with TRUNCATE for retention — eliminates dblink dependency, transaction-context trap, orphan tracking, and two-phase state machine; partition definitions accumulate but empty partitions are pruned automatically; `drop_old_partitions()` → `truncate_old_partitions()` throughout |
 | 2.2 | Third-pass reviews: DETACH CONCURRENTLY transaction trap + dblink/externalize options; advisory lock on _rebuild_statement_last_state; ANALYZE after rebuild; INSERT...ON CONFLICT DO UPDATE mandated (HOT); HOT DDL comment + pgTAP guard; remove thundering-herd spread suggestion; ring buffer reader views exclude "next" partition; two-phase GC orphan detection; partition_gc_health view; partition_gc_state self-cleanup (7-day TTL); BRIN index on sample_ts for time-range queries; generic plan pruning test; Phase 2 BIGSERIAL sequence monotonicity; PGSS collection failure isolation |
 | 2.1 | Second-pass reviews: add `toplevel` to composite key (PG14+ correctness); HOT-friendly `statement_last_state` with fillfactor+autovacuum; explicit crash recovery protocol (_rebuild_statement_last_state); daily TRUNCATE+rebuild semantics; PG14 minimum version declared in §2; `drop_old_partitions()` runs hourly + loops all eligible + partition_gc_state table + statement_timeout; dual-write cutover checklist; BIGSERIAL+dual-write synergy; soften Q3 partition pruning; relcache safety envelope in Q8; §9.8 references last-state join not DISTINCT ON; §9.12 pass/fail criteria |
 | 2.0 | Incorporate three external reviewer findings: replace DISTINCT ON with last-state side table (§5.2); function-level JIT disable (§6.3); UTC enforcement + index definitions + int4 horizon (§7.1); runtime partition ensure + pg_catalog-based drop + lock_timeout + DETACH CONCURRENTLY (§7.2); drop FK cascade recommendation (Q1); dual-write rollback strategy (Q2); partition pruning with explicit bounds (Q3); pg_stat_statements.max tracking (Q7); partition count guardrails (Q8); WAL benchmark (§9.11); high-churn benchmark (§9.12); expanded pgTAP suite (§9.13) |
@@ -73,7 +74,7 @@ frequency, or what telemetry is available.
 - `stats_since` column in `pg_stat_statements`
 - `toplevel` column in `pg_stat_statements` (affects composite key — see §5.2)
 - `pg_stat_wal` (WAL volume measurement)
-- `ALTER TABLE ... DETACH PARTITION CONCURRENTLY`
+- `pg_stat_statements_info` (dealloc, stats_reset), `stats_since`, `toplevel`
 
 PG13 is not in scope. Features that require PG14+ are not gated with version
 conditionals — the minimum version assumption is load-bearing throughout.
@@ -550,8 +551,8 @@ Document this prominently in the install notes.
 -- create tomorrow's partition (run nightly via pg_cron):
 select pgfr_record._ensure_partition('statement_snapshots', current_date + 1);
 
--- drop partitions outside the retention window (run nightly):
-select pgfr_record.drop_old_partitions();
+-- truncate partitions outside the retention window (run nightly):
+select pgfr_record.truncate_old_partitions();
 ```
 
 `_ensure_partition()` is idempotent — safe to call multiple times for the same
@@ -561,99 +562,50 @@ optimization, but a cron failure, clock skew, or long transaction crossing midni
 can cause an INSERT to fail with "no partition for value." Runtime ensure is cheap
 and idempotent; make it the correctness guarantee.
 
-**Partition drop — use pg_catalog, not suffix parsing:**
-`drop_old_partitions()` must identify partitions via `pg_inherits` + `pg_class` +
-partition bound metadata (`pg_get_expr(relpartbound, oid)`), not by parsing
-`_YYYY_MM_DD` suffixes from table names. Suffix parsing is fragile and can match
-unrelated tables or break on naming convention changes.
+**TRUNCATE old partitions — do not DROP them:**
+Rather than dropping expired partitions (which requires DETACH + DROP and the
+associated locking complexity, dblink dependency, and orphan tracking), simply
+`TRUNCATE` them. The partition remains attached and visible to the planner, but
+contains no rows. Storage is reclaimed immediately. The planner prunes empty
+partitions on any time-bounded query — no performance cost.
 
-**Run `drop_old_partitions()` hourly, not nightly:**
-Schedule via pg_cron at hourly intervals. The function is idempotent and cheap
-when nothing is eligible. Hourly execution bounds worst-case retention overshoot
-to hours rather than a full day — important when multiple partitions accumulate
-due to repeated lock failures.
+Benefits over DROP:
+- Runs entirely inside a plain PL/pgSQL function — no dblink, no external orchestrator
+- No DETACH CONCURRENTLY transaction-context trap
+- No orphaned detached tables to track
+- No two-phase state machine needed
+- `TRUNCATE` on a partition acquires `ACCESS EXCLUSIVE` only on that partition,
+  briefly — far less contention than DROP
 
-**Loop through all eligible partitions — skip locked, continue to next:**
-Do not abort the entire run on the first lock failure. Iterate all eligible
-partitions; skip any that cannot be locked within the timeout and continue.
-This bounds storage overshoot to the specific partitions that were locked, not all
-pending drops.
+The only tradeoff: partition definitions accumulate. At `retention_snapshots_days = 365`
+you hold 365 child table definitions per partitioned table in pg_catalog. This is
+acceptable — empty partitions have near-zero runtime overhead and the planner
+prunes them immediately on time-bounded queries. See Q8 for partition count guidance.
 
-**Partition drop state machine:**
-Track drop state explicitly to handle the DETACH → DROP two-step and support
-retry/monitoring:
+**`TRUNCATE` locking is safe:**
+`TRUNCATE` on a child partition briefly acquires `ACCESS EXCLUSIVE` on that partition
+only. Unlike DROP, it does not require locks on the parent table or sibling
+partitions. Concurrent `snapshot()` inserts (targeting a different, current
+partition) are unaffected.
 
-```sql
-create table pgfr_record.partition_gc_state (
-    partition_name  text        primary key,
-    parent_table    text        not null,
-    state           text        not null,  -- 'attached'|'detached'|'dropped'
-    eligible_at     timestamptz not null,
-    detached_at     timestamptz,
-    dropped_at      timestamptz,
-    last_error      text
-);
-```
-
-This allows monitoring of lag, safe retry, and detection of orphaned
-detached-but-not-dropped tables.
-
-**Lock safety — both `lock_timeout` and `statement_timeout`:**
-`DETACH CONCURRENTLY` waits for all transactions that started before the command —
-including those unrelated to the partitioned table. Standard `lock_timeout` may
-not catch this wait. Set both:
-
-```sql
-set local lock_timeout = '2s';
-set local statement_timeout = '5s';
--- attempt DETACH CONCURRENTLY, then DROP on the detached table
-```
-
-If either timeout fires, record the error in `partition_gc_state` and move on.
-
-**DETACH CONCURRENTLY cannot run inside a PL/pgSQL function:**
-`ALTER TABLE ... DETACH PARTITION ... CONCURRENTLY` raises error `25001`
-(active_sql_transaction) when called inside any PL/pgSQL block, because PL/pgSQL
-implicitly runs inside a transaction. Since `drop_old_partitions()` is a PL/pgSQL
-function called from pg_cron, DETACH CONCURRENTLY cannot be issued directly.
-Options:
-- **`dblink`**: wrap the DETACH CONCURRENTLY command in a `dblink` call back to
-  the same database, opening an autonomous non-transactional session
-- **Externalize GC**: move drop logic to an external orchestrator (systemd timer,
-  separate agent) that issues raw SQL outside a transaction
-- **Fallback**: skip DETACH CONCURRENTLY; use direct `DROP TABLE` with
-  `lock_timeout + statement_timeout` only — acceptable if lock contention is rare
-
-**Two-phase GC loop — explicit orphan detection:**
-`drop_old_partitions()` must be two-phase to handle crashes between DETACH and DROP:
-
-Phase 1 — scan `pg_inherits` for attached partitions past retention:
-- attempt DETACH CONCURRENTLY (via dblink or external caller)
-- on success: update `partition_gc_state` to `detached`
-- on timeout: record error, continue to next partition
-
-Phase 2 — scan `partition_gc_state WHERE state = 'detached'`:
-- attempt `DROP TABLE` on each detached (now standalone) table
-- on success: update state to `dropped`
-- on timeout: record error, retry next hour
-
-Without Phase 2, a crash between DETACH and DROP leaves an orphaned standalone
-table that `pg_inherits` no longer knows about and that no future scan will find.
-
-**`partition_gc_state` self-maintenance:**
-Delete rows with `state = 'dropped' AND dropped_at < now() - interval '7 days'`
-as part of each hourly run. Keeps the table bounded without losing recent history.
+**Use pg_catalog to identify eligible partitions — not suffix parsing:**
+`truncate_old_partitions()` must identify expired partitions via `pg_inherits` +
+`pg_class` + partition bound metadata (`pg_get_expr(relpartbound, oid)`), comparing
+the partition's upper bound against the retention cutoff. Suffix parsing is fragile.
 
 **`partition_gc_health` view for operator visibility:**
 ```sql
 create or replace view pgfr_record.partition_gc_health as
 select
-    count(*) filter (where state = 'attached' and eligible_at < now())  as stuck_attached,
-    count(*) filter (where state = 'detached')                          as pending_drop,
-    max(eligible_at) filter (where state = 'attached' and eligible_at < now()) as oldest_stuck,
-    max(dropped_at)                                                     as last_successful_drop;
+    parent_table,
+    count(*)                                               as total_partitions,
+    count(*) filter (where is_expired and not is_empty)    as pending_truncation,
+    count(*) filter (where is_expired and is_empty)        as truncated,
+    max(bound_end) filter (where is_expired and not is_empty) as oldest_pending
+from pgfr_record._partition_inventory()
+group by parent_table;
 ```
-Exposes silent degradation (stuck partitions, GC lag) as observable metrics.
+Exposes at a glance which tables have partitions awaiting truncation.
 
 ### 7.3 Hot ring buffers: TRUNCATE rotation
 
@@ -868,7 +820,7 @@ pgbench -c 1 -j 1 -T 7200 \
 
 # new schema:
 pgbench -c 1 -j 1 -T 7200 \
-  -f <(echo "select pgfr_record.snapshot(); select pgfr_record.drop_old_partitions();") postgres
+  -f <(echo "select pgfr_record.snapshot(); select pgfr_record.truncate_old_partitions();") postgres
 ```
 
 Measure every 15 minutes:
@@ -932,7 +884,7 @@ A large DELETE holds a relation lock and generates WAL, which can cause concurre
 durations from `collection_stats` before, during, and after cleanup.
 
 Expected for old schema: latency spike during DELETE. Expected for new schema:
-`drop_old_partitions()` is near-instantaneous and `snapshot()` is unaffected.
+`truncate_old_partitions()` is near-instantaneous and `snapshot()` is unaffected.
 
 ### 9.8 `snapshot()` latency regression test
 
@@ -1036,9 +988,9 @@ All existing tests must pass without modification. New tests for Phase 1:
 - `_ensure_partition()` is idempotent
 - `snapshot()` calls `_ensure_partition()` at runtime (correctness guarantee)
 - `snapshot()` routes to the correct daily partition
-- `drop_old_partitions()` uses `pg_inherits`/`pg_class`, not suffix parsing
-- `drop_old_partitions()` drops exactly the partitions outside the retention window
-- `drop_old_partitions()` handles lock timeout gracefully — skips and warns, does not stall
+- `truncate_old_partitions()` uses `pg_inherits`/`pg_class` + partition bounds, not suffix parsing
+- `truncate_old_partitions()` TRUNCATEs exactly the partitions outside the retention window
+- `truncate_old_partitions()` leaves partition definitions intact — no DROP, no DETACH
 - Sparse insert: rows skipped when `calls` unchanged; rows stored when `calls` increases
 - `statement_last_state` correctly reflects latest state after each tick
 - `statement_last_state` crash recovery: TRUNCATE side table, run `snapshot()`, confirm exactly one baseline row per queryid, no duplicates
@@ -1049,10 +1001,9 @@ All existing tests must pass without modification. New tests for Phase 1:
 - `_rebuild_statement_last_state()` calls `ANALYZE` immediately after INSERT
 - `toplevel` column included in composite key; two entries differing only in `toplevel` tracked independently
 - Partition boundary baseline: first row of each day covers all active queryids
-- `n_dead_tup = 0` on all partitions after `drop_old_partitions()`
-- `partition_gc_state` correctly transitions ATTACHED → DETACHED → DROPPED
-- `partition_gc_state` rows with `state = 'dropped'` older than 7 days are cleaned up
-- `partition_gc_health` view returns correct counts for stuck/pending/dropped partitions
+- `n_dead_tup = 0` and `n_live_tup = 0` on truncated partitions
+- `partition_gc_health` view returns correct counts for pending-truncation vs truncated partitions
+- truncated partitions are still attached and pruned correctly by time-bounded queries
 - Reader output matches old schema for the same time window
 - Partition pruning confirmed via `EXPLAIN` (no `ANALYZE`) at planning time — both custom and generic plan paths
 - Partition creation with non-UTC session timezone produces identical bounds to UTC session
@@ -1106,10 +1057,10 @@ prepared statements must pass time bounds as parameters. Verify correct pruning 
 pgTAP via `EXPLAIN` (without `ANALYZE`) — see §9.9.
 
 **Q4: Managed provider compatibility.**
-Partitioned tables, `drop table`, and pg_cron are supported on RDS, Cloud SQL,
-Supabase, and Neon. The daily partition pre-creation and drop jobs require pg_cron
-scheduling rights. `DETACH PARTITION CONCURRENTLY` requires PG14+. No superuser
-required for partition management after initial install.
+Partitioned tables, `TRUNCATE`, and pg_cron are supported on RDS, Cloud SQL,
+Supabase, and Neon. The daily partition pre-creation and nightly truncation jobs
+require pg_cron scheduling rights. No dblink, no DROP TABLE on partitions, no
+superuser required for partition management after initial install.
 
 **Q5: `snapshot_id` integer overflow and Phase 2 sequence migration.**
 The upstream `snapshots` table uses `SERIAL` (`integer`, max ~2.1 billion). At
