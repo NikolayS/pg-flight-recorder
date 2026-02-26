@@ -2,7 +2,7 @@
 
 | Version | Date | Author |
 |---------|------|--------|
-| 2.4 | 2026-02-26 | @NikolayS |
+| 2.5 | 2026-02-26 | @NikolayS |
 
 ---
 
@@ -10,6 +10,7 @@
 
 | Version | Changes |
 |---------|---------|
+| 2.5 | Fifth-pass reviews: Q5 BigInt column type + sequence both required; BRIN/B-tree non-overlapping paths + pages_per_range workload note; advisory xact_lock held for full snapshot run; JIT inheritance via EXECUTE clarified; _partition_inventory() bound parsing fragility + single-column RANGE assumption; GC cadence configurable; best-effort retention under lock contention; ring EXECUTE plan-cache trade-off documented; skip-tick observability counter |
 | 2.4 | Fourth-pass reviews: two-tier GC (nightly TRUNCATE + monthly drop_ancient_partitions); fix TRUNCATE lock framing; fix advisory lock race — skip tick if rebuild in flight; lock_timeout on TRUNCATE; _partition_inventory() defined; _ensure_partition() O(1) happy path; BRIN pages_per_range=8 + correlation check; WAL section updated for TRUNCATE vs DROP vs DELETE; benchmark headers fixed; pg_stat_reset_single_table_counters() note; ring buffer reader uses EXECUTE by partition name; Q8 guardrails updated for accumulation math |
 | 2.3 | Replace DROP/DETACH with TRUNCATE for retention — eliminates dblink dependency, transaction-context trap, orphan tracking, and two-phase state machine; partition definitions accumulate but empty partitions are pruned automatically; `drop_old_partitions()` → `truncate_old_partitions()` throughout |
 | 2.2 | Third-pass reviews: DETACH CONCURRENTLY transaction trap + dblink/externalize options; advisory lock on _rebuild_statement_last_state; ANALYZE after rebuild; INSERT...ON CONFLICT DO UPDATE mandated (HOT); HOT DDL comment + pgTAP guard; remove thundering-herd spread suggestion; ring buffer reader views exclude "next" partition; two-phase GC orphan detection; partition_gc_health view; partition_gc_state self-cleanup (7-day TTL); BRIN index on sample_ts for time-range queries; generic plan pruning test; Phase 2 BIGSERIAL sequence monotonicity; PGSS collection failure isolation |
@@ -307,7 +308,11 @@ stale `calls` value.)
 
 **Crash recovery:** after a crash, `statement_last_state` is empty (UNLOGGED).
 `snapshot()` detects this on its first tick and calls `_rebuild_statement_last_state()`.
-Use an advisory lock to prevent concurrent callers from both rebuilding simultaneously:
+Use an advisory lock to prevent concurrent callers from both rebuilding simultaneously.
+Note: `pg_try_advisory_xact_lock()` holds the lock for the entire transaction —
+not just the rebuild phase. This is intentional: a human DBA manually running
+`SELECT pgfr_record.snapshot()` during an incident will hit the skip condition
+immediately and exit cleanly, leaving the pg_cron job to finish uninterrupted.
 
 ```sql
 -- inside snapshot(), before the main collection:
@@ -318,6 +323,8 @@ if not exists (select 1 from pgfr_record.statement_last_state limit 1) then
     else
         -- another session is rebuilding; skip this tick entirely
         -- do NOT proceed with collection against a partially-filled side table
+        -- record the skip for observability (operators will ask "why is a minute missing?")
+        -- set a flag in the snapshots parent row or increment a cumulative counter
         return;
     end if;
 end if;
@@ -472,6 +479,14 @@ as $$ ... $$;
 This guarantees JIT overhead does not affect the first call in a fresh session
 (common during incidents) without contaminating the caller's session state.
 
+PostgreSQL propagates function-level `SET` variables to nested calls within the
+same transaction context, so inner functions called by reader functions inherit
+`jit = off`. However, dynamically executed strings via `EXECUTE format(...)` do
+not inherit function-level settings — they plan in the current session context.
+If reader functions use `EXECUTE` (as ring buffer readers do), ensure the dynamic
+query string is wrapped in a function that also declares `SET jit = off`, or set
+it explicitly at the top-level API boundary before any `EXECUTE` calls.
+
 ---
 
 ## 7. Proposed Solution: N Daily Partitions, No DELETE
@@ -562,8 +577,14 @@ where tablename = 'statement_snapshots_YYYY_MM_DD' and attname = 'sample_ts';
 ```
 
 The B-tree on `(queryid, dbid, userid, sample_ts DESC)` remains necessary for
-point-in-time reconstruction. Benchmark both in Phase 1 — BRIN is low risk and
-potentially significant index storage savings at scale.
+point-in-time reconstruction. These two indexes serve completely non-overlapping
+execution paths: the planner will strongly prefer the B-tree for any query that
+filters by `queryid` AND time range; the BRIN serves global time-range aggregates
+only ("total calls in the last hour"). Both are justified at very low storage cost.
+
+`pages_per_range = 8` is a starting point — tune based on observed rows/minute.
+For very sparse workloads (< 50 rows/tick) a larger range may be appropriate;
+for dense workloads the default 128 wastes selectivity. Benchmark both in Phase 1.
 
 **int4 horizon:** with a 2026-01-01 epoch, `int4` seconds overflow in approximately
 2094. This is not an imminent risk, but future engineers must know:
@@ -617,7 +638,11 @@ a `lock_timeout`:
 set local lock_timeout = '2s';
 truncate pgfr_record.statement_snapshots_2026_01_01;
 ```
-If the timeout fires, skip and retry next hour.
+If the timeout fires, skip and retry next hour. Under persistent lock contention
+(a pathological long-running query holding `ACCESS SHARE` for hours), expired
+partitions will lag behind the retention target. This is intentional:
+**retention is best-effort under persistent lock contention** — never stalling
+the collection loop is the higher priority.
 
 **Partition definition accumulation — two-tier approach:**
 Partition definitions accumulate over time. At 365-day retention running for 2
@@ -632,12 +657,16 @@ empty for a full extra retention cycle. These have no concurrent readers. A plai
 `DROP TABLE` with `lock_timeout = '2s'` suffices — no DETACH CONCURRENTLY needed
 since the table has been empty for weeks.
 
+The monthly cadence is a default. Operators on high-retention setups (365 days ×
+many tables) or multi-tenant fleets may tune this to weekly or cap drops per run
+to avoid bursty catalog churn. Document the cadence as a configurable parameter.
+
 ```sql
--- drop_ancient_partitions(): run monthly via pg_cron
+-- drop_ancient_partitions(): run monthly via pg_cron (cadence is configurable)
 -- targets empty partitions with upper bound older than 2× retention
 set local lock_timeout = '2s';
 drop table if exists pgfr_record.statement_snapshots_ancient;
--- on lock_not_available: skip and try next month
+-- on lock_not_available: skip and try next run
 ```
 
 **Use pg_catalog to identify eligible partitions — not suffix parsing:**
@@ -655,7 +684,7 @@ returns table (
     bound_end      int4,
     is_expired     boolean,  -- upper bound < retention cutoff sample_ts
     is_ancient     boolean,  -- upper bound < 2× retention cutoff sample_ts
-    is_empty       boolean   -- reltuples = 0 and pg_relation_size = 0
+    is_empty       boolean   -- pg_relation_size(oid) = 0 (authoritative after TRUNCATE; do NOT use reltuples which lags until next ANALYZE)
 ) language sql stable as $$
     select
         parent.relname::text,
@@ -675,6 +704,15 @@ $$;
 ```
 Used by `truncate_old_partitions()`, `drop_ancient_partitions()`, and
 `partition_gc_health`. Exact bound-parsing SQL to be finalized in implementation.
+
+**`_partition_inventory()` bound parsing is the highest long-term fragility risk:**
+`pg_get_expr(relpartbound, oid)` returns a text representation whose format is not
+guaranteed stable across major PostgreSQL versions. Whitespace variations, syntax
+nuances for LIST/RANGE, and future changes can silently break parsing. Mitigations:
+- Use defensive regex with strict assertions (fail loudly on unexpected format)
+- Add pgTAP tests that validate bound parsing on each supported PG version
+- Document explicitly: **this function assumes single-column RANGE partitioning on
+  `int4`**. Multi-column or non-int4 partition keys are not supported.
 
 **`_ensure_partition()` must be O(1) on the happy path:**
 On every tick, `snapshot()` calls `_ensure_partition()` as a runtime safety net.
@@ -737,6 +775,9 @@ execute format(
 ```
 
 This guarantees no lock on the "next" partition regardless of planner behavior.
+`EXECUTE` is chosen deliberately for lock safety over plan caching — the slight
+CPU overhead per call is the correct trade-off. Do not "optimize" this back to a
+static query.
 
 ### 7.4 Scope of partition-based retention
 
@@ -970,7 +1011,7 @@ alter table pgfr_record_old.statement_snapshots set (autovacuum_enabled = false)
 
 Run the same 2-hour simulation (§9.4). Expected: heap grows unboundedly in the old
 schema (2–5× live data size after 2 hours). New schema: zero dead tuples, no heap
-growth beyond live data — partition DROP has no dependency on autovacuum at all.
+growth beyond live data — partition TRUNCATE has no dependency on autovacuum at all.
 
 ### 9.6 Cleanup duration scaling
 
@@ -978,7 +1019,7 @@ Measure at three data volumes: 1 day, 7 days, 30 days of accumulated data.
 
 Expected scaling:
 
-| Volume | Old schema DELETE | New schema DROP |
+| Volume | Old schema DELETE | New schema TRUNCATE |
 |--------|------------------|-----------------|
 | 1 day | ~500 ms | < 50 ms |
 | 7 days | ~3 s | < 50 ms |
@@ -1191,13 +1232,18 @@ schema is already changing.
 
 New partitioned child tables created in Phase 1 must define `snapshot_id` as
 `BIGINT` from day one (the collector safely inserts current `INT` sequence values
-into `BIGINT` columns). When `snapshots.id` is migrated to `BIGSERIAL` in Phase 2,
-the new sequence must start at `max(id) + 1` from the old sequence:
+into `BIGINT` columns). When `snapshots.id` is migrated to `BIGSERIAL` in Phase 2, two steps are required:
 ```sql
+-- 1. change the column type (requires full table rewrite + ACCESS EXCLUSIVE lock)
+alter table pgfr_record.snapshots alter column id type bigint;
+-- snapshots is low-volume (~43,200 rows/month) — rewrite is near-instantaneous
+
+-- 2. change the sequence type and preserve monotonicity
 alter sequence snapshots_id_seq as bigint restart with <max_id + 1>;
 ```
-This preserves monotonicity and prevents `snapshot_id` overlap in partitioned
-child tables across the Phase 1/Phase 2 boundary.
+The column type change must precede or accompany the sequence change. Both should
+happen in the same maintenance window. Child tables are already `BIGINT` from Phase 1
+and require no change.
 
 **Q6: `int4 sample_ts` epoch and overflow horizon.**
 The epoch is fixed at `2026-01-01 00:00:00+00`. With `int4` seconds, overflow
