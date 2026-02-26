@@ -4791,19 +4791,6 @@ $$;
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
--- 1. Epoch function (borrowed from pg_ash pattern in SPEC §7.1)
---    WARNING: must never change after installation — all sample_ts values are
---    seconds offset from this point. Changing it corrupts all timestamps.
--- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION pgfr_record.epoch()
-RETURNS TIMESTAMPTZ IMMUTABLE LANGUAGE sql AS
-$$SELECT '2026-01-01 00:00:00+00'::timestamptz$$;
-COMMENT ON FUNCTION pgfr_record.epoch() IS
-'Fixed installation epoch for int4 sample_ts offset arithmetic. '
-'WARNING: must never change after installation — all stored sample_ts values '
-'are seconds since this point. Overflow ~2094. See SPEC §7.1.';
-
--- ---------------------------------------------------------------------------
 -- 2. statement_snapshots_v2  — partitioned by range (sample_ts int4)
 --    Dual-write: old statement_snapshots stays untouched (see SPEC Q2)
 -- ---------------------------------------------------------------------------
@@ -4895,63 +4882,7 @@ COMMENT ON FUNCTION pgfr_record._rebuild_statement_last_state() IS
 'ANALYZE is called immediately to lock in planner statistics post-TRUNCATE.';
 
 -- ---------------------------------------------------------------------------
--- 5. _ensure_partition_v2() — O(1) on happy path, creates partition if missing
--- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION pgfr_record._ensure_partition_v2(p_date DATE DEFAULT CURRENT_DATE)
-RETURNS TEXT
-LANGUAGE plpgsql AS $$
-DECLARE
-    v_partition_name    TEXT;
-    v_bound_start       INT4;
-    v_bound_end         INT4;
-    v_date_str          TEXT;
-BEGIN
-    -- Always compute bounds in UTC to avoid session timezone drift (SPEC §7.1)
-    v_date_str       := TO_CHAR(p_date, 'YYYY_MM_DD');
-    v_partition_name := 'statement_snapshots_v2_' || v_date_str;
-
-    -- O(1) happy path: return immediately if partition already exists
-    IF EXISTS (
-        SELECT 1 FROM pg_catalog.pg_class c
-        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'pgfr_record'
-          AND c.relname = v_partition_name
-    ) THEN
-        RETURN v_partition_name;
-    END IF;
-
-    -- Compute int4 bounds from UTC dates
-    v_bound_start := EXTRACT(EPOCH FROM (p_date::TIMESTAMPTZ AT TIME ZONE 'UTC') - pgfr_record.epoch())::INT4;
-    v_bound_end   := EXTRACT(EPOCH FROM ((p_date + 1)::TIMESTAMPTZ AT TIME ZONE 'UTC') - pgfr_record.epoch())::INT4;
-
-    EXECUTE format(
-        'CREATE TABLE IF NOT EXISTS pgfr_record.%I
-         PARTITION OF pgfr_record.statement_snapshots_v2
-         FOR VALUES FROM (%L) TO (%L)',
-        v_partition_name, v_bound_start, v_bound_end
-    );
-
-    -- B-tree for point-in-time reconstruction (SPEC §7.1)
-    EXECUTE format(
-        'CREATE INDEX IF NOT EXISTS %I ON pgfr_record.%I (queryid, dbid, userid, sample_ts DESC)',
-        v_partition_name || '_qtud_idx', v_partition_name
-    );
-
-    -- BRIN for pure time-range queries; pages_per_range=8 per SPEC §7.1 guidance
-    EXECUTE format(
-        'CREATE INDEX IF NOT EXISTS %I ON pgfr_record.%I USING BRIN (sample_ts) WITH (pages_per_range = 8)',
-        v_partition_name || '_ts_brin', v_partition_name
-    );
-
-    RETURN v_partition_name;
-END;
-$$;
-COMMENT ON FUNCTION pgfr_record._ensure_partition_v2(DATE) IS
-'Idempotent: creates daily partition + indexes for statement_snapshots_v2 if missing. '
-'O(1) on happy path (single catalog lookup). Safe to call every tick as a runtime safety net.';
-
--- ---------------------------------------------------------------------------
--- 6. _collect_statement_snapshot_sparse() — the core sparse collector
+-- 5. _collect_statement_snapshot_sparse() — the core sparse collector
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION pgfr_record._collect_statement_snapshot_sparse(p_snapshot_id BIGINT)
 RETURNS VOID
@@ -4970,7 +4901,7 @@ DECLARE
     v_rows_inserted     INT;
 BEGIN
     -- Ensure partition exists for today (O(1) on happy path)
-    PERFORM pgfr_record._ensure_partition_v2(CURRENT_DATE);
+    PERFORM pgfr_record._ensure_partition('statement_snapshots_v2', CURRENT_DATE);
 
     v_sample_ts := EXTRACT(EPOCH FROM now() - pgfr_record.epoch())::INT4;
 

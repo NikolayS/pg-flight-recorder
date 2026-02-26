@@ -8,7 +8,7 @@
 
 BEGIN;
 
-SELECT plan(26);
+SELECT plan(24);
 
 -- ---------------------------------------------------------------------------
 -- Helper: ensure a clean test partition exists
@@ -16,28 +16,9 @@ SELECT plan(26);
 DO $$
 BEGIN
     -- Create a test partition for today if needed
-    PERFORM pgfr_record._ensure_partition_v2(CURRENT_DATE);
+    PERFORM pgfr_record._ensure_partition('statement_snapshots_v2', CURRENT_DATE);
 END;
 $$;
-
--- ===========================================================================
--- T1: epoch() function is IMMUTABLE and returns a timestamptz
--- ===========================================================================
-SELECT is(
-    pg_catalog.provolatile::text,
-    'i',
-    'epoch() must be IMMUTABLE'
-)
-FROM pg_catalog.pg_proc p
-JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-WHERE n.nspname = 'pgfr_record' AND p.proname = 'epoch';
-
--- T2: epoch() returns 2026-01-01 UTC
-SELECT is(
-    pgfr_record.epoch(),
-    '2026-01-01 00:00:00+00'::timestamptz,
-    'epoch() must return 2026-01-01 00:00:00 UTC'
-);
 
 -- ===========================================================================
 -- T3: statement_snapshots_v2 table exists and is partitioned
@@ -146,21 +127,28 @@ SELECT ok(
 );
 
 -- ===========================================================================
--- T10: _ensure_partition_v2() is idempotent — calling twice returns same name
+-- T10: _ensure_partition('statement_snapshots_v2', ...) is idempotent —
+--      calling twice leaves exactly one partition for today
 -- ===========================================================================
 DO $$
 DECLARE
-    r1 TEXT;
-    r2 TEXT;
+    v_partition_name TEXT;
+    v_count          INT;
 BEGIN
-    r1 := pgfr_record._ensure_partition_v2(CURRENT_DATE);
-    r2 := pgfr_record._ensure_partition_v2(CURRENT_DATE);
-    IF r1 IS DISTINCT FROM r2 THEN
-        RAISE EXCEPTION '_ensure_partition_v2 not idempotent: % vs %', r1, r2;
+    v_partition_name := 'statement_snapshots_v2_' || to_char(CURRENT_DATE, 'YYYY_MM_DD');
+    -- Call twice — must not raise and must leave exactly one partition
+    PERFORM pgfr_record._ensure_partition('statement_snapshots_v2', CURRENT_DATE);
+    PERFORM pgfr_record._ensure_partition('statement_snapshots_v2', CURRENT_DATE);
+    SELECT COUNT(*) INTO v_count
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'pgfr_record' AND c.relname = v_partition_name;
+    IF v_count <> 1 THEN
+        RAISE EXCEPTION '_ensure_partition not idempotent: found % partition(s) for %', v_count, v_partition_name;
     END IF;
 END;
 $$;
-SELECT pass('_ensure_partition_v2() is idempotent (same partition returned on repeated calls)');
+SELECT pass('_ensure_partition(''statement_snapshots_v2'', ...) is idempotent (partition exists after repeated calls)');
 
 -- ===========================================================================
 -- T11-T12: Sparse insert — rows skipped when calls unchanged
@@ -422,49 +410,53 @@ $$;
 SELECT pass('_rebuild_statement_last_state: ANALYZE updates pg_stat_user_tables.n_live_tup');
 
 -- ===========================================================================
--- T18: _ensure_partition_v2 creates partition for a future date
+-- T18: _ensure_partition('statement_snapshots_v2', ...) creates partition for a future date
 -- ===========================================================================
 DO $$
 DECLARE
     v_future_date DATE := CURRENT_DATE + 7;
     v_part_name   TEXT;
 BEGIN
-    v_part_name := pgfr_record._ensure_partition_v2(v_future_date);
+    v_part_name := 'statement_snapshots_v2_' || to_char(v_future_date, 'YYYY_MM_DD');
+
+    PERFORM pgfr_record._ensure_partition('statement_snapshots_v2', v_future_date);
 
     IF NOT EXISTS (
         SELECT 1 FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'pgfr_record' AND c.relname = v_part_name
     ) THEN
-        RAISE EXCEPTION '_ensure_partition_v2: partition % not found after creation', v_part_name;
+        RAISE EXCEPTION '_ensure_partition: partition % not found after creation', v_part_name;
     END IF;
 
     -- Cleanup test partition
     EXECUTE format('DROP TABLE IF EXISTS pgfr_record.%I', v_part_name);
 END;
 $$;
-SELECT pass('_ensure_partition_v2: creates partition for future date and returns correct name');
+SELECT pass('_ensure_partition(''statement_snapshots_v2'', ...): creates partition for future date');
 
 -- ===========================================================================
--- T19: statement_snapshots_v2 partition has B-tree index on (queryid,dbid,userid,sample_ts DESC)
+-- T19: statement_snapshots_v2 partition has B-tree index
+--      (_btree_idx suffix from _ensure_partition in PR #5)
 -- ===========================================================================
 SELECT ok(
     EXISTS (
         SELECT 1
         FROM pg_catalog.pg_class ci
-        JOIN pg_catalog.pg_class ct ON ct.oid = (
-            SELECT i.indrelid FROM pg_catalog.pg_index i WHERE i.indexrelid = ci.oid
-        )
+        JOIN pg_catalog.pg_index ix ON ix.indexrelid = ci.oid
+        JOIN pg_catalog.pg_class ct ON ct.oid = ix.indrelid
         JOIN pg_catalog.pg_namespace n ON n.oid = ct.relnamespace
         WHERE n.nspname = 'pgfr_record'
           AND ct.relname LIKE 'statement_snapshots_v2_%'
+          AND ci.relname LIKE '%_btree_idx'
           AND ci.relam = (SELECT oid FROM pg_am WHERE amname = 'btree')
     ),
-    'statement_snapshots_v2 partitions must have a B-tree index'
+    'statement_snapshots_v2 partitions must have a B-tree index (_btree_idx)'
 );
 
 -- ===========================================================================
 -- T20: statement_snapshots_v2 partition has BRIN index on sample_ts
+--      (_brin_idx suffix from _ensure_partition in PR #5)
 -- ===========================================================================
 SELECT ok(
     EXISTS (
@@ -476,10 +468,11 @@ SELECT ok(
         JOIN pg_catalog.pg_attribute a ON a.attrelid = ct.oid AND a.attnum = ix.indkey[0]
         WHERE n.nspname = 'pgfr_record'
           AND ct.relname LIKE 'statement_snapshots_v2_%'
+          AND ci.relname LIKE '%_brin_idx'
           AND ci.relam = (SELECT oid FROM pg_am WHERE amname = 'brin')
           AND a.attname = 'sample_ts'
     ),
-    'statement_snapshots_v2 partitions must have a BRIN index on sample_ts'
+    'statement_snapshots_v2 partitions must have a BRIN index on sample_ts (_brin_idx)'
 );
 
 -- ===========================================================================
