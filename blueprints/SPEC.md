@@ -180,22 +180,23 @@ measured — see §9.2. This is the template for all other tables.
 `rows`, `shared_blks_hit`, etc. A query that has not been called since the last
 snapshot has identical counter values. There is no reason to store another row.
 
-**Insert condition:** store a new row for `queryid` only when `calls` has increased
-since the last stored row for that `queryid` within the current day's partition.
+**Insert condition:** store a new row for `(queryid, dbid, userid)` only when
+`calls` has increased since the last stored row for that combination within the
+current day's partition.
 
 ```sql
 -- in _collect_statement_snapshot():
 with latest as (
-    select distinct on (queryid)
-        queryid, calls
+    select distinct on (queryid, dbid, userid)
+        queryid, dbid, userid, calls
     from pgfr_record.statement_snapshots
     where captured_at >= current_date  -- today's partition only
-    order by queryid, captured_at desc
+    order by queryid, dbid, userid, captured_at desc
 )
 insert into pgfr_record.statement_snapshots (...)
 select ...
 from pg_stat_statements pss
-left join latest l using (queryid)
+left join latest l using (queryid, dbid, userid)
 where
     l.queryid is null        -- first appearance today (baseline)
     or pss.calls > l.calls   -- query was called
@@ -267,7 +268,7 @@ scan on `(queryid, captured_at DESC)`.
 Three read patterns cover all use cases:
 
 **Point-in-time state** — full state of all objects at timestamp T.
-Use `DISTINCT ON (queryid) ORDER BY captured_at DESC WHERE captured_at <= T`.
+Use `DISTINCT ON (queryid, dbid, userid) ORDER BY queryid, dbid, userid, captured_at DESC WHERE captured_at <= T`.
 The partition boundary baseline guarantees a result within one partition.
 
 **Interval activity** — what was active between T1 and T2.
