@@ -299,7 +299,7 @@ retention window. No DELETE. No dead tuples. No autovacuum pressure from retenti
 
 ```sql
 create table pgfr_record.statement_snapshots (
-    snapshot_id  integer not null,
+    snapshot_id  bigint not null,  -- bigint: upstream uses integer (SERIAL), see Q5
     captured_at  timestamptz not null,  -- denormalized from snapshots at insert time
     queryid      bigint not null,
     ...
@@ -667,3 +667,13 @@ Partitioned tables, `drop table`, and pg_cron are supported on RDS, Cloud SQL,
 Supabase, and Neon. The daily partition pre-creation and drop jobs require pg_cron
 scheduling rights. No superuser required for partition management after initial
 install.
+
+**Q5: `snapshot_id` integer overflow.**
+The upstream `snapshots` table uses `SERIAL` (`integer`, max ~2.1 billion). At
+1 snapshot/minute that ceiling is ~4,000 years away. At 1-second sampling it drops
+to ~68 years — still safe, but sequence exhaustion is unrecoverable without downtime.
+More practically: failed transactions consume sequence values without inserting rows,
+and any future increase in sampling frequency compounds the risk. Consider migrating
+`snapshots.id` to `BIGSERIAL` during this overhaul while the schema is already
+changing. The cost is 4 extra bytes per row in the parent table and all FK columns —
+negligible against the row sizes involved.
