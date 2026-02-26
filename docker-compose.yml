@@ -1,0 +1,58 @@
+x-postgres-base: &postgres-base
+  environment:
+    POSTGRES_DB: postgres
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U postgres"]
+    interval: 5s
+    timeout: 5s
+    retries: 5
+
+services:
+  postgres15:
+    <<: *postgres-base
+    profiles: ["pg15", "all"]
+    build:
+      context: .
+      args:
+        PG_VERSION: 15
+    image: pgfr_record_test:15
+    container_name: pgfr_record_test-15
+    ports:
+      - "5415:5432"
+    volumes:
+      - postgres15_data:/var/lib/postgresql/data
+
+  postgres16:
+    <<: *postgres-base
+    profiles: ["pg16", "all"]
+    build:
+      context: .
+      args:
+        PG_VERSION: 16
+    image: pgfr_record_test:16
+    container_name: pgfr_record_test-16
+    ports:
+      - "5416:5432"
+    volumes:
+      - postgres16_data:/var/lib/postgresql/data
+
+  postgres17:
+    <<: *postgres-base
+    profiles: ["pg17", "all"]
+    build:
+      context: .
+      args:
+        PG_VERSION: 17
+    image: pgfr_record_test:17
+    container_name: pgfr_record_test-17
+    ports:
+      - "5417:5432"
+    volumes:
+      - postgres17_data:/var/lib/postgresql/data
+
+volumes:
+  postgres15_data:
+  postgres16_data:
+  postgres17_data:

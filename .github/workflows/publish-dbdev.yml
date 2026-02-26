@@ -1,0 +1,109 @@
+name: Publish to dbdev
+
+on:
+  release:
+    types: [published]
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v2.24)'
+        required: true
+        type: string
+    secrets:
+      DBDEV_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v2.24)'
+        required: true
+        type: string
+
+jobs:
+  publish:
+    name: Publish to dbdev
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          RAW="${{ inputs.version || github.event.release.tag_name }}"
+          # Strip v prefix
+          VER="${RAW#v}"
+          # Ensure three-part semver (dbdev requires x.y.z)
+          if [[ "$VER" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            VER="${VER}.0"
+          fi
+          echo "version=$VER" >> $GITHUB_OUTPUT
+
+      - name: Prepare core extension files
+        run: |
+          VER="${{ steps.version.outputs.version }}"
+          cp _record/install.sql "_record/pgfr_record--${VER}.sql"
+          mv _record/extension.control _record/pgfr_record.control
+          sed -i "s/^default_version = .*/default_version = '${VER}'/" _record/pgfr_record.control
+
+          # Safety: verify dbdev size limit
+          SIZE=$(wc -c < "_record/pgfr_record--${VER}.sql")
+          echo "Core package size: ${SIZE} chars"
+          if [ "$SIZE" -gt 250000 ]; then
+            echo "ERROR: _record/install.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
+            exit 1
+          fi
+
+      - name: Prepare reporting extension files
+        run: |
+          VER="${{ steps.version.outputs.version }}"
+          cp _analyze/install.sql "_analyze/pgfr_analyze--${VER}.sql"
+          mv _analyze/extension.control _analyze/pgfr_analyze.control
+          sed -i "s/^default_version = .*/default_version = '${VER}'/" _analyze/pgfr_analyze.control
+
+          # Safety: verify dbdev size limit
+          SIZE=$(wc -c < "_analyze/pgfr_analyze--${VER}.sql")
+          echo "Reporting package size: ${SIZE} chars"
+          if [ "$SIZE" -gt 250000 ]; then
+            echo "ERROR: _analyze/install.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
+            exit 1
+          fi
+
+      - name: Prepare control extension files
+        run: |
+          VER="${{ steps.version.outputs.version }}"
+          cp _control/install.sql "_control/pgfr_control--${VER}.sql"
+          mv _control/extension.control _control/pgfr_control.control
+          sed -i "s/^default_version = .*/default_version = '${VER}'/" _control/pgfr_control.control
+
+          # Safety: verify dbdev size limit
+          SIZE=$(wc -c < "_control/pgfr_control--${VER}.sql")
+          echo "Control package size: ${SIZE} chars"
+          if [ "$SIZE" -gt 250000 ]; then
+            echo "ERROR: _control/install.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
+            exit 1
+          fi
+
+      - name: Install dbdev CLI
+        run: |
+          DEB_URL=$(curl -fsSL https://api.github.com/repos/supabase/dbdev/releases/latest \
+            | jq -r '.assets[] | select(.name | endswith("linux-amd64.deb")) | .browser_download_url')
+          curl -fsSL -o dbdev.deb "$DEB_URL"
+          sudo dpkg -i dbdev.deb
+
+      - name: Authenticate to dbdev
+        env:
+          DBDEV_TOKEN: ${{ secrets.DBDEV_TOKEN }}
+        run: |
+          mkdir -p ~/.dbdev
+          printf '[registries.dbdev]\ntoken = "%s"\n' "$DBDEV_TOKEN" > ~/.dbdev/credentials.toml
+
+      - name: Publish core package
+        run: cd _record && dbdev publish
+
+      - name: Publish reporting package
+        run: cd _analyze && dbdev publish
+
+      - name: Publish control package
+        run: cd _control && dbdev publish

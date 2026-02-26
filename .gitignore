@@ -1,0 +1,10 @@
+# HubSpot config file
+hubspot.config.yml
+benchmark2/results/*
+
+# Mothballed directories
+benchmark/
+.claude/
+
+# Supabase CLI local state
+supabase/

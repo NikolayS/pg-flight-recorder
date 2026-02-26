@@ -1,0 +1,12 @@
+x-analyze-volumes: &analyze-volumes
+  volumes:
+    - ./_analyze/install.sql:/analyze.sql:ro
+    - ./_analyze/tests:/tests/analyze:ro
+
+services:
+  postgres15:
+    <<: *analyze-volumes
+  postgres16:
+    <<: *analyze-volumes
+  postgres17:
+    <<: *analyze-volumes

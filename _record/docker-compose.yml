@@ -1,0 +1,12 @@
+x-record-volumes: &record-volumes
+  volumes:
+    - ./_record/install.sql:/install.sql:ro
+    - ./_record/tests:/tests/record:ro
+
+services:
+  postgres15:
+    <<: *record-volumes
+  postgres16:
+    <<: *record-volumes
+  postgres17:
+    <<: *record-volumes

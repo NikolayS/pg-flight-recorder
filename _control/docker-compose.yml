@@ -1,0 +1,12 @@
+x-control-volumes: &control-volumes
+  volumes:
+    - ./_control/install.sql:/control.sql:ro
+    - ./_control/tests:/tests/control:ro
+
+services:
+  postgres15:
+    <<: *control-volumes
+  postgres16:
+    <<: *control-volumes
+  postgres17:
+    <<: *control-volumes

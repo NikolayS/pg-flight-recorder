@@ -1,0 +1,4 @@
+comment = 'Server-side flight recorder for PostgreSQL performance monitoring'
+default_version = '0.0.0'
+relocatable = false
+requires = 'pg_cron'
