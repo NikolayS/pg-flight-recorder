@@ -74,18 +74,22 @@ At default configuration (1-minute snapshots, `pg_stat_statements.max = 5000`,
 30-day retention). Two columns shown: naive (full insert every tick) vs actual
 current behavior.
 
+**All MiB figures are estimates based on schema analysis and row-count arithmetic.
+Baseline measurements against a running installation are part of Phase 1 (§9.2)
+and will replace these numbers with observed values.**
+
 | Table | Naive rows at 30d | ~MiB (naive) | Actual insert behavior | ~MiB (actual) | Priority |
 |-------|-------------------|--------------|------------------------|----------------|----------|
-| `config_snapshots` | 216,000,000 | ~26,000 | **Change-log only** — already implemented upstream | ~1 ⚠️ estimated, not measured | P1 |
-| `db_role_config_snapshots` | ~43,000,000 | ~4,400 | **Change-log only** — already implemented upstream | ~1 ⚠️ estimated, not measured | P1 |
+| `config_snapshots` | 216,000,000 | ~26,000 | **Change-log only** — already implemented upstream | ~1 | P1 |
+| `db_role_config_snapshots` | ~43,000,000 | ~4,400 | **Change-log only** — already implemented upstream | ~1 | P1 |
 | `statement_snapshots` | 216,000,000 | ~60,000 | Full insert every minute, no dedup | **~60,000** | **P0** |
-| `table_snapshots` | 2,160,000 | 552 | Full insert every minute, no dedup | **552** | **P0** |
-| `index_snapshots` | 2,160,000 | 262 | Full insert every minute, no dedup | **262** | **P0** |
-| `snapshots` (parent) | 43,200 | 23 | Full insert every minute | 23 | **P1** |
-| `replication_snapshots` | 86,400 | 15 | Full insert every minute | 15 | **P1** |
-| `activity_samples_archive` | 168,000 | 37 | Ring flush every 15 min | 37 | **P1** |
-| Ring buffers (combined) | ~27,000 (fixed) | ~16 (bloated) | UPDATE overwrite | ~16 | **P2** |
-| Aggregate tables (combined) | ~60,000 | ~14 | DELETE retention | 14 | **P2** |
+| `table_snapshots` | 2,160,000 | ~550 | Full insert every minute, no dedup | **~550** | **P0** |
+| `index_snapshots` | 2,160,000 | ~260 | Full insert every minute, no dedup | **~260** | **P0** |
+| `snapshots` (parent) | 43,200 | ~23 | Full insert every minute | ~23 | **P1** |
+| `replication_snapshots` | 86,400 | ~15 | Full insert every minute | ~15 | **P1** |
+| `activity_samples_archive` | 168,000 | ~37 | Ring flush every 15 min | ~37 | **P1** |
+| Ring buffers (combined) | ~27,000 (fixed) | ~16 | UPDATE overwrite | ~16 | **P2** |
+| Aggregate tables (combined) | ~60,000 | ~14 | DELETE retention | ~14 | **P2** |
 
 ### Key findings
 
