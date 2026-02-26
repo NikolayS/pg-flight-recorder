@@ -2,7 +2,7 @@
 
 | Version | Date | Author |
 |---------|------|--------|
-| 2.1 | 2026-02-26 | @NikolayS |
+| 2.2 | 2026-02-26 | @NikolayS |
 
 ---
 
@@ -10,6 +10,7 @@
 
 | Version | Changes |
 |---------|---------|
+| 2.2 | Third-pass reviews: DETACH CONCURRENTLY transaction trap + dblink/externalize options; advisory lock on _rebuild_statement_last_state; ANALYZE after rebuild; INSERT...ON CONFLICT DO UPDATE mandated (HOT); HOT DDL comment + pgTAP guard; remove thundering-herd spread suggestion; ring buffer reader views exclude "next" partition; two-phase GC orphan detection; partition_gc_health view; partition_gc_state self-cleanup (7-day TTL); BRIN index on sample_ts for time-range queries; generic plan pruning test; Phase 2 BIGSERIAL sequence monotonicity; PGSS collection failure isolation |
 | 2.1 | Second-pass reviews: add `toplevel` to composite key (PG14+ correctness); HOT-friendly `statement_last_state` with fillfactor+autovacuum; explicit crash recovery protocol (_rebuild_statement_last_state); daily TRUNCATE+rebuild semantics; PG14 minimum version declared in §2; `drop_old_partitions()` runs hourly + loops all eligible + partition_gc_state table + statement_timeout; dual-write cutover checklist; BIGSERIAL+dual-write synergy; soften Q3 partition pruning; relcache safety envelope in Q8; §9.8 references last-state join not DISTINCT ON; §9.12 pass/fail criteria |
 | 2.0 | Incorporate three external reviewer findings: replace DISTINCT ON with last-state side table (§5.2); function-level JIT disable (§6.3); UTC enforcement + index definitions + int4 horizon (§7.1); runtime partition ensure + pg_catalog-based drop + lock_timeout + DETACH CONCURRENTLY (§7.2); drop FK cascade recommendation (Q1); dual-write rollback strategy (Q2); partition pruning with explicit bounds (Q3); pg_stat_statements.max tracking (Q7); partition count guardrails (Q8); WAL benchmark (§9.11); high-churn benchmark (§9.12); expanded pgTAP suite (§9.13) |
 | 1.5 | Distinguish `pg_stat_statements_reset()` (PGSS) from `pg_stat_reset()` (global stats) — both must be tested, §9.10 expanded |
@@ -91,7 +92,7 @@ The collection functions for `statement_snapshots`, `table_snapshots`, and
 `index_snapshots` will skip inserting rows when nothing changed since the last
 snapshot — following the model already implemented in `config_snapshots`. A missing
 row means "no change since the last stored row." Reader functions reconstruct the
-full state at any timestamp via `DISTINCT ON ... ORDER BY sample_ts DESC`.
+full state at any timestamp via `DISTINCT ON ... ORDER BY sample_ts DESC` (reader functions; not the collection path).
 
 ---
 
@@ -252,10 +253,34 @@ must never query it directly; all reads go through the partitioned history table
 **Collector flow each tick:**
 1. Hash-join `pg_stat_statements` against `statement_last_state` (O(n), ~5,000-row table)
 2. Insert changed rows into the daily partition
-3. `TRUNCATE` + rebuild `statement_last_state` at daily partition boundary (see below)
-   OR upsert changed rows only on non-boundary ticks
+3. `TRUNCATE` + rebuild `statement_last_state` at daily partition boundary (see below);
+   on non-boundary ticks, upsert changed rows using `INSERT ... ON CONFLICT DO UPDATE`
 
 Cost is O(1) per queryid regardless of partition age.
+
+**Upsert must use `INSERT ... ON CONFLICT DO UPDATE` — not DELETE + INSERT:**
+HOT updates only occur when a tuple stays on the same heap page. A DELETE + INSERT
+always writes a new tuple, defeating the fillfactor optimization and generating
+dead tuples. Non-boundary upserts must use:
+```sql
+insert into pgfr_record.statement_last_state
+    (queryid, dbid, userid, toplevel, calls, sample_ts)
+values (...)
+on conflict (queryid, dbid, userid, toplevel) do update
+    set calls     = excluded.calls,
+        sample_ts = excluded.sample_ts;
+```
+Only `calls` and `sample_ts` change — never the key columns — so HOT is always
+eligible as long as no index covers `calls` or `sample_ts`.
+
+**HOT contract — enforce via DDL comment:**
+```sql
+comment on table pgfr_record.statement_last_state is
+    'HOT-sensitive: do NOT index mutable columns (calls, sample_ts). '
+    'HOT updates require changed columns to be unindexed. '
+    'See: https://github.com/NikolayS/pg-flight-recorder/blueprints/SPEC.md §5.2';
+```
+Add a pgTAP guard that asserts no index on this table covers `calls` or `sample_ts`.
 
 **Insert condition:**
 ```sql
@@ -280,18 +305,37 @@ table forever; a hash collision reusing that queryid would then get an incorrect
 stale `calls` value.)
 
 **Crash recovery:** after a crash, `statement_last_state` is empty (UNLOGGED).
-`snapshot()` must detect this on its first tick via:
+`snapshot()` detects this on its first tick and calls `_rebuild_statement_last_state()`.
+Use an advisory lock to prevent concurrent callers from both rebuilding simultaneously:
+
 ```sql
--- self-healing: if side table is empty, treat as boundary tick
+-- inside snapshot(), before the main collection:
 if not exists (select 1 from pgfr_record.statement_last_state limit 1) then
-    -- truncate+rebuild from pg_stat_statements, insert full baseline
-    perform pgfr_record._rebuild_statement_last_state();
+    -- advisory lock: only one session rebuilds at a time
+    if pg_try_advisory_xact_lock(hashtext('pgfr_last_state_rebuild')) then
+        perform pgfr_record._rebuild_statement_last_state();
+    end if;
+    -- if lock not acquired: another session is rebuilding; proceed normally
+    -- (ls.queryid IS NULL path handles missing entries correctly)
 end if;
 ```
-This causes one anomalous tick of higher write volume (~5,000 rows inserted as
-"first appearance") but is fully correct — no silent corruption, no external
-dependency. The duplicate-baseline risk is bounded: at most one extra full baseline
-row per queryid within the same day's partition. Readers must tolerate this.
+
+`_rebuild_statement_last_state()` must:
+1. `TRUNCATE pgfr_record.statement_last_state`
+2. `INSERT INTO statement_last_state SELECT ... FROM pg_stat_statements`
+3. `ANALYZE pgfr_record.statement_last_state` — immediately lock in accurate
+   statistics for the planner; do not rely on autovacuum to catch up after truncation
+
+The rebuild causes one anomalous tick of higher write volume (~5,000 rows as "first
+appearance") but is fully correct — no silent corruption, no external dependency.
+
+**PGSS collection failure isolation:** the PGSS collection section must be wrapped
+in its own exception handler within `snapshot()` so that a failure (extension not
+loaded, shared memory error, view unavailable) does not prevent other collection
+sections (table stats, index stats, WAL stats) from running on the same tick. If
+`pg_stat_statements` is unavailable, skip the rebuild — do not TRUNCATE the side
+table, as that would cause the next tick to treat everything as "first appearance"
+when the extension returns.
 
 **Reset detection:** when `calls` drops between snapshots, `pg_stat_statements_reset()`
 was called (resets PGSS counters only — independent of `pg_stat_reset()` which resets
@@ -345,12 +389,13 @@ activity counters. At minimum: `seq_scan`, `idx_scan`, `n_tup_ins`, `n_tup_upd`,
 Same partition boundary guarantee applies: full baseline row per relation at the
 start of each day's partition.
 
-**Thundering herd at midnight:** on a server with 10,000+ tables and 30,000+
-indexes, the partition boundary baseline insert covers all relations in one tick —
-potentially tens of thousands of rows. Quantify this spike at realistic relation
-counts and confirm it falls within the circuit breaker's tolerance. Consider
-spreading the baseline across the first few ticks of the new day if the spike
-exceeds acceptable collection latency.
+**Midnight baseline insert:** the partition boundary inserts a full baseline for
+all tracked relations in one tick. At 10,000+ tables and 30,000+ indexes this is
+~40,000 rows — a medium bulk insert that PostgreSQL completes in tens of milliseconds.
+Do not spread this across ticks: spreading destroys the partition boundary guarantee
+and makes reader reconstruction logic significantly more complex. If the circuit
+breaker trips on the 00:00 tick, tune the breaker to allow higher latency tolerance
+specifically for that tick rather than compromising the data model.
 
 **Expected reduction:** the long tail of static tables (reference tables, infrequently
 written application tables, system catalogs) produces no rows after the daily
@@ -483,6 +528,15 @@ create index on statement_snapshots_YYYY_MM_DD (queryid, dbid, userid, sample_ts
 Consider a covering index adding `calls` to allow index-only scans for the sparse
 comparison (avoids heap fetch for the most common access pattern).
 
+Additionally, evaluate a **BRIN index on `sample_ts`** as a secondary index for
+pure time-range queries ("show me everything from the last hour"). Within a daily
+partition, rows are inserted in `sample_ts` order — natural correlation makes BRIN
+highly effective. A BRIN index is a few KiB vs tens of MiB for a B-tree, and
+covers the most common operational query pattern without the B-tree overhead.
+The B-tree on `(queryid, dbid, userid, sample_ts DESC)` remains necessary for
+point-in-time reconstruction. Benchmark both in Phase 1 — BRIN is low risk and
+potentially significant index storage savings at scale.
+
 **int4 horizon:** with a 2026-01-01 epoch, `int4` seconds overflow in approximately
 2094. This is not an imminent risk, but future engineers must know:
 - the epoch must never change after installation (corrupts all stored timestamps)
@@ -557,11 +611,49 @@ set local statement_timeout = '5s';
 
 If either timeout fires, record the error in `partition_gc_state` and move on.
 
-**DETACH before DROP (PG14+, always available per §2 minimum version):**
-`ALTER TABLE ... DETACH PARTITION ... CONCURRENTLY` narrows the lock window on
-the parent table to near-zero. The actual DROP runs on the now-standalone detached
-table without touching the parent. Note: `DETACH CONCURRENTLY` cannot run inside
-a transaction block — the GC function must handle this explicitly.
+**DETACH CONCURRENTLY cannot run inside a PL/pgSQL function:**
+`ALTER TABLE ... DETACH PARTITION ... CONCURRENTLY` raises error `25001`
+(active_sql_transaction) when called inside any PL/pgSQL block, because PL/pgSQL
+implicitly runs inside a transaction. Since `drop_old_partitions()` is a PL/pgSQL
+function called from pg_cron, DETACH CONCURRENTLY cannot be issued directly.
+Options:
+- **`dblink`**: wrap the DETACH CONCURRENTLY command in a `dblink` call back to
+  the same database, opening an autonomous non-transactional session
+- **Externalize GC**: move drop logic to an external orchestrator (systemd timer,
+  separate agent) that issues raw SQL outside a transaction
+- **Fallback**: skip DETACH CONCURRENTLY; use direct `DROP TABLE` with
+  `lock_timeout + statement_timeout` only — acceptable if lock contention is rare
+
+**Two-phase GC loop — explicit orphan detection:**
+`drop_old_partitions()` must be two-phase to handle crashes between DETACH and DROP:
+
+Phase 1 — scan `pg_inherits` for attached partitions past retention:
+- attempt DETACH CONCURRENTLY (via dblink or external caller)
+- on success: update `partition_gc_state` to `detached`
+- on timeout: record error, continue to next partition
+
+Phase 2 — scan `partition_gc_state WHERE state = 'detached'`:
+- attempt `DROP TABLE` on each detached (now standalone) table
+- on success: update state to `dropped`
+- on timeout: record error, retry next hour
+
+Without Phase 2, a crash between DETACH and DROP leaves an orphaned standalone
+table that `pg_inherits` no longer knows about and that no future scan will find.
+
+**`partition_gc_state` self-maintenance:**
+Delete rows with `state = 'dropped' AND dropped_at < now() - interval '7 days'`
+as part of each hourly run. Keeps the table bounded without losing recent history.
+
+**`partition_gc_health` view for operator visibility:**
+```sql
+create or replace view pgfr_record.partition_gc_health as
+select
+    count(*) filter (where state = 'attached' and eligible_at < now())  as stuck_attached,
+    count(*) filter (where state = 'detached')                          as pending_drop,
+    max(eligible_at) filter (where state = 'attached' and eligible_at < now()) as oldest_stuck,
+    max(dropped_at)                                                     as last_successful_drop;
+```
+Exposes silent degradation (stuck partitions, GC lag) as observable metrics.
 
 ### 7.3 Hot ring buffers: TRUNCATE rotation
 
@@ -576,6 +668,14 @@ partition_0 (previous) | partition_1 (current, inserting) | partition_2 (truncat
 
 At rotation: advance the current slot, TRUNCATE the "next" partition. Zero dead
 tuples. No semantic change to the ring window or reader behavior.
+
+**Reader views must exclude the "next" partition:** `TRUNCATE` requires
+`ACCESS EXCLUSIVE` on the target partition. A concurrent `SELECT` against a view
+that covers all three partitions acquires `ACCESS SHARE` on each — including the
+one being truncated. This blocks the TRUNCATE, which blocks the collector. Reader
+views must filter strictly to the `previous` and `current` partitions by
+`sample_ts` range, ensuring the planner never acquires a lock on the partition
+undergoing TRUNCATE.
 
 ### 7.4 Scope of partition-based retention
 
@@ -723,7 +823,8 @@ Run under four workload profiles, each for 24 hours:
 | Adversarial (all active) | ~5,000 | ~5,000 | ~0% — proves graceful degradation |
 
 The adversarial profile confirms the sparse model never performs worse than naive.
-The `DISTINCT ON` lookup overhead must not add unacceptable latency.
+The `statement_last_state` hash join overhead must not add unacceptable latency —
+measure on the adversarial tick where all 5,000 rows require an upsert.
 
 **Measure every hour:**
 
@@ -865,6 +966,11 @@ where sample_ts > extract(epoch from now() - interval '1 hour' - pgfr_record.epo
 
 Also verify `enable_partition_pruning = on` (default, but document the assumption).
 
+Verify pruning under both custom and generic plan paths. When `plan_cache_mode = auto`
+and PostgreSQL decides a generic plan is cheaper, partition pruning may degrade.
+Test explicitly: prepare the time-bounded query, execute it enough times to trigger
+generic plan selection, and confirm pruning still occurs.
+
 Old schema has no partitioning — every time-bounded query scans the full table.
 
 ### 9.10 Reset handling
@@ -936,14 +1042,22 @@ All existing tests must pass without modification. New tests for Phase 1:
 - Sparse insert: rows skipped when `calls` unchanged; rows stored when `calls` increases
 - `statement_last_state` correctly reflects latest state after each tick
 - `statement_last_state` crash recovery: TRUNCATE side table, run `snapshot()`, confirm exactly one baseline row per queryid, no duplicates
+- `statement_last_state` crash recovery uses advisory lock — concurrent callers don't double-rebuild
+- `statement_last_state` upsert uses `INSERT ... ON CONFLICT DO UPDATE` (not DELETE+INSERT) — verify via `pg_stat_user_tables.n_dead_tup` remains bounded
+- `statement_last_state` HOT contract: no index covers `calls` or `sample_ts`
 - `statement_last_state` daily TRUNCATE+rebuild keeps row count ≤ `pg_stat_statements.max`
+- `_rebuild_statement_last_state()` calls `ANALYZE` immediately after INSERT
 - `toplevel` column included in composite key; two entries differing only in `toplevel` tracked independently
 - Partition boundary baseline: first row of each day covers all active queryids
 - `n_dead_tup = 0` on all partitions after `drop_old_partitions()`
+- `partition_gc_state` correctly transitions ATTACHED → DETACHED → DROPPED
+- `partition_gc_state` rows with `state = 'dropped'` older than 7 days are cleaned up
+- `partition_gc_health` view returns correct counts for stuck/pending/dropped partitions
 - Reader output matches old schema for the same time window
-- Partition pruning confirmed via `EXPLAIN` (no `ANALYZE`) at planning time
+- Partition pruning confirmed via `EXPLAIN` (no `ANALYZE`) at planning time — both custom and generic plan paths
 - Partition creation with non-UTC session timezone produces identical bounds to UTC session
 - JIT disable is function-level (not session-leaking) — verify via `pg_stat_statements`
+- Ring buffer reader views never acquire locks on the "next" (truncating) partition
 
 ---
 
@@ -997,12 +1111,22 @@ Supabase, and Neon. The daily partition pre-creation and drop jobs require pg_cr
 scheduling rights. `DETACH PARTITION CONCURRENTLY` requires PG14+. No superuser
 required for partition management after initial install.
 
-**Q5: `snapshot_id` integer overflow.**
+**Q5: `snapshot_id` integer overflow and Phase 2 sequence migration.**
 The upstream `snapshots` table uses `SERIAL` (`integer`, max ~2.1 billion). At
 1 snapshot/minute that ceiling is ~4,000 years away. At 1-second sampling it drops
 to ~68 years — still safe, but sequence exhaustion is unrecoverable without downtime.
 Consider migrating `snapshots.id` to `BIGSERIAL` during this overhaul while the
 schema is already changing.
+
+New partitioned child tables created in Phase 1 must define `snapshot_id` as
+`BIGINT` from day one (the collector safely inserts current `INT` sequence values
+into `BIGINT` columns). When `snapshots.id` is migrated to `BIGSERIAL` in Phase 2,
+the new sequence must start at `max(id) + 1` from the old sequence:
+```sql
+alter sequence snapshots_id_seq as bigint restart with <max_id + 1>;
+```
+This preserves monotonicity and prevents `snapshot_id` overlap in partitioned
+child tables across the Phase 1/Phase 2 boundary.
 
 **Q6: `int4 sample_ts` epoch and overflow horizon.**
 The epoch is fixed at `2026-01-01 00:00:00+00`. With `int4` seconds, overflow
