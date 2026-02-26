@@ -300,18 +300,45 @@ retention window. No DELETE. No dead tuples. No autovacuum pressure from retenti
 ```sql
 create table pgfr_record.statement_snapshots (
     snapshot_id  bigint not null,  -- bigint: upstream uses integer (SERIAL), see Q5
-    captured_at  timestamptz not null,  -- denormalized from snapshots at insert time
+    sample_ts    int4 not null,    -- seconds since pgfr_record.epoch(); see Q6
     queryid      bigint not null,
     ...
-) partition by range (captured_at);
+) partition by range (sample_ts);  -- see Q6 for partition key discussion
 
 create table pgfr_record.statement_snapshots_2026_02_26
     partition of pgfr_record.statement_snapshots
-    for values from ('2026-02-26') to ('2026-02-27');
+    for values from (...) to (...);  -- int4 bounds derived from epoch + date
 ```
 
-The `captured_at` column is denormalized into each child table. This makes each
-table self-contained for retention — no join back to the parent required.
+The `sample_ts` column is an `int4` offset from a fixed installation epoch —
+the same approach used by pg_ash. This makes each row 4 bytes smaller than
+`timestamptz` (8 bytes vs 8 bytes... wait: `int4` is 4 bytes, `timestamptz` is
+8 bytes — saving 4 bytes/row). At 216M rows that is ~824 MB saved on `statement_snapshots`
+alone before any sparse optimization.
+
+**Epoch function (borrowed from pg_ash):**
+```sql
+-- WARNING: must never change after installation — all sample_ts values are
+-- seconds offset from this point. Changing it corrupts all timestamps.
+create or replace function pgfr_record.epoch()
+returns timestamptz immutable language sql as
+$$select '2026-01-01 00:00:00+00'::timestamptz$$;
+```
+
+**Reconstruct timestamptz from sample_ts:**
+```sql
+pgfr_record.epoch() + sample_ts * interval '1 second'
+```
+
+**Partition key:** PostgreSQL range partitioning works on `int4` — no need for
+`timestamptz` as the partition key. Partition bounds are computed as:
+```sql
+-- for date 2026-02-26:
+extract(epoch from '2026-02-26'::timestamptz - pgfr_record.epoch())::int4
+```
+
+This makes each child table self-contained for retention — no join back to the
+parent required, and no `timestamptz` stored in any hot row.
 
 ### 7.2 Partition pre-creation and drop
 
@@ -677,3 +704,13 @@ and any future increase in sampling frequency compounds the risk. Consider migra
 `snapshots.id` to `BIGSERIAL` during this overhaul while the schema is already
 changing. The cost is 4 extra bytes per row in the parent table and all FK columns —
 negligible against the row sizes involved.
+
+**Q6: `int4 sample_ts` vs `timestamptz captured_at` as partition key.**
+pg_ash stores timestamps as `int4` seconds since a custom epoch (`ash.epoch()`),
+saving 4 bytes/row vs `timestamptz` and extending the int4 range far beyond 2038.
+The same approach applies here. The tradeoff: partition bounds must be computed as
+integer offsets rather than date literals, which is slightly less readable but
+trivially handled by `_ensure_partition()`. The alternative — keeping `timestamptz`
+for readability — costs 4 bytes/row and ~824 MiB at full naive `statement_snapshots`
+volume. Decision: adopt `int4 sample_ts` + `pgfr_record.epoch()` consistent with
+pg_ash, document the epoch as immutable post-install.
