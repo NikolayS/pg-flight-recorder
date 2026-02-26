@@ -1,4 +1,4 @@
-# Storage Overhaul: Partition-Based Retention, Zero Bloat
+# Storage Overhaul: Partition-Based Retention, Compact Storage, Zero Bloat
 
 | Version | Date | Author |
 |---------|------|--------|
