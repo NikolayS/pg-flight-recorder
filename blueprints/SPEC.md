@@ -278,23 +278,23 @@ partition, any point-in-time read needs to look back at most one partition
 boundary. Reconstruction cost is O(log n) per queryid or relid — a single index
 scan on `(queryid, dbid, userid, sample_ts DESC)`.
 
-### 6.2 Required reader patterns
+### 6.2 Reader patterns
 
-Three read patterns cover all use cases:
+Three read patterns cover all use cases. The sparse storage model is an
+implementation detail — reader functions expose the same interface as before.
 
-**Point-in-time state** — full state of all objects at timestamp T.
-Use `DISTINCT ON (queryid, dbid, userid) ORDER BY queryid, dbid, userid, sample_ts DESC WHERE sample_ts <= <T as int4 offset>`.
-The partition boundary baseline guarantees a result within one partition.
+**Point-in-time state** — reconstruct the full state of all tracked objects at
+any timestamp T. The partition boundary baseline guarantee means lookback is
+bounded to one partition; no unbounded scan required.
 
-**Interval activity** — what was active between T1 and T2.
-For cumulative counters: `latest_value - earliest_value` within the window.
-Exclude queryids where the latest `calls` equals the earliest (no activity).
-Handle resets: when `calls` drops within the window, the counter was reset —
-either exclude the interval or surface it as a reset event.
+**Interval activity** — determine what happened between T1 and T2. For cumulative
+counters this means comparing the earliest and latest stored values within the
+window. Reset events (counter drops) must be detected and handled at the boundary
+rather than silently producing negative deltas.
 
-**Change history** — when did a value change and what did it change to.
-For config: every stored row is a change event. Return rows ordered by
-`captured_at` within the requested window.
+**Change history** — enumerate when a value changed and what it changed to.
+With sparse storage every stored row is already a change event, so this pattern
+requires no special logic beyond a time-bounded index scan.
 
 ### 6.3 Key constraint: `set jit = off`
 
