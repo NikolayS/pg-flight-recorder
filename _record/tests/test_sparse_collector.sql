@@ -4,6 +4,13 @@
 -- Run with: pg_prove -d <dbname> _record/tests/test_sparse_collector.sql
 -- Requires: pgTAP, pg_stat_statements
 -- PG14+ minimum
+--
+-- DEPENDENCY: This test file requires that the Phase 1 partition infrastructure
+-- (PR #5 / phase1-issue1-infra) is already installed, specifically:
+--   - pgfr_record.epoch()
+--   - pgfr_record._ensure_partition(text, date)
+-- Install _record/install.sql from the phase1-issue1-infra branch first,
+-- or merge PR #5 before running these tests.
 -- =============================================================================
 
 BEGIN;
@@ -16,6 +23,7 @@ SELECT plan(24);
 DO $$
 BEGIN
     -- Create a test partition for today if needed
+    -- Requires _ensure_partition() from phase1-issue1-infra (PR #5)
     PERFORM pgfr_record._ensure_partition('statement_snapshots_v2', CURRENT_DATE);
 END;
 $$;
