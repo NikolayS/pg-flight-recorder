@@ -2,7 +2,7 @@
 
 | Version | Date | Author |
 |---------|------|--------|
-| 2.6 | 2026-02-26 | @NikolayS |
+| 2.7 | 2026-02-26 | @NikolayS |
 
 ---
 
@@ -10,6 +10,7 @@
 
 | Version | Changes |
 |---------|---------|
+| 2.7 | §9.2 baseline measurement complete (Hetzner cx22, PG 17.4, pgbench scale=50, 6.7h of pg_cron collection): Section 3 table updated with observed bytes/row and 30-day projections; confirmed statement_snapshots dominates at 466 bytes/row (960 MiB/30d at top_n=50, ~94 GiB at pgss.max=5000); confirmed config_snapshots change-log model effective (~1 MiB/30d); baseline_measure.sql corrected for actual collection_stats schema |
 | 2.6 | Sixth-pass reviews: clean-restart desync trap fixed (check stats_reset not just emptiness); TRUNCATE lock_timeout 2s→50ms (FIFO queue stall); dealloc is cluster-wide not per-db; logical replication TRUNCATE poison pill + publication workaround; _partition_inventory() runtime assertions; JIT call-discipline for EXECUTE |
 | 2.5 | Fifth-pass reviews: Q5 BigInt column type + sequence both required; BRIN/B-tree non-overlapping paths + pages_per_range workload note; advisory xact_lock held for full snapshot run; JIT inheritance via EXECUTE clarified; _partition_inventory() bound parsing fragility + single-column RANGE assumption; GC cadence configurable; best-effort retention under lock contention; ring EXECUTE plan-cache trade-off documented; skip-tick observability counter |
 | 2.4 | Fourth-pass reviews: two-tier GC (nightly TRUNCATE + monthly drop_ancient_partitions); fix TRUNCATE lock framing; fix advisory lock race — skip tick if rebuild in flight; lock_timeout on TRUNCATE; _partition_inventory() defined; _ensure_partition() O(1) happy path; BRIN pages_per_range=8 + correlation check; WAL section updated for TRUNCATE vs DROP vs DELETE; benchmark headers fixed; pg_stat_reset_single_table_counters() note; ring buffer reader uses EXECUTE by partition name; Q8 guardrails updated for accumulation math |
@@ -105,46 +106,52 @@ At default configuration (1-minute snapshots, `pg_stat_statements.max = 5000`,
 30-day retention). Two columns shown: naive (full insert every tick) vs actual
 current behavior.
 
-**All MiB figures are estimates based on schema analysis and row-count arithmetic.
-Baseline measurements against a running installation are part of Phase 1 (§9.2)
-and will replace these numbers with observed values.**
+**§9.2 baseline measured on 2026-02-26 on Hetzner cx22 (2 vCPU / 4 GiB RAM),
+Ubuntu 24.04, PostgreSQL 17.4, `pg_stat_statements.max = 5000`,
+`statements_top_n = 50` (default), `table_stats_top_n = 50` (default).
+6.7 hours of pg_cron collection with pgbench workload (scale=50, TPS ≈ 2,552).
+Observed bytes/row used for 30-day projections. Full detail: [Issue #4](https://github.com/NikolayS/pg-flight-recorder/issues/4).**
 
-| Table | Naive rows at 30d | ~MiB (naive) | Actual insert behavior | ~MiB (actual) | Priority |
-|-------|-------------------|--------------|------------------------|----------------|----------|
-| `config_snapshots` | 216,000,000 | ~26,000 | **Change-log only** — already implemented upstream | ~1 | P1 |
-| `db_role_config_snapshots` | ~43,000,000 | ~4,400 | **Change-log only** — already implemented upstream | ~1 | P1 |
-| `statement_snapshots` | 216,000,000 | ~60,000 | Full insert every minute, no dedup | **~60,000** | **P0** |
-| `table_snapshots` | 2,160,000 | ~550 | Full insert every minute, no dedup | **~550** | **P0** |
-| `index_snapshots` | 2,160,000 | ~260 | Full insert every minute, no dedup | **~260** | **P0** |
-| `snapshots` (parent) | 43,200 | ~23 | Full insert every minute | ~23 | **P1** |
-| `replication_snapshots` | 86,400 | ~15 | Full insert every minute | ~15 | **P1** |
-| `activity_samples_archive` | 168,000 | ~37 | Ring flush every 15 min | ~37 | **P1** |
-| Ring buffers (combined) | ~27,000 (fixed) | ~16 | UPDATE overwrite | ~16 | **P2** |
-| Aggregate tables (combined) | ~60,000 | ~14 | DELETE retention | ~14 | **P2** |
+**Note: PG18 not yet supported** — measurements apply to PG 15–17 only.
+**Scope limitations**: single-database setup, no streaming replication, pgbench workload only. Real production numbers may vary.
+
+| Table | Rows at 30d (projected) | ~MiB (projected) | Actual insert behavior | bytes/row (observed) | Priority |
+|-------|-------------------------|------------------|------------------------|----------------------|----------|
+| `config_snapshots` | ~5,760 | ~1 | **Change-log only** — 52 rows in 6.7 h on idle cluster | 157 | P1 |
+| `db_role_config_snapshots` | ~0 | ~0 | **Change-log only** — 0 rows observed (no role config changes) | n/a | P1 |
+| `statement_snapshots` | 2,160,000 (top_n=50) / **216,000,000** (pgss.max=5000) | **960 MiB** (top_n=50) / **~94 GiB** (pgss.max=5000) | Full insert every minute, no dedup | **466** | **P0** |
+| `table_snapshots` | 2,160,000 | **468 MiB** | Full insert every minute, no dedup | **227** | **P0** |
+| `index_snapshots` | ~2,195,000 | **176 MiB** | Full insert every minute, no dedup | **84** | **P0** |
+| `snapshots` (parent) | 43,200 | ~19 MiB | Full insert every minute | 457 | **P1** |
+| `replication_snapshots` | 0 | ~0 | Full insert every minute (0 rows — no replication on bench) | n/a | **P1** |
+| `activity_samples_archive` | ~139,000 | ~28 MiB | Ring flush every 15 min | 212 | **P1** |
+| `wait_samples_archive` | ~345,000 | ~36 MiB | Ring flush every 15 min | 108 | **P1** |
+| Ring buffers (combined) | ~27,000 (fixed) | ~16 MiB | UPDATE overwrite | 61–136 | **P2** |
+| Aggregate tables (combined) | ~167,000 | ~25 MiB | Aggregated from ring flush | 141–455 | **P2** |
+
+*Row projections for statement_snapshots, table_snapshots, and index_snapshots represent worst-case (top_n fully saturated). Observed rates were 40–55% lower (~32 rows/tick for statement_snapshots vs. 50 theoretical max).*
 
 ### Key findings
 
-**`config_snapshots` uses the right approach but has not been benchmarked.**
+**`config_snapshots` uses the right approach — confirmed by §9.2 measurement.**
 The upstream `_collect_config_snapshot()` function stores only parameters that
 changed since the last snapshot — the correct design and the template for the
-remaining tables. However, the `~1 MiB (actual)` figure in the table above is an
-estimate, not a measured value. Real-world behavior depends on factors not yet
-quantified: how often cloud providers silently reload configuration, how frequently
-`pg_reload_conf()` is called, whether connection-level `SET` or `ALTER SYSTEM`
-commands affect tracked parameters, and whether the change-detection logic handles
-all edge cases correctly. The baseline measurement in §9.2 will establish the true
-numbers. There may still be room for improvement — do not treat this as closed
-until benchmarks confirm it.
+remaining tables. **Measured: 52 rows in 6.7 hours on a stable cluster (≈8 rows/h,
+157 bytes/row) — confirming the ~1 MiB/30-day estimate.** On a cloud instance
+with frequent `pg_reload_conf()` or `SET` commands the rate could be higher, but
+the change-log approach is sound and effective.
 
-**`statement_snapshots` is the dominant problem.** At `pg_stat_statements.max = 5000`
-(the PostgreSQL default), the naive model inserts 5,000 rows every minute regardless
-of query activity — approximately 2,024 MiB per day, or 60 GiB at 30-day retention.
+**`statement_snapshots` is the dominant problem — confirmed by §9.2 measurement.**
+At default `statements_top_n = 50` the observed rate is 50 rows/tick × 1,440
+ticks/day = **72,000 rows/day** at **466 bytes/row = 960 MiB/30 days**.
+At `pg_stat_statements.max = 5000` (the full PGSS capacity, no top-n filter)
+the rate would be 5,000 rows/tick = **216,000,000 rows/30 days ≈ 94 GiB**.
 A query that ran once 29 days ago has 43,200 identical rows, every one redundant.
 
-Note: estimates based on `statements_top_n = 50` (the configurable collection
-limit) significantly understate the problem. The relevant ceiling is
-`pg_stat_statements.max = 5000` — the number of distinct queryids PostgreSQL
-tracks, regardless of how many are collected per tick.
+Note: `statements_top_n = 50` (the default collection limit) significantly
+understates the potential problem. The relevant ceiling for worst-case estimation
+is `pg_stat_statements.max = 5000` — the number of distinct queryids PostgreSQL
+tracks. The fix (sparse storage) applies equally to both configurations.
 
 **The problem has two independent axes that compound each other:**
 
