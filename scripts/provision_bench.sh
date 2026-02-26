@@ -11,8 +11,8 @@ SERVER_TYPE="cx22"
 LOCATION="nbg1"
 IMAGE="ubuntu-24.04"
 FIREWALL_NAME="pgfr-bench-fw"
-SSH_KEY_NAME="pgfr-bench-issue4"
-SSH_KEY_FILE="/tmp/pgfr_bench_key"
+SSH_KEY_NAME="pgfr-bench-key"
+SSH_KEY_FILE="/tmp/bench_key"
 PGFR_BRANCH="storage-overhaul-spec"
 
 log() { echo "[$(date -u +%H:%M:%S)] $*"; }
