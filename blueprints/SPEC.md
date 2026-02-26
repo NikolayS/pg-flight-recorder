@@ -112,6 +112,9 @@ Ubuntu 24.04, PostgreSQL 17.4, `pg_stat_statements.max = 5000`,
 6.7 hours of pg_cron collection with pgbench workload (scale=50, TPS ≈ 2,552).
 Observed bytes/row used for 30-day projections. Full detail: [Issue #4](https://github.com/NikolayS/pg-flight-recorder/issues/4).**
 
+**Note: PG18 not yet supported** — measurements apply to PG 15–17 only.
+**Scope limitations**: single-database setup, no streaming replication, pgbench workload only. Real production numbers may vary.
+
 | Table | Rows at 30d (projected) | ~MiB (projected) | Actual insert behavior | bytes/row (observed) | Priority |
 |-------|-------------------------|------------------|------------------------|----------------------|----------|
 | `config_snapshots` | ~5,760 | ~1 | **Change-log only** — 52 rows in 6.7 h on idle cluster | 157 | P1 |
@@ -125,6 +128,8 @@ Observed bytes/row used for 30-day projections. Full detail: [Issue #4](https://
 | `wait_samples_archive` | ~345,000 | ~36 MiB | Ring flush every 15 min | 108 | **P1** |
 | Ring buffers (combined) | ~27,000 (fixed) | ~16 MiB | UPDATE overwrite | 61–136 | **P2** |
 | Aggregate tables (combined) | ~167,000 | ~25 MiB | Aggregated from ring flush | 141–455 | **P2** |
+
+*Row projections for statement_snapshots, table_snapshots, and index_snapshots represent worst-case (top_n fully saturated). Observed rates were 40–55% lower (~32 rows/tick for statement_snapshots vs. 50 theoretical max).*
 
 ### Key findings
 

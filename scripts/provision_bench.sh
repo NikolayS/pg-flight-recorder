@@ -23,6 +23,9 @@ if [[ -z "${HCLOUD_TOKEN:-}" ]]; then
   exit 1
 fi
 
+# Derive benchmark password from env var (never hardcode); export so SSH can pass it
+export PGFR_BENCH_PW="${PGFR_BENCH_PW:-$(openssl rand -hex 16)}"
+
 # ── 1. Generate SSH key ──────────────────────────────────────────────────────
 log "Generating SSH key: $SSH_KEY_FILE"
 if [[ -f "$SSH_KEY_FILE" ]]; then
@@ -86,15 +89,21 @@ for i in $(seq 1 30); do
   fi
   sleep 10
 done
+if ! ssh -i "$SSH_KEY_FILE" \
+         -o StrictHostKeyChecking=no \
+         -o ConnectTimeout=5 \
+         -o BatchMode=yes \
+         "root@$SERVER_IP" "echo ok" &>/dev/null; then
+  log "ERROR: SSH did not become available within 5 minutes. Aborting."
+  exit 1
+fi
 
 # ── 6. Upload and run setup_pg.sh ────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-log "Copying setup scripts to server..."
-scp -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no \
-  "$SCRIPT_DIR/setup_pg.sh" \
-  "root@$SERVER_IP:/root/setup_pg.sh"
+log "Streaming setup_pg.sh to server (PGFR_BENCH_PW passed via env)..."
 ssh -i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no "root@$SERVER_IP" \
-  "chmod +x /root/setup_pg.sh && /root/setup_pg.sh 2>&1 | tee /root/setup_pg.log"
+  "PGFR_BENCH_PW=$PGFR_BENCH_PW bash -s" < "$SCRIPT_DIR/setup_pg.sh" \
+  2>&1 | tee /root/setup_pg.log
 
 # ── 7. Run measurements ──────────────────────────────────────────────────────
 log "Running §9.2 baseline measurements..."

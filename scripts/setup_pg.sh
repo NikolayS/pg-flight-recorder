@@ -13,6 +13,9 @@ PGDB="pgfr_bench17"
 PGFR_BRANCH="storage-overhaul-spec"
 PGFR_DIR="/root/pgfr"
 
+# Derive benchmark password from env var (never hardcode)
+PGFR_BENCH_PW="${PGFR_BENCH_PW:-$(openssl rand -hex 16)}"
+
 # ── 1. Install PostgreSQL 17 ─────────────────────────────────────────────────
 log "Installing PostgreSQL $PGVER..."
 apt-get update -qq
@@ -43,10 +46,11 @@ log "Configuring PostgreSQL..."
 PG_CONF="/etc/postgresql/$PGVER/$PGCLUSTER/postgresql.conf"
 PG_HBA="/etc/postgresql/$PGVER/$PGCLUSTER/pg_hba.conf"
 
-# Append required settings
-cat >> "$PG_CONF" << 'EOF'
+# Append required settings (idempotent: only if not already present)
+if ! grep -q 'pgfr bench configuration' "$PG_CONF" 2>/dev/null; then
+  cat >> "$PG_CONF" << 'EOF'
 
-# pgfr bench security & extension settings
+# pgfr bench configuration
 listen_addresses = 'localhost'
 log_connections = on
 shared_preload_libraries = 'pg_cron,pg_stat_statements'
@@ -58,6 +62,7 @@ max_connections = 200
 autovacuum = on
 autovacuum_vacuum_cost_delay = '2ms'
 EOF
+fi
 
 # pg_hba: password auth everywhere (no trust), peer for OS postgres user only
 cat > "$PG_HBA" << 'EOF'
@@ -80,7 +85,7 @@ DO
 \$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'pgfr_bench17') THEN
-    CREATE ROLE pgfr_bench17 WITH LOGIN PASSWORD 'pgfr_bench_pw17';
+    CREATE ROLE pgfr_bench17 WITH LOGIN PASSWORD '$PGFR_BENCH_PW';
   END IF;
 END
 \$\$;
@@ -162,15 +167,25 @@ sudo -u postgres psql -p $PGPORT -d $PGDB \
 log "Setting up pg_cron jobs..."
 cat > /tmp/setup_cron.sql << 'SQLEOF'
 SELECT cron.schedule('pgfr-snapshot', '* * * * *',
-  'SET statement_timeout = ''10s''; SELECT pgfr_record.snapshot()');
+  'SET statement_timeout = ''10s''; SELECT pgfr_record.snapshot()')
+WHERE NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr-snapshot');
+
 SELECT cron.schedule('pgfr-sample', '* * * * *',
-  'SET statement_timeout = ''5s''; SELECT pgfr_record.sample()');
+  'SET statement_timeout = ''5s''; SELECT pgfr_record.sample()')
+WHERE NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr-sample');
+
 SELECT cron.schedule('pgfr-flush', '*/5 * * * *',
-  'SET statement_timeout = ''10s''; SELECT pgfr_record.flush_ring_to_aggregates()');
+  'SET statement_timeout = ''10s''; SELECT pgfr_record.flush_ring_to_aggregates()')
+WHERE NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr-flush');
+
 SELECT cron.schedule('pgfr-archive', '*/15 * * * *',
-  'SET statement_timeout = ''10s''; SELECT pgfr_record.archive_ring_samples()');
+  'SET statement_timeout = ''10s''; SELECT pgfr_record.archive_ring_samples()')
+WHERE NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr-archive');
+
 SELECT cron.schedule('pgfr-cleanup', '0 3 * * *',
-  'SET statement_timeout = ''60s''; SELECT pgfr_record.cleanup_aggregates()');
+  'SET statement_timeout = ''60s''; SELECT pgfr_record.cleanup_aggregates()')
+WHERE NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr-cleanup');
+
 -- Use unix socket (empty nodename) for pg_cron connections
 UPDATE cron.job SET nodename = '';
 SQLEOF
@@ -193,7 +208,7 @@ log "pg_stat_statements entries: $PGSS_COUNT"
 
 # Run pgbench for 90 minutes (>= 1 hour as required by §9.2)
 log "Running pgbench workload for 90 minutes (5400s)..."
-nohup sudo -u postgres pgbench -p $PGPORT -d $PGDB \
+sudo -u postgres pgbench -p $PGPORT -d $PGDB \
   -c 10 -j 2 -T 5400 > /tmp/pgbench.log 2>&1 &
 PGBENCH_PID=$!
 log "pgbench running (PID $PGBENCH_PID), waiting for data to accumulate..."

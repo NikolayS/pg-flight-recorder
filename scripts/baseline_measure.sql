@@ -9,7 +9,7 @@
 --   Use wall-clock timing (EXTRACT EPOCH) for fractional-ms resolution.
 
 -- ── §9.2 Query 1: Actual row counts and bytes per row ────────────────────────
-\echo '--- Section: row_counts_and_sizes ---'
+\qecho '--- Section: row_counts_and_sizes ---'
 
 SELECT
     relname                                        AS table_name,
@@ -26,7 +26,7 @@ ORDER BY pg_total_relation_size(relid) DESC;
 
 -- ── §9.2 Query 2: Collection latency ────────────────────────────────────────
 -- Uses EXTRACT(EPOCH …) for fractional-ms precision (duration_ms is integer).
-\echo '--- Section: collection_latency ---'
+\qecho '--- Section: collection_latency ---'
 
 SELECT
     collection_type,
@@ -43,13 +43,14 @@ SELECT
     sum(CASE WHEN success     THEN 1 ELSE 0 END) AS successes,
     sum(CASE WHEN NOT success THEN 1 ELSE 0 END) AS failures
 FROM pgfr_record.collection_stats
-WHERE started_at > now() - INTERVAL '1 hour'
+-- Extended window: run this within 7 days of the measurement session
+WHERE started_at > now() - INTERVAL '7 days'
   AND success = true
 GROUP BY collection_type
 ORDER BY avg_ms DESC;
 
 -- ── §9.2 Query 3: Rows inserted per hour ────────────────────────────────────
-\echo '--- Section: rows_inserted_per_hour ---'
+\qecho '--- Section: rows_inserted_per_hour ---'
 
 SELECT
     date_trunc('hour', s.captured_at) AS hour,
@@ -60,7 +61,7 @@ GROUP BY 1
 ORDER BY 1;
 
 -- ── Additional: rows per snapshot tick ──────────────────────────────────────
-\echo '--- Section: rows_per_tick ---'
+\qecho '--- Section: rows_per_tick ---'
 
 SELECT
     round(avg(cnt)::numeric, 1) AS avg_rows_per_tick,
@@ -75,7 +76,7 @@ JOIN (
 ) t ON t.snapshot_id = s.id;
 
 -- ── Additional: snapshot timing summary ─────────────────────────────────────
-\echo '--- Section: snapshot_timing_summary ---'
+\qecho '--- Section: snapshot_timing_summary ---'
 
 SELECT
     count(*)                                                    AS total_snapshots,
@@ -88,21 +89,21 @@ FROM pgfr_record.snapshots;
 
 -- ── Additional: manual snapshot() wall-clock timing ─────────────────────────
 -- (pg_cron overhead makes collection_stats.duration_ms unreliable)
-\echo '--- Section: manual_snapshot_timing ---'
+\qecho '--- Section: manual_snapshot_timing ---'
 
 \timing on
 SELECT pgfr_record.snapshot() AS snap_ts;
 \timing off
 
 -- ── Additional: manual sample() wall-clock timing ───────────────────────────
-\echo '--- Section: manual_sample_timing ---'
+\qecho '--- Section: manual_sample_timing ---'
 
 \timing on
 SELECT pgfr_record.sample() AS sample_ts;
 \timing off
 
 -- ── Additional: pg_stat_statements utilization ──────────────────────────────
-\echo '--- Section: pgss_utilization ---'
+\qecho '--- Section: pgss_utilization ---'
 
 SELECT
     (SELECT count(*) FROM pg_stat_statements)                   AS current_statements,
@@ -117,7 +118,7 @@ SELECT
                                                                 AS pgss_max_setting;
 
 -- ── Additional: storage projection (30-day, current bytes_per_row) ───────────
-\echo '--- Section: storage_projection_30d ---'
+\qecho '--- Section: storage_projection_30d ---'
 
 SELECT
     50::bigint                                           AS rows_per_tick_top_n50,
@@ -143,7 +144,7 @@ SELECT
     )                                                    AS est_size_30d_pgss_max5000;
 
 -- ── Additional: top pgbench workload queries ─────────────────────────────────
-\echo '--- Section: pgbench_top_queries ---'
+\qecho '--- Section: pgbench_top_queries ---'
 
 SELECT
     left(query, 80)                              AS query_preview,
