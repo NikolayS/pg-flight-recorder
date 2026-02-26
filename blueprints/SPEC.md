@@ -2,7 +2,7 @@
 
 | Version | Date | Author |
 |---------|------|--------|
-| 1.5 | 2026-02-26 | @NikolayS |
+| 2.0 | 2026-02-26 | @NikolayS |
 
 ---
 
@@ -10,6 +10,7 @@
 
 | Version | Changes |
 |---------|---------|
+| 2.0 | Incorporate three external reviewer findings: replace DISTINCT ON with last-state side table (§5.2); function-level JIT disable (§6.3); UTC enforcement + index definitions + int4 horizon (§7.1); runtime partition ensure + pg_catalog-based drop + lock_timeout + DETACH CONCURRENTLY (§7.2); drop FK cascade recommendation (Q1); dual-write rollback strategy (Q2); partition pruning with explicit bounds (Q3); pg_stat_statements.max tracking (Q7); partition count guardrails (Q8); WAL benchmark (§9.11); high-churn benchmark (§9.12); expanded pgTAP suite (§9.13) |
 | 1.5 | Distinguish `pg_stat_statements_reset()` (PGSS) from `pg_stat_reset()` (global stats) — both must be tested, §9.10 expanded |
 | 1.4 | Fix stale `captured_at` references throughout — queries, indexes, prose all use `sample_ts` consistently |
 | 1.3 | Adopt `int4 sample_ts` + `epoch()` from pg_ash (Q6); flag `snapshot_id` integer overflow risk (Q5); fix `DISTINCT ON (queryid, dbid, userid)` — queryid alone is not unique in PGSS; all MiB figures marked as estimates with single section-level note; fix cross-references §9.5, Q3 |
@@ -193,37 +194,73 @@ measured — see §9.2. This is the template for all other tables.
 `rows`, `shared_blks_hit`, etc. A query that has not been called since the last
 snapshot has identical counter values. There is no reason to store another row.
 
-**Insert condition:** store a new row for `(queryid, dbid, userid)` only when
-`calls` has increased since the last stored row for that combination within the
-current day's partition.
+**Last-state side table (preferred over DISTINCT ON):**
+
+Using `DISTINCT ON (queryid, dbid, userid) ORDER BY sample_ts DESC` against
+today's partition grows expensive as the day progresses — by 23:59 the partition
+may contain 7.2M rows, and PostgreSQL cannot perform a loose index scan natively.
+At 5,000 queryids × 1-minute ticks, this becomes a significant CPU spike every
+tick. The preferred approach is a dedicated last-state table:
 
 ```sql
--- in _collect_statement_snapshot():
-with latest as (
-    select distinct on (queryid, dbid, userid)
-        queryid, dbid, userid, calls
-    from pgfr_record.statement_snapshots
-    where sample_ts >= extract(epoch from current_date - pgfr_record.epoch())::int4
-    order by queryid, dbid, userid, sample_ts desc
-)
+create unlogged table pgfr_record.statement_last_state (
+    queryid  bigint  not null,
+    dbid     oid     not null,
+    userid   oid     not null,
+    calls    bigint  not null,
+    sample_ts int4   not null,
+    primary key (queryid, dbid, userid)
+);
+```
+
+Collector flow each tick:
+1. Hash-join `pg_stat_statements` against `statement_last_state` (O(n), 5,000-row table)
+2. Insert changed rows into the daily partition
+3. Upsert `statement_last_state` with new values
+
+Cost is O(1) per queryid regardless of partition age. The side table is UNLOGGED
+(crash-safe loss is acceptable — it is rebuilt from the daily baseline on restart).
+
+**Insert condition:**
+```sql
 insert into pgfr_record.statement_snapshots (...)
 select ...
 from pg_stat_statements pss
-left join latest l using (queryid, dbid, userid)
+left join pgfr_record.statement_last_state ls using (queryid, dbid, userid)
 where
-    l.queryid is null        -- first appearance today (baseline)
-    or pss.calls > l.calls   -- query was called
-    or pss.calls < l.calls;  -- calls dropped: pg_stat_statements_reset() occurred
+    ls.queryid is null       -- first appearance (baseline)
+    or pss.calls > ls.calls  -- query was called
+    or pss.calls < ls.calls; -- calls dropped: pg_stat_statements_reset() occurred
 ```
 
 **Partition boundary guarantee:** at the start of each new day's partition, store
 a full baseline row for every tracked queryid currently in `pg_stat_statements`.
-This ensures point-in-time reads never need to look back more than one partition.
+This anchors point-in-time reads to within one partition and also fully refreshes
+`statement_last_state` — providing crash recovery for the side table.
 
 **Reset detection:** when `calls` drops between snapshots, `pg_stat_statements_reset()`
 was called (resets PGSS counters only — independent of `pg_stat_reset()` which resets
-bgwriter/WAL/I/O stats). Always store the post-reset row — it marks the reset boundary
-for readers.
+bgwriter/WAL/I/O stats). Always store the post-reset row — it marks the reset
+boundary for readers.
+
+Note: `pg_stat_statements_reset()` can target a specific `(userid, dbid, queryid)`
+(partial reset). The `calls < last_calls` condition detects partial resets correctly.
+For bulletproof detection on PG14+, also check `stats_since` from `pg_stat_statements`
+or `stats_reset` from `pg_stat_statements_info` — this gives a definitive signal
+independent of counter arithmetic. Minimum supported PG version should be documented
+explicitly before implementation.
+
+**PGSS eviction:** when a queryid is evicted from PGSS to make room for a new one,
+it disappears from the view. If it never reappears, it simply stops generating rows —
+this is correct behavior. If it reappears later, it is treated as "first appearance"
+and gets a fresh baseline. Readers must treat a gap in rows as "unknown activity"
+during the eviction window, not "zero activity." Document this semantic contract
+explicitly in reader function headers.
+
+Additionally, track `pg_stat_statements_info.dealloc` (PG14+) — if the deallocation
+counter increases between ticks, flag the snapshot as potentially incomplete.
+Store this in the `snapshots` parent row so readers can warn consumers that
+interval-activity queries spanning a deallocation event may undercount.
 
 **Expected reduction:** on a typical server with 5,000 tracked queries, 50–200
 queries fire on any given minute tick. The sparse model inserts 50–200 rows
@@ -243,12 +280,22 @@ bytes/row based on schema analysis — to be confirmed by §9.2 baseline measure
 touched since the last snapshot has identical values.
 
 **Insert condition:** store a new row only when any tracked counter changed.
-The cheapest sentinel: `seq_scan + idx_scan + n_tup_ins + n_tup_upd + n_tup_del`.
-If this sum is unchanged and `n_dead_tup`, `last_vacuum`, `last_autovacuum` are
-also unchanged — skip the row.
+The sentinel must cover all columns that can change independently — not just
+activity counters. At minimum: `seq_scan`, `idx_scan`, `n_tup_ins`, `n_tup_upd`,
+`n_tup_del`, `n_dead_tup`, `n_live_tup`, `last_vacuum`, `last_autovacuum`,
+`last_analyze`, `last_autoanalyze`. On PG16+, also include `last_seq_scan` and
+`last_idx_scan`. Any column omitted from the sentinel is silently not change-tracked
+— this must be a conscious documented decision, not an oversight.
 
 Same partition boundary guarantee applies: full baseline row per relation at the
 start of each day's partition.
+
+**Thundering herd at midnight:** on a server with 10,000+ tables and 30,000+
+indexes, the partition boundary baseline insert covers all relations in one tick —
+potentially tens of thousands of rows. Quantify this spike at realistic relation
+counts and confirm it falls within the circuit breaker's tolerance. Consider
+spreading the baseline across the first few ticks of the new day if the spike
+exceeds acceptable collection latency.
 
 **Expected reduction:** the long tail of static tables (reference tables, infrequently
 written application tables, system catalogs) produces no rows after the daily
@@ -296,11 +343,23 @@ rather than silently producing negative deltas.
 With sparse storage every stored row is already a change event, so this pattern
 requires no special logic beyond a time-bounded index scan.
 
-### 6.3 Key constraint: `set jit = off`
+### 6.3 Key constraint: function-level JIT disable
 
-All reader functions must include `set jit = off`. JIT compilation adds significant
-overhead to the first query in a fresh session on OLTP servers — exactly when
-these functions are used during incidents.
+All reader functions must disable JIT. Do not use `SET jit = off` inside the
+function body — this leaks into the caller's session and may degrade subsequent
+analytical queries. Instead, use the function-level `SET` clause which scopes
+the setting strictly to the function's execution and reverts automatically on return:
+
+```sql
+create or replace function pgfr_record.get_statement_history(...)
+returns ...
+language sql
+set jit = off
+as $$ ... $$;
+```
+
+This guarantees JIT overhead does not affect the first call in a fresh session
+(common during incidents) without contaminating the caller's session state.
 
 ---
 
@@ -347,12 +406,34 @@ pgfr_record.epoch() + sample_ts * interval '1 second'
 **Partition key:** PostgreSQL range partitioning works on `int4` — no need for
 `timestamptz` as the partition key. Partition bounds are computed as:
 ```sql
--- for date 2026-02-26:
-extract(epoch from '2026-02-26'::timestamptz - pgfr_record.epoch())::int4
+-- for date 2026-02-26, always explicit UTC to avoid session timezone drift:
+extract(epoch from '2026-02-26 00:00:00+00'::timestamptz - pgfr_record.epoch())::int4
 ```
+
+All date-to-epoch conversions must use explicit UTC offsets (`+00`). If `_ensure_partition()`
+runs in a pg_cron session with a non-UTC timezone, implicit casts will shift the
+partition boundary. Enforce with `SET LOCAL timezone = 'UTC'` at function entry
+or always use `AT TIME ZONE 'UTC'` explicitly.
 
 This makes each child table self-contained for retention — no join back to the
 parent required, and no `timestamptz` stored in any hot row.
+
+**Index definitions:** indexes must be created by `_ensure_partition()` for each
+new partition automatically. At minimum for `statement_snapshots`:
+
+```sql
+create index on statement_snapshots_YYYY_MM_DD (queryid, dbid, userid, sample_ts desc);
+```
+
+Consider a covering index adding `calls` to allow index-only scans for the sparse
+comparison (avoids heap fetch for the most common access pattern).
+
+**int4 horizon:** with a 2026-01-01 epoch, `int4` seconds overflow in approximately
+2094. This is not an imminent risk, but future engineers must know:
+- the epoch must never change after installation (corrupts all stored timestamps)
+- replicas installed later use the same epoch from the primary
+- a migration path (new epoch column, dual-read period) must be planned before 2090
+Document this prominently in the install notes.
 
 ### 7.2 Partition pre-creation and drop
 
@@ -365,8 +446,43 @@ select pgfr_record.drop_old_partitions();
 ```
 
 `_ensure_partition()` is idempotent — safe to call multiple times for the same
-date. `drop_old_partitions()` iterates over all `pgfr_record` tables with a
-`_YYYY_MM_DD` suffix and drops any whose date falls before the retention cutoff.
+date. Additionally, `snapshot()` must call `_ensure_partition()` for the current
+tick's `sample_ts` at runtime as a safety net — the nightly pre-create is an
+optimization, but a cron failure, clock skew, or long transaction crossing midnight
+can cause an INSERT to fail with "no partition for value." Runtime ensure is cheap
+and idempotent; make it the correctness guarantee.
+
+**Partition drop — use pg_catalog, not suffix parsing:**
+`drop_old_partitions()` must identify partitions via `pg_inherits` + `pg_class` +
+partition bound metadata (`pg_get_expr(relpartbound, oid)`), not by parsing
+`_YYYY_MM_DD` suffixes from table names. Suffix parsing is fragile and can match
+unrelated tables or break on naming convention changes.
+
+**Lock safety for partition drop:**
+`DROP TABLE` requires `ACCESS EXCLUSIVE` on the partition and a brief lock on the
+parent. A long analytical query running during the nightly maintenance window will
+block the DROP, which in turn blocks all subsequent `snapshot()` inserts until the
+lock queue clears. Implement defensive lock handling:
+
+```sql
+set local lock_timeout = '2s';
+begin;
+  -- attempt drop; if lock not available, exit cleanly and retry next cycle
+  drop table if exists pgfr_record.statement_snapshots_old;
+exception when lock_not_available then
+  -- log and skip; partition will be dropped next night
+  raise warning 'pgfr_record: partition drop skipped due to lock timeout';
+end;
+```
+
+It is far better to retain a partition for one extra day than to stall the
+collection loop.
+
+**DETACH before DROP (PG14+):**
+Consider `ALTER TABLE ... DETACH PARTITION ... CONCURRENTLY` before `DROP TABLE`.
+This narrows the lock window on the parent table to near-zero and allows the
+actual DROP to happen asynchronously on the detached (now standalone) table.
+Note: `DETACH CONCURRENTLY` cannot run inside a transaction block.
 
 ### 7.3 Hot ring buffers: TRUNCATE rotation
 
@@ -681,65 +797,120 @@ For each: trigger 10 resets over 1 hour while collecting. Verify:
 - Reset events are correctly identified and surfaced (not silently dropped)
 - No negative `calls_delta` or counter-delta values reach callers
 
-### 9.11 pgTAP regression suite
+### 9.11 WAL volume benchmark
+
+One of the strongest arguments for partition DROP over DELETE is WAL reduction.
+Quantify it explicitly.
+
+```sql
+-- measure WAL generated by each retention operation:
+select pg_current_wal_lsn() as before_lsn;
+-- run cleanup (DELETE or DROP)
+select pg_current_wal_lsn() as after_lsn;
+-- delta = WAL bytes generated
+```
+
+On PG14+ use `pg_stat_wal` for cumulative WAL stats. Expected: DELETE of 7.2M rows
+generates hundreds of MiB of WAL; partition DROP generates kilobytes (catalog change
+only). On replicas, this difference is the dominant replication lag factor during
+cleanup windows.
+
+### 9.12 High queryid churn benchmark
+
+Common in ORM workloads with literal values in queries (generates new normalized
+queryids constantly, saturating PGSS and causing high eviction rates).
+
+**Setup:** continuously generate new distinct queryids at a rate that keeps PGSS
+near capacity and eviction rate high. Measure:
+- Sparse insert effectiveness (does last-state table stay consistent through evictions?)
+- `statement_last_state` correctness across eviction/reappearance cycles
+- Partition growth rate vs baseline expectation
+
+This is the real-world stress case that adversarial-active benchmarks miss.
+
+### 9.13 pgTAP regression suite
 
 All existing tests must pass without modification. New tests for Phase 1:
 
 - `_ensure_partition()` is idempotent
+- `snapshot()` calls `_ensure_partition()` at runtime (correctness guarantee)
 - `snapshot()` routes to the correct daily partition
+- `drop_old_partitions()` uses `pg_inherits`/`pg_class`, not suffix parsing
 - `drop_old_partitions()` drops exactly the partitions outside the retention window
+- `drop_old_partitions()` handles lock timeout gracefully — skips and warns, does not stall
 - Sparse insert: rows skipped when `calls` unchanged; rows stored when `calls` increases
+- `statement_last_state` correctly reflects latest state after each tick
+- `statement_last_state` is rebuilt correctly from daily baseline after simulated crash
 - Partition boundary baseline: first row of each day covers all active queryids
 - `n_dead_tup = 0` on all partitions after `drop_old_partitions()`
 - Reader output matches old schema for the same time window
-- Partition pruning confirmed via `explain` for 1-hour time-bounded queries
+- Partition pruning confirmed via `EXPLAIN` (no `ANALYZE`) at planning time
+- Partition creation with non-UTC session timezone produces identical bounds to UTC session
+- JIT disable is function-level (not session-leaking) — verify via `pg_stat_statements`
 
 ---
 
 ## 10. Open Questions
 
-**Q1: FK from child tables to `snapshots` after partitioning.**
-PostgreSQL 15+ supports FKs referencing partitioned tables. When a `snapshots`
-partition is dropped, cascade fires for rows in that partition — but only if the
-child tables are also partitioned with aligned boundaries. Alternatively: drop the
-FK and enforce integrity at the collection layer. Evaluate in Phase 2 when
-`snapshots` itself is partitioned.
+**Q1: Drop FK constraints between time-series tables.**
+If `snapshots` is partitioned in Phase 2 and a partition is dropped, PostgreSQL
+will execute a cascading DELETE against all child tables before the partition can
+be dropped — generating millions of dead tuples and defeating the Zero Bloat
+objective entirely. Recommendation: drop all FK constraints between time-series
+tables. In a continuous telemetry system, an orphaned child row is a minor
+filterable anomaly; an autovacuum death spiral from a cascade is catastrophic.
+Enforce integrity at the collection layer and rely on aligned `sample_ts` partition
+boundaries for clean retention.
 
 **Q2: Migration for existing installations.**
 Converting a plain heap table to a partitioned table requires rename + create +
 copy + drop. At tens of millions of rows, the copy step requires a maintenance
-window. Zero-downtime migration (dual-write + backfill + cutover) is possible but
-significantly more complex. Evaluate based on target deployment size.
+window. For Phase 1 (`statement_snapshots`), implement as a dual-write: the old
+table continues receiving full inserts while the new partitioned table receives
+sparse inserts. Reader functions switch via a config flag. Run both for one full
+retention cycle (30 days), validate reader output matches, then drop the old table.
+This costs 2× storage temporarily but eliminates rollback risk for the most
+critical table.
 
-**Q3: Sparse insert overhead at 5,000 queryids.**
-The `DISTINCT ON` lookup within today's partition is bounded by the partition size
-(at most one day of data) and uses the `(queryid, dbid, userid, sample_ts)` index.
-At 5,000 queryids and 1-minute intervals, the partition contains at most
-5,000 × 1,440 = 7.2M rows in the worst case — still within the range where an
-index scan is fast. Measure in §9.8 and tune the index if needed.
+**Q3: Partition pruning with dynamic bounds.**
+Reader queries using dynamic expressions such as
+`WHERE sample_ts > extract(epoch from now() - interval '1 hour' - pgfr_record.epoch())::int4`
+may not prune partitions at plan time if the planner treats the expression as
+volatile. Compute the exact `int4` bounds before the main query and pass them
+as constants or parameters. Verify with `EXPLAIN` (without `ANALYZE`) in pgTAP
+tests that partition pruning occurs at planning time, not execution time.
 
 **Q4: Managed provider compatibility.**
 Partitioned tables, `drop table`, and pg_cron are supported on RDS, Cloud SQL,
 Supabase, and Neon. The daily partition pre-creation and drop jobs require pg_cron
-scheduling rights. No superuser required for partition management after initial
-install.
+scheduling rights. `DETACH PARTITION CONCURRENTLY` requires PG14+. No superuser
+required for partition management after initial install.
 
 **Q5: `snapshot_id` integer overflow.**
 The upstream `snapshots` table uses `SERIAL` (`integer`, max ~2.1 billion). At
 1 snapshot/minute that ceiling is ~4,000 years away. At 1-second sampling it drops
 to ~68 years — still safe, but sequence exhaustion is unrecoverable without downtime.
-More practically: failed transactions consume sequence values without inserting rows,
-and any future increase in sampling frequency compounds the risk. Consider migrating
-`snapshots.id` to `BIGSERIAL` during this overhaul while the schema is already
-changing. The cost is 4 extra bytes per row in the parent table and all FK columns —
-negligible against the row sizes involved.
+Consider migrating `snapshots.id` to `BIGSERIAL` during this overhaul while the
+schema is already changing.
 
-**Q6: `int4 sample_ts` vs `timestamptz captured_at` as partition key.**
-pg_ash stores timestamps as `int4` seconds since a custom epoch (`ash.epoch()`),
-saving 4 bytes/row vs `timestamptz` and extending the int4 range far beyond 2038.
-The same approach applies here. The tradeoff: partition bounds must be computed as
-integer offsets rather than date literals, which is slightly less readable but
-trivially handled by `_ensure_partition()`. The alternative — keeping `timestamptz`
-for readability — costs 4 bytes/row and ~824 MiB at full naive `statement_snapshots`
-volume. Decision: adopt `int4 sample_ts` + `pgfr_record.epoch()` consistent with
-pg_ash, document the epoch as immutable post-install.
+**Q6: `int4 sample_ts` epoch and overflow horizon.**
+The epoch is fixed at `2026-01-01 00:00:00+00`. With `int4` seconds, overflow
+occurs around 2094. This is not imminent, but must be documented prominently:
+the epoch must never change post-install (corrupts all stored timestamps), and
+a migration path must be planned before the limit is approached. See §7.1 for
+details.
+
+**Q7: `pg_stat_statements.max` changes mid-retention.**
+This GUC requires a restart to change. A reduction (e.g. 5,000 → 1,000) triggers
+mass deallocation that resembles resets to the sparse logic. An increase changes
+baseline insert volume. Snapshot `pg_stat_statements.max` in the `snapshots` parent
+row each tick so readers can detect capacity changes when interpreting deallocation
+patterns.
+
+**Q8: Partition count guardrails.**
+At `retention_snapshots_days = 365`, each partitioned table has 365 child
+partitions. Across ~10 tables this is ~3,650 partitions. PostgreSQL handles this,
+but planning time, relcache pressure, and `pg_dump` overhead grow. Document
+expected planning overhead and consider a hard warning above a configurable limit.
+Weekly partitions for low-volume tables (ring archives, aggregates) vs daily for
+hot tables is worth evaluating in Phase 3.
