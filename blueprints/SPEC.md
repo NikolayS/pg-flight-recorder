@@ -1248,29 +1248,41 @@ filterable anomaly; an autovacuum death spiral from a cascade is catastrophic.
 Enforce integrity at the collection layer and rely on aligned `sample_ts` partition
 boundaries for clean retention.
 
-**Q2: Migration for existing installations.**
-For Phase 1 (`statement_snapshots`), implement as a dual-write: the old table
-continues receiving full inserts while the new partitioned table receives sparse
-inserts in parallel. This costs 2× storage temporarily but eliminates rollback
-risk. Define new partitioned tables with `BIGINT` for `snapshot_id` from day one
-(see Q5) — the collector safely inserts the current `INT` sequence value into a
-`BIGINT` column. When the parent `snapshots` table is migrated to `BIGSERIAL` in
-Phase 2, child tables are already correctly typed, avoiding a second migration.
+**Q2: Migration for existing installations. ✅ RESOLVED — implemented in `_record/migrate_phase1.sql` (Issue #10)**
+
+The migration approach: instead of dual-write, rename old plain tables to `_legacy`
+suffix and create backwards-compatible views so existing SELECT queries continue to
+work unmodified. Old data is preserved — nothing is deleted.
+
+**Migration function:** `pgfr_record.migrate_to_v2()` — run once after installing
+the new `_record/install.sql`. Idempotent: safe to call multiple times.
+
+**What it does (in order):**
+1. Checks that v2 tables exist (`statement_snapshots_v2`, `table_snapshots_v2`,
+   `index_snapshots_v2`) — raises ERROR with clear instructions if not found
+2. Renames old plain tables to `_legacy` suffix (skips if already renamed):
+   - `statement_snapshots` → `statement_snapshots_legacy`
+   - `table_snapshots` → `table_snapshots_legacy`
+   - `index_snapshots` → `index_snapshots_legacy`
+3. Creates backwards-compat views: `statement_snapshots` (and equivalents) now
+   point to the `_legacy` table — existing monitoring dashboards and tools keep working
+4. Returns a text summary of all actions taken
 
 **Cutover checklist (ordered — do not skip steps):**
-1. Verify new schema has ≥ 1 full retention cycle (30 days) of data
-2. Validate reader output matches between old and new schema for several time windows
-3. In a single maintenance window: switch reader config flag to new schema AND
-   disable old-schema writer in the collection function (do not split these across
-   separate windows — dual-read window must be minimized)
-4. Verify readers return correct results from new schema only
-5. Wait one additional retention cycle for old data to expire naturally,
-   OR drop old table immediately if storage is urgent
-6. Drop old table
+1. Install the new `_record/install.sql` (creates v2 tables)
+2. Run `SELECT pgfr_record.migrate_to_v2();` — verifies v2 tables, renames old tables
+3. Verify backwards-compat views work: `SELECT count(*) FROM pgfr_record.statement_snapshots;`
+4. Verify new v2 tables are receiving data from the collector
+5. After ≥ 1 full retention cycle of v2 data, drop `_legacy` tables if storage is urgent
+   (or leave them as a historical archive — they contain no live data)
 
-If the config flag is switched while both writers are active, readers may see
-duplicate data. If the old table is dropped before the flag is switched, readers
-break. Steps 3 and 4 must happen in the same maintenance window.
+**Rollback:** rename `_legacy` tables back to their original names and drop the views.
+Old data is fully preserved.
+
+**Dual-write strategy (from earlier SPEC version) is superseded** by this rename
+approach. The rename is safer: no risk of duplicate data, no config flag to toggle,
+no 2× storage cost. The only tradeoff is a brief maintenance window to run the
+rename — which is a single metadata operation with no data movement.
 
 **Q3: Partition pruning with dynamic bounds.**
 `now()` is stable within a transaction and `epoch()` is IMMUTABLE — the planner
