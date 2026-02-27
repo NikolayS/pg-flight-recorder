@@ -5669,6 +5669,9 @@ comment on function pgfr_record._rebuild_table_last_state() is
 'Full rebuild of table_last_state from pg_stat_user_tables. '
 'Called on crash recovery (UNLOGGED table empty after restart). '
 'ANALYZE is called immediately to lock in planner statistics post-TRUNCATE. '
+'Ghost rows (from dropped tables) are cleared on each rebuild — they do not '
+'cause incorrect sparse inserts since the collector only joins against live '
+'pg_stat_user_tables entries. '
 'See Issue #8.';
 
 -- ---------------------------------------------------------------------------
@@ -5912,6 +5915,11 @@ comment on function pgfr_record._rebuild_index_last_state() is
 'Full rebuild of index_last_state from pg_stat_user_indexes. '
 'Called on crash recovery (UNLOGGED table empty after restart). '
 'ANALYZE is called immediately to lock in planner statistics post-TRUNCATE. '
+'Ghost rows (from dropped indexes) are cleared on each rebuild — they do not '
+'cause incorrect sparse inserts since the collector only joins against live '
+'pg_stat_user_indexes entries. '
+'Note: no top-N filter — all indexes are collected. On schemas with thousands '
+'of indexes, the pg_relation_size() calls may add meaningful overhead. '
 'See Issue #8.';
 
 -- ---------------------------------------------------------------------------
@@ -6084,4 +6092,6 @@ $$;
 comment on function pgfr_record._ensure_partition(text, date, text) is
 'Overload of _ensure_partition for tables with non-standard B-tree index columns. '
 'p_btree_cols: raw SQL column list for the B-tree index (e.g. ''relid, dbid, sample_ts desc''). '
+'SECURITY: p_btree_cols is injected via %s (not %I) — must only be called with '
+'compile-time string literals, never from user input or config values. '
 'Otherwise identical to _ensure_partition(text, date). See Issue #8.';
