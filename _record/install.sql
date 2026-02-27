@@ -5555,3 +5555,533 @@ on conflict (key) do nothing;
 insert into pgfr_record.config (key, value) values
     ('pgss_rebuild_skip_count', '0')
 on conflict (key) do nothing;
+
+-- =============================================================================
+-- Phase 1: Sparse table_snapshots and index_snapshots collectors (Issue #8)
+-- SPEC §5.3 — storage-overhaul-spec branch
+-- =============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 1. table_snapshots_v2 — partitioned by range (sample_ts int4)
+-- ---------------------------------------------------------------------------
+create table if not exists pgfr_record.table_snapshots_v2 (
+    snapshot_id         bigint not null,
+    sample_ts           int4 not null,   -- seconds since pgfr_record.epoch()
+    relid               oid not null,
+    dbid                oid not null,    -- pg_database.oid
+    seq_scan            bigint,
+    seq_tup_read        bigint,
+    idx_scan            bigint,
+    idx_tup_fetch       bigint,
+    n_tup_ins           bigint,
+    n_tup_upd           bigint,
+    n_tup_del           bigint,
+    n_tup_hot_upd       bigint,
+    n_live_tup          bigint,
+    n_dead_tup          bigint,
+    n_mod_since_analyze bigint,
+    vacuum_count        bigint,
+    autovacuum_count    bigint,
+    analyze_count       bigint,
+    autoanalyze_count   bigint,
+    last_vacuum         timestamptz,
+    last_autovacuum     timestamptz,
+    last_analyze        timestamptz,
+    last_autoanalyze    timestamptz,
+    relfrozenxid_age    integer,
+    reltuples           bigint,
+    vacuum_running      boolean,
+    table_size_bytes    bigint,
+    total_size_bytes    bigint,
+    indexes_size_bytes  bigint
+) partition by range (sample_ts);
+
+comment on table pgfr_record.table_snapshots_v2 is
+'Sparse table-level stats history partitioned by int4 sample_ts (seconds since pgfr_record.epoch()). '
+'Missing row = no change since last stored row. '
+'Readers reconstruct full state via DISTINCT ON (relid, dbid) ORDER BY sample_ts DESC. '
+'Top-N filter applied (table_stats_top_n config key, default 50). '
+'See Issue #8.';
+
+-- ---------------------------------------------------------------------------
+-- 2. table_last_state — UNLOGGED HOT-optimized side table
+-- ---------------------------------------------------------------------------
+create unlogged table if not exists pgfr_record.table_last_state (
+    relid               oid not null,
+    dbid                oid not null,
+    sample_ts           int4 not null,
+    seq_scan            bigint,
+    idx_scan            bigint,
+    n_tup_ins           bigint,
+    n_tup_upd           bigint,
+    n_tup_del           bigint,
+    n_live_tup          bigint,
+    n_dead_tup          bigint,
+    n_mod_since_analyze bigint,
+    primary key (relid, dbid)
+) with (fillfactor = 70);
+
+comment on table pgfr_record.table_last_state is
+'HOT-sensitive: do NOT index mutable columns (seq_scan, idx_scan, n_tup_ins, etc.). '
+'HOT updates require changed columns to be unindexed. '
+'Only the PK index on (relid, dbid) is allowed. '
+'UNLOGGED: truncated on crash — collector rebuilds automatically. '
+'See Issue #8.';
+
+-- ---------------------------------------------------------------------------
+-- 3. _rebuild_table_last_state()
+-- ---------------------------------------------------------------------------
+create or replace function pgfr_record._rebuild_table_last_state()
+returns void
+language plpgsql as $$
+declare
+    v_dbid oid;
+begin
+    select oid into v_dbid from pg_database where datname = current_database();
+
+    truncate pgfr_record.table_last_state;
+
+    insert into pgfr_record.table_last_state (
+        relid, dbid, sample_ts,
+        seq_scan, idx_scan,
+        n_tup_ins, n_tup_upd, n_tup_del,
+        n_live_tup, n_dead_tup, n_mod_since_analyze
+    )
+    select
+        st.relid,
+        v_dbid,
+        extract(epoch from now() - pgfr_record.epoch())::int4,
+        st.seq_scan,
+        st.idx_scan,
+        st.n_tup_ins,
+        st.n_tup_upd,
+        st.n_tup_del,
+        st.n_live_tup,
+        st.n_dead_tup,
+        st.n_mod_since_analyze
+    from pg_stat_user_tables st;
+
+    analyze pgfr_record.table_last_state;
+end;
+$$;
+
+comment on function pgfr_record._rebuild_table_last_state() is
+'Full rebuild of table_last_state from pg_stat_user_tables. '
+'Called on crash recovery (UNLOGGED table empty after restart). '
+'ANALYZE is called immediately to lock in planner statistics post-TRUNCATE. '
+'See Issue #8.';
+
+-- ---------------------------------------------------------------------------
+-- 4. _collect_table_snapshot_sparse(p_snapshot_id bigint)
+-- ---------------------------------------------------------------------------
+create or replace function pgfr_record._collect_table_snapshot_sparse(p_snapshot_id bigint)
+returns void
+language plpgsql as $$
+declare
+    v_sample_ts  int4;
+    v_top_n      integer;
+    v_dbid       oid;
+    v_last_count bigint;
+begin
+    -- ensure partition exists for today (O(1) on happy path)
+    perform pgfr_record._ensure_partition('table_snapshots_v2', current_date,
+        'relid, dbid, sample_ts desc');
+
+    v_sample_ts := extract(epoch from now() - pgfr_record.epoch())::int4;
+    v_top_n     := coalesce(pgfr_record._get_config('table_stats_top_n', '50')::integer, 50);
+
+    select oid into v_dbid from pg_database where datname = current_database();
+
+    begin
+        -- crash recovery: if UNLOGGED table was truncated on restart, rebuild it
+        select count(*) into v_last_count from pgfr_record.table_last_state;
+        if v_last_count = 0 then
+            perform pgfr_record._rebuild_table_last_state();
+        end if;
+
+        -- single statement: sparse insert + upsert last_state via writeable CTE.
+        -- The top-N subquery is materialized once and shared across both branches.
+        -- Changed = any of the 8 tracked activity metrics differs from last_state.
+        with top_n as (
+            -- select top-N tables by cumulative activity score
+            select relid
+            from (
+                select
+                    st.relid,
+                    coalesce(st.seq_scan, 0)
+                    + coalesce(st.idx_scan, 0)
+                    + coalesce(st.n_tup_ins, 0)
+                    + coalesce(st.n_tup_upd, 0)
+                    + coalesce(st.n_tup_del, 0) as activity_score
+                from pg_stat_user_tables st
+                order by activity_score desc
+                limit v_top_n
+            ) ranked
+        ),
+        current_stats as (
+            select
+                st.relid,
+                v_dbid::oid                                                 as dbid,
+                st.seq_scan,
+                st.seq_tup_read,
+                st.idx_scan,
+                st.idx_tup_fetch,
+                st.n_tup_ins,
+                st.n_tup_upd,
+                st.n_tup_del,
+                st.n_tup_hot_upd,
+                st.n_live_tup,
+                st.n_dead_tup,
+                st.n_mod_since_analyze,
+                st.vacuum_count,
+                st.autovacuum_count,
+                st.analyze_count,
+                st.autoanalyze_count,
+                st.last_vacuum,
+                st.last_autovacuum,
+                st.last_analyze,
+                st.last_autoanalyze,
+                age(c.relfrozenxid)::integer                                as relfrozenxid_age,
+                c.reltuples::bigint                                         as reltuples,
+                exists(
+                    select 1 from pg_stat_progress_vacuum pv
+                    where pv.relid = st.relid
+                )                                                           as vacuum_running,
+                pg_relation_size(st.relid)                                  as table_size_bytes,
+                pg_total_relation_size(st.relid)                            as total_size_bytes,
+                pg_indexes_size(st.relid)                                   as indexes_size_bytes
+            from pg_stat_user_tables st
+            join top_n t on t.relid = st.relid
+            left join pg_class c on c.oid = st.relid
+        ),
+        changed as (
+            -- rows where any tracked metric differs from last recorded state
+            select cs.*
+            from current_stats cs
+            left join pgfr_record.table_last_state ls
+                   on ls.relid = cs.relid
+                  and ls.dbid  = cs.dbid
+            where ls.relid is null   -- never seen before
+               or coalesce(cs.seq_scan, 0)            is distinct from coalesce(ls.seq_scan, 0)
+               or coalesce(cs.idx_scan, 0)            is distinct from coalesce(ls.idx_scan, 0)
+               or coalesce(cs.n_tup_ins, 0)           is distinct from coalesce(ls.n_tup_ins, 0)
+               or coalesce(cs.n_tup_upd, 0)           is distinct from coalesce(ls.n_tup_upd, 0)
+               or coalesce(cs.n_tup_del, 0)           is distinct from coalesce(ls.n_tup_del, 0)
+               or coalesce(cs.n_live_tup, 0)          is distinct from coalesce(ls.n_live_tup, 0)
+               or coalesce(cs.n_dead_tup, 0)          is distinct from coalesce(ls.n_dead_tup, 0)
+               or coalesce(cs.n_mod_since_analyze, 0) is distinct from coalesce(ls.n_mod_since_analyze, 0)
+        ),
+        sparse_insert as (
+            -- insert changed rows into the partitioned snapshot table
+            insert into pgfr_record.table_snapshots_v2 (
+                snapshot_id, sample_ts, relid, dbid,
+                seq_scan, seq_tup_read, idx_scan, idx_tup_fetch,
+                n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd,
+                n_live_tup, n_dead_tup, n_mod_since_analyze,
+                vacuum_count, autovacuum_count, analyze_count, autoanalyze_count,
+                last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,
+                relfrozenxid_age, reltuples, vacuum_running,
+                table_size_bytes, total_size_bytes, indexes_size_bytes
+            )
+            select
+                p_snapshot_id, v_sample_ts,
+                ch.relid, ch.dbid,
+                ch.seq_scan, ch.seq_tup_read, ch.idx_scan, ch.idx_tup_fetch,
+                ch.n_tup_ins, ch.n_tup_upd, ch.n_tup_del, ch.n_tup_hot_upd,
+                ch.n_live_tup, ch.n_dead_tup, ch.n_mod_since_analyze,
+                ch.vacuum_count, ch.autovacuum_count, ch.analyze_count, ch.autoanalyze_count,
+                ch.last_vacuum, ch.last_autovacuum, ch.last_analyze, ch.last_autoanalyze,
+                ch.relfrozenxid_age, ch.reltuples, ch.vacuum_running,
+                ch.table_size_bytes, ch.total_size_bytes, ch.indexes_size_bytes
+            from changed ch
+            returning relid, dbid
+        )
+        -- upsert last_state from current_stats for all top-N tables
+        -- (not just changed ones — keep last_state fresh for all tracked tables)
+        insert into pgfr_record.table_last_state (
+            relid, dbid, sample_ts,
+            seq_scan, idx_scan,
+            n_tup_ins, n_tup_upd, n_tup_del,
+            n_live_tup, n_dead_tup, n_mod_since_analyze
+        )
+        select
+            cs.relid, cs.dbid, v_sample_ts,
+            cs.seq_scan, cs.idx_scan,
+            cs.n_tup_ins, cs.n_tup_upd, cs.n_tup_del,
+            cs.n_live_tup, cs.n_dead_tup, cs.n_mod_since_analyze
+        from current_stats cs
+        on conflict (relid, dbid) do update
+            set sample_ts           = excluded.sample_ts,
+                seq_scan            = excluded.seq_scan,
+                idx_scan            = excluded.idx_scan,
+                n_tup_ins           = excluded.n_tup_ins,
+                n_tup_upd           = excluded.n_tup_upd,
+                n_tup_del           = excluded.n_tup_del,
+                n_live_tup          = excluded.n_live_tup,
+                n_dead_tup          = excluded.n_dead_tup,
+                n_mod_since_analyze = excluded.n_mod_since_analyze;
+
+    exception
+        when others then
+            raise warning 'pgfr_record: table sparse collection failed [%]: %', sqlstate, sqlerrm;
+    end;
+end;
+$$;
+
+comment on function pgfr_record._collect_table_snapshot_sparse(bigint) is
+'Sparse table stats collector per Issue #8. '
+'Inserts rows into table_snapshots_v2 only when tracked metrics changed. '
+'Applies top-N filter (table_stats_top_n config key, default 50). '
+'Maintains table_last_state as HOT-update-friendly side table. '
+'Crash recovery: detects empty UNLOGGED table and rebuilds. '
+'Wrapped in EXCEPTION block — failure does not abort other collection sections.';
+
+-- ---------------------------------------------------------------------------
+-- 5. index_snapshots_v2 — partitioned by range (sample_ts int4)
+-- ---------------------------------------------------------------------------
+create table if not exists pgfr_record.index_snapshots_v2 (
+    snapshot_id         bigint not null,
+    sample_ts           int4 not null,
+    relid               oid not null,
+    indexrelid          oid not null,
+    dbid                oid not null,
+    idx_scan            bigint,
+    idx_tup_read        bigint,
+    idx_tup_fetch       bigint,
+    index_size_bytes    bigint
+) partition by range (sample_ts);
+
+comment on table pgfr_record.index_snapshots_v2 is
+'Sparse index-level stats history partitioned by int4 sample_ts (seconds since pgfr_record.epoch()). '
+'Missing row = no change since last stored row. '
+'Readers reconstruct full state via DISTINCT ON (indexrelid, dbid) ORDER BY sample_ts DESC. '
+'All indexes collected (no top-N filter). '
+'See Issue #8.';
+
+-- ---------------------------------------------------------------------------
+-- 6. index_last_state — UNLOGGED HOT-optimized side table
+-- ---------------------------------------------------------------------------
+create unlogged table if not exists pgfr_record.index_last_state (
+    indexrelid          oid not null,
+    dbid                oid not null,
+    sample_ts           int4 not null,
+    idx_scan            bigint,
+    idx_tup_read        bigint,
+    idx_tup_fetch       bigint,
+    primary key (indexrelid, dbid)
+) with (fillfactor = 70);
+
+comment on table pgfr_record.index_last_state is
+'HOT-sensitive: do NOT index mutable columns (idx_scan, idx_tup_read, idx_tup_fetch, sample_ts). '
+'HOT updates require changed columns to be unindexed. '
+'Only the PK index on (indexrelid, dbid) is allowed. '
+'UNLOGGED: truncated on crash — collector rebuilds automatically. '
+'See Issue #8.';
+
+-- ---------------------------------------------------------------------------
+-- 7. _rebuild_index_last_state()
+-- ---------------------------------------------------------------------------
+create or replace function pgfr_record._rebuild_index_last_state()
+returns void
+language plpgsql as $$
+declare
+    v_dbid oid;
+begin
+    select oid into v_dbid from pg_database where datname = current_database();
+
+    truncate pgfr_record.index_last_state;
+
+    insert into pgfr_record.index_last_state (
+        indexrelid, dbid, sample_ts,
+        idx_scan, idx_tup_read, idx_tup_fetch
+    )
+    select
+        i.indexrelid,
+        v_dbid,
+        extract(epoch from now() - pgfr_record.epoch())::int4,
+        i.idx_scan,
+        i.idx_tup_read,
+        i.idx_tup_fetch
+    from pg_stat_user_indexes i;
+
+    analyze pgfr_record.index_last_state;
+end;
+$$;
+
+comment on function pgfr_record._rebuild_index_last_state() is
+'Full rebuild of index_last_state from pg_stat_user_indexes. '
+'Called on crash recovery (UNLOGGED table empty after restart). '
+'ANALYZE is called immediately to lock in planner statistics post-TRUNCATE. '
+'See Issue #8.';
+
+-- ---------------------------------------------------------------------------
+-- 8. _collect_index_snapshot_sparse(p_snapshot_id bigint)
+-- ---------------------------------------------------------------------------
+create or replace function pgfr_record._collect_index_snapshot_sparse(p_snapshot_id bigint)
+returns void
+language plpgsql as $$
+declare
+    v_sample_ts  int4;
+    v_dbid       oid;
+    v_last_count bigint;
+begin
+    -- ensure partition exists for today (O(1) on happy path)
+    perform pgfr_record._ensure_partition('index_snapshots_v2', current_date,
+        'indexrelid, dbid, sample_ts desc');
+
+    v_sample_ts := extract(epoch from now() - pgfr_record.epoch())::int4;
+
+    select oid into v_dbid from pg_database where datname = current_database();
+
+    begin
+        -- crash recovery: if UNLOGGED table was truncated on restart, rebuild it
+        select count(*) into v_last_count from pgfr_record.index_last_state;
+        if v_last_count = 0 then
+            perform pgfr_record._rebuild_index_last_state();
+        end if;
+
+        -- sparse insert: only rows where tracked metrics changed vs last_state
+        -- no top-N filter for indexes (collect all)
+        with current_stats as (
+            select
+                i.relid,
+                i.indexrelid,
+                v_dbid                          as dbid,
+                i.idx_scan,
+                i.idx_tup_read,
+                i.idx_tup_fetch,
+                pg_relation_size(i.indexrelid)  as index_size_bytes
+            from pg_stat_user_indexes i
+        )
+        insert into pgfr_record.index_snapshots_v2 (
+            snapshot_id, sample_ts,
+            relid, indexrelid, dbid,
+            idx_scan, idx_tup_read, idx_tup_fetch,
+            index_size_bytes
+        )
+        select
+            p_snapshot_id,
+            v_sample_ts,
+            cs.relid, cs.indexrelid, cs.dbid,
+            cs.idx_scan, cs.idx_tup_read, cs.idx_tup_fetch,
+            cs.index_size_bytes
+        from current_stats cs
+        left join pgfr_record.index_last_state ls
+               on ls.indexrelid = cs.indexrelid
+              and ls.dbid       = cs.dbid
+        where ls.indexrelid is null   -- never seen before
+           or coalesce(cs.idx_scan, 0)      is distinct from coalesce(ls.idx_scan, 0)
+           or coalesce(cs.idx_tup_read, 0)  is distinct from coalesce(ls.idx_tup_read, 0)
+           or coalesce(cs.idx_tup_fetch, 0) is distinct from coalesce(ls.idx_tup_fetch, 0);
+
+        -- upsert last_state (only mutable columns → HOT eligible)
+        insert into pgfr_record.index_last_state (
+            indexrelid, dbid, sample_ts,
+            idx_scan, idx_tup_read, idx_tup_fetch
+        )
+        select
+            i.indexrelid,
+            v_dbid,
+            v_sample_ts,
+            i.idx_scan,
+            i.idx_tup_read,
+            i.idx_tup_fetch
+        from pg_stat_user_indexes i
+        on conflict (indexrelid, dbid) do update
+            set sample_ts    = excluded.sample_ts,
+                idx_scan     = excluded.idx_scan,
+                idx_tup_read = excluded.idx_tup_read,
+                idx_tup_fetch = excluded.idx_tup_fetch;
+
+    exception
+        when others then
+            raise warning 'pgfr_record: index sparse collection failed [%]: %', sqlstate, sqlerrm;
+    end;
+end;
+$$;
+
+comment on function pgfr_record._collect_index_snapshot_sparse(bigint) is
+'Sparse index stats collector per Issue #8. '
+'Inserts rows into index_snapshots_v2 only when idx_scan, idx_tup_read, or idx_tup_fetch changed. '
+'No top-N filter — all indexes are collected. '
+'Maintains index_last_state as HOT-update-friendly side table. '
+'Crash recovery: detects empty UNLOGGED table and rebuilds. '
+'Wrapped in EXCEPTION block — failure does not abort other collection sections.';
+
+-- End Phase 1: Sparse table_snapshots and index_snapshots collectors (Issue #8)
+
+-- ---------------------------------------------------------------------------
+-- _ensure_partition(p_table text, p_date date, p_btree_cols text)
+-- Overload for tables with non-standard B-tree index columns.
+-- p_btree_cols: comma-separated column list for the B-tree index, e.g.
+--   'relid, dbid, sample_ts desc'
+--   'indexrelid, dbid, sample_ts desc'
+-- ---------------------------------------------------------------------------
+create or replace function pgfr_record._ensure_partition(
+    p_table       text,
+    p_date        date,
+    p_btree_cols  text
+)
+returns void
+language plpgsql
+as $$
+declare
+    v_partition_name text;
+    v_bound_start    int4;
+    v_bound_end      int4;
+    v_date_start_ts  timestamptz;
+    v_date_end_ts    timestamptz;
+begin
+    v_partition_name := p_table || '_' || to_char(p_date, 'YYYY_MM_DD');
+
+    -- O(1) happy path
+    if exists (
+        select 1
+        from pg_catalog.pg_class c
+        join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'pgfr_record'
+          and c.relname = v_partition_name
+    ) then
+        return;
+    end if;
+
+    v_date_start_ts := (to_char(p_date,     'YYYY-MM-DD') || ' 00:00:00+00')::timestamptz;
+    v_date_end_ts   := (to_char(p_date + 1, 'YYYY-MM-DD') || ' 00:00:00+00')::timestamptz;
+
+    v_bound_start := extract(epoch from (v_date_start_ts - pgfr_record.epoch()))::int4;
+    v_bound_end   := extract(epoch from (v_date_end_ts   - pgfr_record.epoch()))::int4;
+
+    execute format(
+        'create table if not exists pgfr_record.%I
+         partition of pgfr_record.%I
+         for values from (%s) to (%s)',
+        v_partition_name,
+        p_table,
+        v_bound_start,
+        v_bound_end
+    );
+
+    -- B-tree index with caller-supplied column list
+    execute format(
+        'create index if not exists %I
+         on pgfr_record.%I (%s)',
+        v_partition_name || '_btree_idx',
+        v_partition_name,
+        p_btree_cols
+    );
+
+    -- BRIN index on sample_ts
+    execute format(
+        'create index if not exists %I
+         on pgfr_record.%I
+         using brin (sample_ts) with (pages_per_range = 8)',
+        v_partition_name || '_brin_idx',
+        v_partition_name
+    );
+end;
+$$;
+
+comment on function pgfr_record._ensure_partition(text, date, text) is
+'Overload of _ensure_partition for tables with non-standard B-tree index columns. '
+'p_btree_cols: raw SQL column list for the B-tree index (e.g. ''relid, dbid, sample_ts desc''). '
+'Otherwise identical to _ensure_partition(text, date). See Issue #8.';
