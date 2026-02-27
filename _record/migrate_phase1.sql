@@ -37,7 +37,8 @@ declare
         'table_snapshots',
         'index_snapshots'
     ];
-    v_already_done boolean := true;
+    v_already_done boolean := false;
+    v_any_legacy   boolean := false;
 begin
     -- ----------------------------------------------------------------
     -- Step 1: verify v2 tables exist.
@@ -94,6 +95,9 @@ begin
 
             if v_original_exists and not v_legacy_exists then
                 -- rename old table to _legacy
+                -- lock_timeout guards against long-running queries holding AccessShareLock
+                -- and causing a cascading lock pile-up on a live system
+                set local lock_timeout = '2s';
                 execute format(
                     'alter table pgfr_record.%I rename to %I',
                     v_table_name,
@@ -107,6 +111,7 @@ begin
             elsif v_legacy_exists and not v_original_exists then
                 raise notice 'migrate_to_v2: pgfr_record.% already renamed to pgfr_record.% — skipping',
                     v_table_name, v_legacy_name;
+                v_any_legacy := true;
 
             elsif v_original_exists and v_legacy_exists then
                 -- both exist — something unexpected; report it
@@ -154,6 +159,13 @@ begin
                 v_table_name,
                 v_legacy_name
             );
+            execute format(
+                $c$comment on view pgfr_record.%I is
+                'Backwards-compatibility view: redirects reads from the old %s table '
+                'to %s_legacy after Phase 1 migration. '
+                'For new queries, use the v2 partitioned table instead.'$c$,
+                v_table_name, v_table_name, v_table_name
+            );
             raise notice 'migrate_to_v2: created/updated backwards-compat view pgfr_record.%',
                 v_table_name;
             v_actions := v_actions || format('created view %s → %s', v_table_name, v_legacy_name);
@@ -163,10 +175,10 @@ begin
     -- ----------------------------------------------------------------
     -- Step 4: return summary
     -- ----------------------------------------------------------------
-    if v_already_done and array_length(v_actions, 1) is null then
+    if v_any_legacy and array_length(v_actions, 1) is null then
         v_summary := 'migrate_to_v2: already migrated — legacy tables exist, no changes made';
-    elsif array_length(v_actions, 1) is null then
-        v_summary := 'migrate_to_v2: nothing to migrate — original tables not found';
+    elsif not v_any_legacy and array_length(v_actions, 1) is null then
+        v_summary := 'migrate_to_v2: nothing to migrate — original tables not found (fresh install?)';
     else
         v_summary := 'migrate_to_v2: ' || array_to_string(v_actions, '; ');
     end if;
