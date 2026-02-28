@@ -37,7 +37,6 @@ declare
         'table_snapshots',
         'index_snapshots'
     ];
-    v_already_done boolean := false;
     v_any_legacy   boolean := false;
 begin
     -- ----------------------------------------------------------------
@@ -106,7 +105,6 @@ begin
                 raise notice 'migrate_to_v2: renamed pgfr_record.% → pgfr_record.%',
                     v_table_name, v_legacy_name;
                 v_actions := v_actions || format('renamed %s → %s', v_table_name, v_legacy_name);
-                v_already_done := false;
 
             elsif v_legacy_exists and not v_original_exists then
                 raise notice 'migrate_to_v2: pgfr_record.% already renamed to pgfr_record.% — skipping',
@@ -121,7 +119,6 @@ begin
                     'WARNING: both %s and %s exist — skipped',
                     v_table_name, v_legacy_name
                 );
-                v_already_done := false;
 
             else
                 -- neither original nor legacy exists — nothing to migrate for this table
