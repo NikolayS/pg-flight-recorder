@@ -3348,17 +3348,17 @@ BEGIN
     -- Dual-write: old _collect_*_stats() calls above continue writing to legacy tables
     -- during migration period. Sparse collectors write to v2 partitioned tables.
     begin
-        perform pgfr_record._collect_statement_snapshot_sparse(v_snapshot_id);
+        perform pgfr_record._collect_statement_snapshot_sparse(v_snapshot_id::bigint);
     exception when others then
         raise warning 'pgfr_record: sparse statement collector failed [%]: %', sqlstate, sqlerrm;
     end;
     begin
-        perform pgfr_record._collect_table_snapshot_sparse(v_snapshot_id);
+        perform pgfr_record._collect_table_snapshot_sparse(v_snapshot_id::bigint);
     exception when others then
         raise warning 'pgfr_record: sparse table collector failed [%]: %', sqlstate, sqlerrm;
     end;
     begin
-        perform pgfr_record._collect_index_snapshot_sparse(v_snapshot_id);
+        perform pgfr_record._collect_index_snapshot_sparse(v_snapshot_id::bigint);
     exception when others then
         raise warning 'pgfr_record: sparse index collector failed [%]: %', sqlstate, sqlerrm;
     end;
