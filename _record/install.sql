@@ -3326,6 +3326,42 @@ BEGIN
     EXCEPTION WHEN OTHERS THEN
         RAISE WARNING 'pgfr_record: Vacuum progress collection failed: %', SQLERRM;
     END;
+    -- Ensure today's partitions exist for v2 sparse tables (O(1) on happy path)
+    -- Wrapped in EXCEPTION blocks: missing parent table (Issue #8 not yet merged) is a
+    -- recoverable error during the dual-write migration period.
+    begin
+        perform pgfr_record._ensure_partition('statement_snapshots_v2', current_date);
+    exception when others then
+        raise warning 'pgfr_record: _ensure_partition(statement_snapshots_v2) failed [%]: %', sqlstate, sqlerrm;
+    end;
+    begin
+        perform pgfr_record._ensure_partition('table_snapshots_v2', current_date);
+    exception when others then
+        raise warning 'pgfr_record: _ensure_partition(table_snapshots_v2) failed [%]: %', sqlstate, sqlerrm;
+    end;
+    begin
+        perform pgfr_record._ensure_partition('index_snapshots_v2', current_date);
+    exception when others then
+        raise warning 'pgfr_record: _ensure_partition(index_snapshots_v2) failed [%]: %', sqlstate, sqlerrm;
+    end;
+    -- Sparse collectors: each isolated so failure of one does not abort others.
+    -- Dual-write: old _collect_*_stats() calls above continue writing to legacy tables
+    -- during migration period. Sparse collectors write to v2 partitioned tables.
+    begin
+        perform pgfr_record._collect_statement_snapshot_sparse(v_snapshot_id::bigint);
+    exception when others then
+        raise warning 'pgfr_record: sparse statement collector failed [%]: %', sqlstate, sqlerrm;
+    end;
+    begin
+        perform pgfr_record._collect_table_snapshot_sparse(v_snapshot_id::bigint);
+    exception when others then
+        raise warning 'pgfr_record: sparse table collector failed [%]: %', sqlstate, sqlerrm;
+    end;
+    begin
+        perform pgfr_record._collect_index_snapshot_sparse(v_snapshot_id::bigint);
+    exception when others then
+        raise warning 'pgfr_record: sparse index collector failed [%]: %', sqlstate, sqlerrm;
+    end;
     PERFORM pgfr_record._record_collection_end(v_stat_id, true, NULL);
     PERFORM set_config('statement_timeout', '0', true);
     RETURN v_captured_at;
@@ -3337,7 +3373,9 @@ EXCEPTION
 END;
 $$;
 COMMENT ON FUNCTION pgfr_record.snapshot() IS
-'Durable snapshots: Collect comprehensive system metrics (WAL, checkpoints, I/O, connections, table/index stats, replication, statements). Version-aware for PG 15/16/17 differences.';
+'Durable snapshots: Collect comprehensive system metrics (WAL, checkpoints, I/O, connections, table/index stats, replication, statements). Version-aware for PG 15/16/17 differences. '
+'Dual-write: calls both legacy _collect_*_stats() and new sparse v2 collectors. '
+'Each sparse collector is isolated in its own EXCEPTION block — failure of one does not abort others.';
 
 CREATE OR REPLACE VIEW pgfr_record.deltas AS
 SELECT
@@ -4299,6 +4337,20 @@ BEGIN
         PERFORM cron.schedule('pgfr_cleanup', '0 3 * * *',
             'SET statement_timeout = ''60s''; SELECT pgfr_record.cleanup_aggregates(); SELECT * FROM pgfr_record.cleanup(''30 days''::interval);');
         v_scheduled := v_scheduled + 1;
+        -- Nightly retention GC (03:00 UTC): truncate expired v2 partitions
+        perform cron.schedule('pgfr-truncate-old-partitions', '0 3 * * *',
+            'select pgfr_record.truncate_old_partitions()')
+        where not exists (
+            select 1 from cron.job where jobname = 'pgfr-truncate-old-partitions'
+        );
+        v_scheduled := v_scheduled + 1;
+        -- Monthly catalog cleanup (1st of month, 04:00 UTC): drop ancient empty partitions
+        perform cron.schedule('pgfr-drop-ancient-partitions', '0 4 1 * *',
+            'select pgfr_record.drop_ancient_partitions()')
+        where not exists (
+            select 1 from cron.job where jobname = 'pgfr-drop-ancient-partitions'
+        );
+        v_scheduled := v_scheduled + 1;
         INSERT INTO pgfr_record.config (key, value, updated_at)
         VALUES ('enabled', 'true', now())
         ON CONFLICT (key) DO UPDATE SET value = 'true', updated_at = now();
@@ -4395,6 +4447,18 @@ BEGIN
         'pgfr_cleanup',
         '0 3 * * *',
         'SET statement_timeout = ''60s''; SELECT pgfr_record.cleanup_aggregates(); SELECT * FROM pgfr_record.cleanup(''30 days''::interval);'
+    );
+    -- Nightly retention GC (03:00 UTC): truncate expired partitions
+    perform cron.schedule('pgfr-truncate-old-partitions', '0 3 * * *',
+        'select pgfr_record.truncate_old_partitions()')
+    where not exists (
+        select 1 from cron.job where jobname = 'pgfr-truncate-old-partitions'
+    );
+    -- Monthly catalog cleanup (1st of month, 04:00 UTC): drop ancient empty partitions
+    perform cron.schedule('pgfr-drop-ancient-partitions', '0 4 1 * *',
+        'select pgfr_record.drop_ancient_partitions()')
+    where not exists (
+        select 1 from cron.job where jobname = 'pgfr-drop-ancient-partitions'
     );
 EXCEPTION
     WHEN undefined_table THEN
