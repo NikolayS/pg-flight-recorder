@@ -1250,6 +1250,25 @@ boundaries for clean retention.
 
 **Q2: Migration for existing installations. ✅ RESOLVED — implemented in `_record/migrate_phase1.sql` (Issue #10)**
 
+**Q2b: Reader functions for v2 partitioned tables. ✅ RESOLVED — implemented in `_analyze/install.sql` (Issue #11)**
+
+`pgfr_analyze` now ships v2-native reader functions that query `statement_snapshots_v2`,
+`table_snapshots_v2`, and `index_snapshots_v2` directly via `int4 sample_ts` range
+predicates, enabling partition pruning without joining through the `snapshots` table:
+
+- `pgfr_analyze.v2_time_range(p_start, p_end)` — helper: converts `timestamptz` bounds
+  to `int4 sample_ts` offsets via `pgfr_record.epoch()`.
+- `pgfr_analyze.statement_activity_v2(p_start, p_end[, limit])` — top queries by
+  `total_exec_time` delta.
+- `pgfr_analyze.table_activity_v2(p_start, p_end[, limit])` — tables by modification
+  rate (`n_tup_ins + n_tup_upd + n_tup_del` delta).
+- `pgfr_analyze.index_activity_v2(p_start, p_end[, limit])` — indexes by `idx_scan`
+  delta.
+
+All three reader functions call `SET LOCAL jit = off` at entry (per §6 requirements).
+Existing `statement_compare()`, `table_compare()`, `table_hotspots()`,
+`index_efficiency()`, and `unused_indexes()` are untouched (backwards compatible).
+
 The migration approach: instead of dual-write, rename old plain tables to `_legacy`
 suffix and create backwards-compatible views so existing SELECT queries continue to
 work unmodified. Old data is preserved — nothing is deleted.
