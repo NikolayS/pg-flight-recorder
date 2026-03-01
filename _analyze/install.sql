@@ -5095,7 +5095,8 @@ returns table(
     shared_blks_hit_delta    bigint,
     shared_blks_read_delta   bigint,
     temp_blks_written_delta  bigint,
-    hit_ratio_pct            numeric
+    hit_ratio_pct            numeric,
+    pgss_reset_warning       boolean  -- true if any row flagged a cluster-wide PGSS eviction/reset
 )
 language plpgsql volatile as $$
 declare
@@ -5126,7 +5127,8 @@ begin
         select distinct on (se.queryid, se.dbid, se.userid, se.toplevel)
             se.queryid, se.dbid, se.userid, se.toplevel,
             se.calls, se.total_exec_time, se.mean_exec_time, se.rows,
-            se.shared_blks_hit, se.shared_blks_read, se.temp_blks_written
+            se.shared_blks_hit, se.shared_blks_read, se.temp_blks_written,
+            se.pgss_dealloc_warning
         from pgfr_record.statement_snapshots_v2 se
         where se.sample_ts >= v_ts_start
           and se.sample_ts <  v_ts_end
@@ -5154,7 +5156,8 @@ begin
                 1
             )
             else null
-        end as hit_ratio_pct
+        end as hit_ratio_pct,
+        coalesce(e.pgss_dealloc_warning, false) as pgss_reset_warning
     from snap_end e
     left join snap_start s using (queryid, dbid, userid, toplevel)
     where greatest(0, e.total_exec_time - coalesce(s.total_exec_time, 0)) > 0
@@ -5166,7 +5169,9 @@ comment on function pgfr_analyze.statement_activity_v2(timestamptz, timestamptz,
 'Return top queries by total_exec_time delta over a time window, reading from '
 'statement_snapshots_v2 (v2 partitioned table). Uses int4 sample_ts for partition '
 'pruning — no join to snapshots table. JIT disabled at entry. Backwards-compatible: '
-'existing statement_compare() is untouched.';
+'existing statement_compare() is untouched. '
+'pgss_reset_warning = true means a cluster-wide PGSS eviction occurred at that tick — '
+'deltas for that row may be understated due to counter reset.';
 
 
 -- Returns tables ordered by modification rate (n_tup_ins + n_tup_upd + n_tup_del delta)
