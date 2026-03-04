@@ -66,17 +66,25 @@
 
 ### Phase 2 — ring buffer redesign (target: `storage-overhaul` on fork of `dventimisupabase/pg-flight-recorder`)
 
-- [ ] fork `dventimisupabase/pg-flight-recorder` → `NikolayS/pg-flight-recorder` and open `storage-overhaul` branch
-- [ ] `sample_ring_config` singleton table
-- [ ] `wait_samples_0/1/2`, `activity_samples_0/1/2`, `lock_samples_0/1/2` — LOGGED, TRUNCATE-rotated
-- [ ] `wait_event_map`, `query_map_0/1/2` — independent dictionaries (not shared with `pg_ash`)
-- [ ] `rotate_ring()` — advisory-lock protected, slot advance + TRUNCATE oldest partition
-- [ ] `current_slot()` helper
-- [ ] rewrite `sample()` — INSERT-based, reads `pg_stat_activity` into ring partitions
-- [ ] rewrite `flush_ring_to_aggregates()` — reads from named partitions via `EXECUTE`
-- [ ] rewrite `archive_ring_samples()` — drains ring into archive before rotation
-- [ ] update `_analyze/install.sql` reader views — query ring partitions by name
-- [ ] pgTAP suite for Phase 2
+- [x] Phase 2 ring buffer code merged to `storage-overhaul-spec` (cherry-pick from `dventimisupabase` commit `6e8124b`)
+- [x] `ring_config` singleton table
+- [x] `wait_samples_0/1/2`, `lock_samples_0/1/2` — LOGGED, LIST-partitioned by slot
+- [x] `wait_event_map` — independent dictionary (not shared with `pg_ash`)
+- [x] `query_map_0/1/2` — per-partition query dictionaries, TRUNCATE on rotation
+- [x] `query_map_all` view — union of all per-partition query maps
+- [x] `rotate_ring()` — advisory-lock protected, slot advance + TRUNCATE oldest partition + sequence reset
+- [x] `ring_current_slot()` helper
+- [x] `_register_wait()` — race-safe upsert into `wait_event_map`
+- [x] `_register_query()` — dynamic dispatch insert into current slot's `query_map`
+- [x] `sample_ring()` — INSERT-based, reads `pg_stat_activity`, integer[] encoding
+- [x] `recent_waits_v2` reader view — decodes integer[] to human-readable wait events
+- [x] pg_cron jobs: `pgfr-sample-ring` (every minute), `pgfr-rotate-ring` (every 2h)
+- [x] pgTAP suite: `test_ring_buffer.sql` — 26 assertions, all pass on PG18
+- [x] PG18 compat applied to Phase 2 code (commit `d1d2b24`)
+- [ ] `activity_samples_0/1/2` — not yet implemented (lock_samples present, activity_samples missing)
+- [ ] rewrite `flush_ring_to_aggregates()` — still reads old ring tables
+- [ ] rewrite `archive_ring_samples()` — still reads old ring tables
+- [ ] update `_analyze/install.sql` reader views — query new ring partitions by name
 - [ ] benchmark: ring bloat before vs after on Hetzner VM with real pgbench load
 
 ### Phase 3 — partition all remaining tables
