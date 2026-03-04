@@ -5347,3 +5347,236 @@ comment on function pgfr_analyze.index_activity_v2(timestamptz, timestamptz, int
 'index_snapshots_v2 (v2 partitioned table). Uses int4 sample_ts for partition '
 'pruning. JIT disabled at entry. Backwards-compatible: existing index_efficiency() '
 'and unused_indexes() are untouched.';
+
+--------------------------------------------------------------------------------
+-- ring buffer v2 reader functions
+-- replace old ring-table reads with wait_samples, activity_samples, lock_samples.
+-- output signatures unchanged — callers keep working.
+--------------------------------------------------------------------------------
+
+-- recent_waits_current() v2
+-- decodes wait_samples integer[] via wait_event_map.
+-- retention window: ring_config.num_slots * rotation_period.
+create or replace function pgfr_analyze.recent_waits_current()
+returns table (
+    captured_at     timestamptz,
+    backend_type    text,
+    wait_event_type text,
+    wait_event      text,
+    state           text,
+    count           integer
+)
+language sql stable as $$
+    with retention_cutoff as (
+        select
+            pgfr_record.epoch()
+            + (
+                extract(epoch from now() - pgfr_record.epoch())::int4
+                - (num_slots * extract(epoch from rotation_period)::int4)
+              ) * interval '1 second' as cutoff
+        from pgfr_record.ring_config
+        where singleton
+    ),
+    decoded as (
+        select
+            pgfr_record.epoch() + ws.sample_ts * interval '1 second' as captured_at,
+            abs(ws.data[i])::smallint                                 as wait_id,
+            ws.data[i + 1]::integer                                   as waiter_count
+        from pgfr_record.wait_samples ws,
+             retention_cutoff rc,
+             generate_subscripts(ws.data, 1) as i
+        where ws.data[i] < 0
+          and (pgfr_record.epoch() + ws.sample_ts * interval '1 second') > rc.cutoff
+    )
+    select
+        d.captured_at,
+        wem.state        as backend_type,
+        wem.type         as wait_event_type,
+        wem.event        as wait_event,
+        wem.state        as state,
+        d.waiter_count   as count
+    from decoded d
+    join pgfr_record.wait_event_map wem on wem.id = d.wait_id
+    order by d.captured_at desc, d.waiter_count desc;
+$$;
+
+comment on function pgfr_analyze.recent_waits_current() is
+'Ring buffer v2: decode wait_samples integer[] via wait_event_map. '
+'Returns same columns as the original recent_waits_current(). '
+'Retention window: num_slots * rotation_period from ring_config.';
+
+-- recent_activity_current() v2
+-- reads activity_samples (flat rows, no decode needed).
+create or replace function pgfr_analyze.recent_activity_current()
+returns table (
+    captured_at      timestamptz,
+    pid              integer,
+    usename          text,
+    application_name text,
+    backend_type     text,
+    state            text,
+    wait_event_type  text,
+    wait_event       text,
+    query_start      timestamptz,
+    running_for      interval,
+    query_preview    text
+)
+language sql stable as $$
+    with retention_cutoff as (
+        select
+            pgfr_record.epoch()
+            + (
+                extract(epoch from now() - pgfr_record.epoch())::int4
+                - (num_slots * extract(epoch from rotation_period)::int4)
+              ) * interval '1 second' as cutoff
+        from pgfr_record.ring_config
+        where singleton
+    )
+    select
+        pgfr_record.epoch() + as2.sample_ts * interval '1 second' as captured_at,
+        as2.pid,
+        as2.usename,
+        as2.application_name,
+        as2.backend_type,
+        as2.state,
+        as2.wait_event_type,
+        as2.wait_event,
+        as2.query_start,
+        (pgfr_record.epoch() + as2.sample_ts * interval '1 second') - as2.query_start as running_for,
+        as2.query_preview
+    from pgfr_record.activity_samples as2,
+         retention_cutoff rc
+    where (pgfr_record.epoch() + as2.sample_ts * interval '1 second') > rc.cutoff
+      and as2.pid is not null
+    order by as2.sample_ts desc, as2.query_start asc;
+$$;
+
+comment on function pgfr_analyze.recent_activity_current() is
+'Ring buffer v2: reads activity_samples (flat per-backend rows). '
+'Returns same columns as the original recent_activity_current(). '
+'Retention window: num_slots * rotation_period from ring_config.';
+
+-- recent_locks_current() v2
+-- reads lock_samples; decodes lock_type via lock_type_map.
+-- blocked_user, blocked_app, query_preview: not stored in lock_samples v2
+-- (lock_samples stores pids only) — returned as null for now.
+create or replace function pgfr_analyze.recent_locks_current()
+returns table (
+    captured_at            timestamptz,
+    blocked_pid            integer,
+    blocked_user           text,
+    blocked_app            text,
+    blocked_duration       interval,
+    blocking_pid           integer,
+    blocking_user          text,
+    blocking_app           text,
+    lock_type              text,
+    locked_relation        text,
+    blocked_query_preview  text,
+    blocking_query_preview text
+)
+language sql stable as $$
+    with retention_cutoff as (
+        select
+            pgfr_record.epoch()
+            + (
+                extract(epoch from now() - pgfr_record.epoch())::int4
+                - (num_slots * extract(epoch from rotation_period)::int4)
+              ) * interval '1 second' as cutoff
+        from pgfr_record.ring_config
+        where singleton
+    )
+    select
+        pgfr_record.epoch() + ls.sample_ts * interval '1 second'   as captured_at,
+        ls.blocked_pid,
+        null::text                                                  as blocked_user,
+        null::text                                                  as blocked_app,
+        ls.blocked_duration_s * interval '1 second'                as blocked_duration,
+        ls.blocking_pid,
+        null::text                                                  as blocking_user,
+        null::text                                                  as blocking_app,
+        coalesce(ltm.lock_type, ls.lock_type::text)                as lock_type,
+        coalesce(
+            (ls.locked_relation_oid::regclass)::text,
+            'oid:' || ls.locked_relation_oid::text
+        )                                                           as locked_relation,
+        null::text                                                  as blocked_query_preview,
+        null::text                                                  as blocking_query_preview
+    from pgfr_record.lock_samples ls
+    cross join retention_cutoff rc
+    left join pgfr_record.lock_type_map ltm on ltm.id = ls.lock_type
+    where (pgfr_record.epoch() + ls.sample_ts * interval '1 second') > rc.cutoff
+    order by ls.sample_ts desc, ls.blocked_duration_s desc nulls last;
+$$;
+
+comment on function pgfr_analyze.recent_locks_current() is
+'Ring buffer v2: reads lock_samples; decodes lock_type via lock_type_map. '
+'blocked_user, blocked_app, query_preview are null in v2 (pids only stored). '
+'Returns same columns as the original recent_locks_current().';
+
+-- wait_summary() v2
+-- decodes wait_samples integer[] for a given time window.
+create or replace function pgfr_analyze.wait_summary(
+    p_start_time timestamptz,
+    p_end_time   timestamptz
+)
+returns table (
+    backend_type    text,
+    wait_event_type text,
+    wait_event      text,
+    sample_count    bigint,
+    total_waiters   bigint,
+    avg_waiters     numeric,
+    max_waiters     integer,
+    pct_of_samples  numeric
+)
+language sql stable as $$
+    with bounds as (
+        select
+            extract(epoch from p_start_time - pgfr_record.epoch())::int4 as start_ts,
+            extract(epoch from p_end_time   - pgfr_record.epoch())::int4 as end_ts
+    ),
+    in_range as (
+        select
+            ws.sample_ts,
+            abs(ws.data[i])::smallint  as wait_id,
+            ws.data[i + 1]::integer    as waiter_count
+        from pgfr_record.wait_samples ws,
+             bounds b,
+             generate_subscripts(ws.data, 1) as i
+        where ws.data[i] < 0
+          and ws.sample_ts between b.start_ts and b.end_ts
+    ),
+    total_samples as (
+        select count(distinct sample_ts) as cnt from in_range
+    ),
+    grouped as (
+        select
+            wait_id,
+            count(distinct sample_ts)   as sample_count,
+            sum(waiter_count)           as total_waiters,
+            round(avg(waiter_count), 2) as avg_waiters,
+            max(waiter_count)           as max_waiters
+        from in_range
+        group by wait_id
+    )
+    select
+        wem.state        as backend_type,
+        wem.type         as wait_event_type,
+        wem.event        as wait_event,
+        g.sample_count,
+        g.total_waiters,
+        g.avg_waiters,
+        g.max_waiters::integer,
+        round(100.0 * g.sample_count / nullif(t.cnt, 0), 1) as pct_of_samples
+    from grouped g
+    cross join total_samples t
+    join pgfr_record.wait_event_map wem on wem.id = g.wait_id
+    order by g.total_waiters desc, g.sample_count desc;
+$$;
+
+comment on function pgfr_analyze.wait_summary(timestamptz, timestamptz) is
+'Ring buffer v2: decode wait_samples integer[] for a time window. '
+'Returns same columns as original wait_summary(). '
+'Uses int4 sample_ts bounds for partition pruning.';
+
