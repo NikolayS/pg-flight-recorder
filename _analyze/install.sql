@@ -5050,3 +5050,300 @@ END;
 $$;
 COMMENT ON FUNCTION pgfr_analyze.blast_radius_report IS
 'Human-readable blast radius analysis report with ASCII-art formatting. Suitable for incident postmortems, Slack/email sharing, and documentation. Includes visual severity indicators, bar charts for lock types and affected apps, and actionable recommendations. Use: SELECT pgfr_analyze.blast_radius_report(''2024-01-15 10:23:00'', ''2024-01-15 10:35:00'');';
+
+-- =============================================================================
+-- V2 PARTITIONED TABLE READER FUNCTIONS (Issue #11)
+-- Queries v2 tables (statement_snapshots_v2, table_snapshots_v2,
+-- index_snapshots_v2) using int4 sample_ts ranges for partition pruning.
+-- These are NEW functions — existing functions are untouched (backwards compat).
+-- =============================================================================
+
+-- Helper: convert timestamptz bounds to int4 sample_ts offsets
+-- Used by all v2 reader functions to derive partition-prunable range predicates.
+create or replace function pgfr_analyze.v2_time_range(
+    p_start timestamptz,
+    p_end   timestamptz
+)
+returns table (ts_start int4, ts_end int4)
+language sql immutable as $$
+    select
+        extract(epoch from (p_start - pgfr_record.epoch()))::int4,
+        extract(epoch from (p_end   - pgfr_record.epoch()))::int4
+$$;
+comment on function pgfr_analyze.v2_time_range(timestamptz, timestamptz) is
+'Convert timestamptz bounds to int4 sample_ts offsets (seconds since pgfr_record.epoch()). '
+'Used by v2 reader functions to produce partition-prunable range predicates on sample_ts.';
+
+
+-- Returns top queries by total_exec_time delta over the specified time window,
+-- reading directly from the v2 partitioned table using int4 sample_ts ranges.
+-- JIT is disabled at entry to avoid planning regressions on partitioned tables.
+create or replace function pgfr_analyze.statement_activity_v2(
+    p_start timestamptz,
+    p_end   timestamptz,
+    p_limit integer default 25
+)
+returns table(
+    queryid                  bigint,
+    dbid                     oid,
+    userid                   oid,
+    toplevel                 boolean,
+    calls_delta              bigint,
+    total_exec_time_delta_ms float8,
+    mean_exec_time_ms        float8,
+    rows_delta               bigint,
+    shared_blks_hit_delta    bigint,
+    shared_blks_read_delta   bigint,
+    temp_blks_written_delta  bigint,
+    hit_ratio_pct            numeric,
+    pgss_reset_warning       boolean  -- true if any row flagged a cluster-wide PGSS eviction/reset
+)
+language plpgsql volatile as $$
+declare
+    v_ts_start int4;
+    v_ts_end   int4;
+begin
+    set local jit = off;
+
+    select tr.ts_start, tr.ts_end
+    into v_ts_start, v_ts_end
+    from pgfr_analyze.v2_time_range(p_start, p_end) tr;
+
+    return query
+    with
+    -- earliest snapshot per query in range
+    snap_start as (
+        select distinct on (ss.queryid, ss.dbid, ss.userid, ss.toplevel)
+            ss.queryid, ss.dbid, ss.userid, ss.toplevel,
+            ss.calls, ss.total_exec_time, ss.rows,
+            ss.shared_blks_hit, ss.shared_blks_read, ss.temp_blks_written
+        from pgfr_record.statement_snapshots_v2 ss
+        where ss.sample_ts >= v_ts_start
+          and ss.sample_ts <  v_ts_end
+        order by ss.queryid, ss.dbid, ss.userid, ss.toplevel, ss.sample_ts asc
+    ),
+    -- latest snapshot per query in range
+    snap_end as (
+        select distinct on (se.queryid, se.dbid, se.userid, se.toplevel)
+            se.queryid, se.dbid, se.userid, se.toplevel,
+            se.calls, se.total_exec_time, se.mean_exec_time, se.rows,
+            se.shared_blks_hit, se.shared_blks_read, se.temp_blks_written,
+            se.pgss_dealloc_warning
+        from pgfr_record.statement_snapshots_v2 se
+        where se.sample_ts >= v_ts_start
+          and se.sample_ts <  v_ts_end
+        order by se.queryid, se.dbid, se.userid, se.toplevel, se.sample_ts desc
+    )
+    select
+        e.queryid,
+        e.dbid,
+        e.userid,
+        e.toplevel,
+        greatest(0, e.calls - coalesce(s.calls, 0))             as calls_delta,
+        greatest(0, e.total_exec_time - coalesce(s.total_exec_time, 0)) as total_exec_time_delta_ms,
+        e.mean_exec_time                                         as mean_exec_time_ms,
+        greatest(0, e.rows - coalesce(s.rows, 0))               as rows_delta,
+        greatest(0, e.shared_blks_hit  - coalesce(s.shared_blks_hit, 0))  as shared_blks_hit_delta,
+        greatest(0, e.shared_blks_read - coalesce(s.shared_blks_read, 0)) as shared_blks_read_delta,
+        greatest(0, e.temp_blks_written - coalesce(s.temp_blks_written, 0)) as temp_blks_written_delta,
+        case
+            when (greatest(0, e.shared_blks_hit - coalesce(s.shared_blks_hit, 0))
+                + greatest(0, e.shared_blks_read - coalesce(s.shared_blks_read, 0))) > 0
+            then round(
+                100.0 * greatest(0, e.shared_blks_hit - coalesce(s.shared_blks_hit, 0))::numeric
+                / (greatest(0, e.shared_blks_hit - coalesce(s.shared_blks_hit, 0))
+                 + greatest(0, e.shared_blks_read - coalesce(s.shared_blks_read, 0))),
+                1
+            )
+            else null
+        end as hit_ratio_pct,
+        coalesce(e.pgss_dealloc_warning, false) as pgss_reset_warning
+    from snap_end e
+    left join snap_start s using (queryid, dbid, userid, toplevel)
+    where greatest(0, e.total_exec_time - coalesce(s.total_exec_time, 0)) > 0
+    order by total_exec_time_delta_ms desc
+    limit p_limit;
+end;
+$$;
+comment on function pgfr_analyze.statement_activity_v2(timestamptz, timestamptz, integer) is
+'Return top queries by total_exec_time delta over a time window, reading from '
+'statement_snapshots_v2 (v2 partitioned table). Uses int4 sample_ts for partition '
+'pruning — no join to snapshots table. JIT disabled at entry. Backwards-compatible: '
+'existing statement_compare() is untouched. '
+'pgss_reset_warning = true means a cluster-wide PGSS eviction occurred at that tick — '
+'deltas for that row may be understated due to counter reset.';
+
+
+-- Returns tables ordered by modification rate (n_tup_ins + n_tup_upd + n_tup_del delta)
+-- over the specified time window, reading from the v2 partitioned table.
+-- JIT is disabled at entry to avoid planning regressions on partitioned tables.
+create or replace function pgfr_analyze.table_activity_v2(
+    p_start timestamptz,
+    p_end   timestamptz,
+    p_limit integer default 25
+)
+returns table(
+    relid                   oid,
+    dbid                    oid,
+    n_tup_ins_delta         bigint,
+    n_tup_upd_delta         bigint,
+    n_tup_del_delta         bigint,
+    n_tup_hot_upd_delta     bigint,
+    seq_scan_delta          bigint,
+    idx_scan_delta          bigint,
+    total_modifications     bigint,
+    n_live_tup              bigint,
+    n_dead_tup              bigint,
+    dead_tup_pct            numeric,
+    table_size_bytes        bigint
+)
+language plpgsql volatile as $$
+declare
+    v_ts_start int4;
+    v_ts_end   int4;
+begin
+    set local jit = off;
+
+    select tr.ts_start, tr.ts_end
+    into v_ts_start, v_ts_end
+    from pgfr_analyze.v2_time_range(p_start, p_end) tr;
+
+    return query
+    with
+    snap_start as (
+        select distinct on (ts.relid, ts.dbid)
+            ts.relid, ts.dbid,
+            ts.n_tup_ins, ts.n_tup_upd, ts.n_tup_del, ts.n_tup_hot_upd,
+            ts.seq_scan, ts.idx_scan
+        from pgfr_record.table_snapshots_v2 ts
+        where ts.sample_ts >= v_ts_start
+          and ts.sample_ts <  v_ts_end
+        order by ts.relid, ts.dbid, ts.sample_ts asc
+    ),
+    snap_end as (
+        select distinct on (te.relid, te.dbid)
+            te.relid, te.dbid,
+            te.n_tup_ins, te.n_tup_upd, te.n_tup_del, te.n_tup_hot_upd,
+            te.seq_scan, te.idx_scan,
+            te.n_live_tup, te.n_dead_tup,
+            te.table_size_bytes
+        from pgfr_record.table_snapshots_v2 te
+        where te.sample_ts >= v_ts_start
+          and te.sample_ts <  v_ts_end
+        order by te.relid, te.dbid, te.sample_ts desc
+    )
+    select
+        e.relid,
+        e.dbid,
+        greatest(0, e.n_tup_ins - coalesce(s.n_tup_ins, 0))     as n_tup_ins_delta,
+        greatest(0, e.n_tup_upd - coalesce(s.n_tup_upd, 0))     as n_tup_upd_delta,
+        greatest(0, e.n_tup_del - coalesce(s.n_tup_del, 0))     as n_tup_del_delta,
+        greatest(0, e.n_tup_hot_upd - coalesce(s.n_tup_hot_upd, 0)) as n_tup_hot_upd_delta,
+        greatest(0, e.seq_scan - coalesce(s.seq_scan, 0))        as seq_scan_delta,
+        greatest(0, e.idx_scan - coalesce(s.idx_scan, 0))        as idx_scan_delta,
+        greatest(0, e.n_tup_ins - coalesce(s.n_tup_ins, 0))
+            + greatest(0, e.n_tup_upd - coalesce(s.n_tup_upd, 0))
+            + greatest(0, e.n_tup_del - coalesce(s.n_tup_del, 0)) as total_modifications,
+        e.n_live_tup,
+        e.n_dead_tup,
+        case
+            when coalesce(e.n_live_tup, 0) + coalesce(e.n_dead_tup, 0) > 0
+            then round(
+                100.0 * coalesce(e.n_dead_tup, 0)::numeric
+                / (coalesce(e.n_live_tup, 0) + coalesce(e.n_dead_tup, 0)),
+                1
+            )
+            else 0::numeric
+        end as dead_tup_pct,
+        e.table_size_bytes
+    from snap_end e
+    left join snap_start s using (relid, dbid)
+    order by total_modifications desc
+    limit p_limit;
+end;
+$$;
+comment on function pgfr_analyze.table_activity_v2(timestamptz, timestamptz, integer) is
+'Return tables ordered by modification rate (ins+upd+del delta) over a time window, '
+'reading from table_snapshots_v2 (v2 partitioned table). Uses int4 sample_ts for '
+'partition pruning. JIT disabled at entry. Backwards-compatible: existing '
+'table_compare() and table_hotspots() are untouched.';
+
+
+-- Returns indexes ordered by idx_scan delta over the specified time window,
+-- reading from the v2 partitioned table using int4 sample_ts ranges.
+-- JIT is disabled at entry to avoid planning regressions on partitioned tables.
+create or replace function pgfr_analyze.index_activity_v2(
+    p_start timestamptz,
+    p_end   timestamptz,
+    p_limit integer default 25
+)
+returns table(
+    relid              oid,
+    indexrelid         oid,
+    dbid               oid,
+    idx_scan_delta     bigint,
+    idx_tup_read_delta bigint,
+    idx_tup_fetch_delta bigint,
+    index_size_bytes   bigint,
+    selectivity_pct    numeric
+)
+language plpgsql volatile as $$
+declare
+    v_ts_start int4;
+    v_ts_end   int4;
+begin
+    set local jit = off;
+
+    select tr.ts_start, tr.ts_end
+    into v_ts_start, v_ts_end
+    from pgfr_analyze.v2_time_range(p_start, p_end) tr;
+
+    return query
+    with
+    snap_start as (
+        select distinct on (si.relid, si.indexrelid, si.dbid)
+            si.relid, si.indexrelid, si.dbid,
+            si.idx_scan, si.idx_tup_read, si.idx_tup_fetch
+        from pgfr_record.index_snapshots_v2 si
+        where si.sample_ts >= v_ts_start
+          and si.sample_ts <  v_ts_end
+        order by si.relid, si.indexrelid, si.dbid, si.sample_ts asc
+    ),
+    snap_end as (
+        select distinct on (ie.relid, ie.indexrelid, ie.dbid)
+            ie.relid, ie.indexrelid, ie.dbid,
+            ie.idx_scan, ie.idx_tup_read, ie.idx_tup_fetch,
+            ie.index_size_bytes
+        from pgfr_record.index_snapshots_v2 ie
+        where ie.sample_ts >= v_ts_start
+          and ie.sample_ts <  v_ts_end
+        order by ie.relid, ie.indexrelid, ie.dbid, ie.sample_ts desc
+    )
+    select
+        e.relid,
+        e.indexrelid,
+        e.dbid,
+        greatest(0, e.idx_scan      - coalesce(s.idx_scan, 0))      as idx_scan_delta,
+        greatest(0, e.idx_tup_read  - coalesce(s.idx_tup_read, 0))  as idx_tup_read_delta,
+        greatest(0, e.idx_tup_fetch - coalesce(s.idx_tup_fetch, 0)) as idx_tup_fetch_delta,
+        e.index_size_bytes,
+        case
+            when greatest(0, e.idx_tup_read - coalesce(s.idx_tup_read, 0)) > 0
+            then round(
+                100.0 * greatest(0, e.idx_tup_fetch - coalesce(s.idx_tup_fetch, 0))::numeric
+                / greatest(0, e.idx_tup_read - coalesce(s.idx_tup_read, 0)),
+                1
+            )
+            else null
+        end as selectivity_pct
+    from snap_end e
+    left join snap_start s using (relid, indexrelid, dbid)
+    order by idx_scan_delta desc
+    limit p_limit;
+end;
+$$;
+comment on function pgfr_analyze.index_activity_v2(timestamptz, timestamptz, integer) is
+'Return indexes ordered by idx_scan delta over a time window, reading from '
+'index_snapshots_v2 (v2 partitioned table). Uses int4 sample_ts for partition '
+'pruning. JIT disabled at entry. Backwards-compatible: existing index_efficiency() '
+'and unused_indexes() are untouched.';
