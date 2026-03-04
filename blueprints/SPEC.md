@@ -81,9 +81,11 @@
 - [x] pg_cron jobs: `pgfr-sample-ring` (every minute), `pgfr-rotate-ring` (every 2h)
 - [x] pgTAP suite: `test_ring_buffer.sql` — 26 assertions, all pass on PG18
 - [x] PG18 compat applied to Phase 2 code (commit `d1d2b24`)
-- [ ] `activity_samples_0/1/2` — not yet implemented (lock_samples present, activity_samples missing)
-- [ ] rewrite `flush_ring_to_aggregates()` — still reads old ring tables
-- [ ] rewrite `archive_ring_samples()` — still reads old ring tables
+- [x] `activity_samples_0/1/2` — LOGGED, LIST-partitioned, top 25 sessions per tick (commit `4b0fc32`)
+- [x] `lock_type_map` — compact int→text dictionary, 12 lock types pre-seeded
+- [x] rewrite `flush_ring_to_aggregates()` — reads `wait_samples`/`lock_samples`/`activity_samples`; decodes integer[] via `wait_event_map`
+- [x] rewrite `archive_ring_samples()` — reads v2 ring tables; decodes lock_type via `lock_type_map`
+- [x] `sample_ring()` v2 — adds activity INSERT (top 25 sessions by query age) to existing wait+lock sampling
 - [ ] update `_analyze/install.sql` reader views — query new ring partitions by name
 - [ ] benchmark: ring bloat before vs after on Hetzner VM with real pgbench load
 
