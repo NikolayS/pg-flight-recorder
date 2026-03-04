@@ -2933,7 +2933,7 @@ BEGIN
         )
         SELECT
             v_captured_at, v_pg_version,
-            -- PG18: pg_stat_wal dropped wal_write_time and wal_sync_time; store NULL
+            -- pg18: pg_stat_wal dropped wal_write_time and wal_sync_time; store null
             w.wal_records, w.wal_fpi, w.wal_bytes::bigint, NULL, NULL,
             v_checkpoint_info.redo_lsn,
             v_checkpoint_info.checkpoint_time,
@@ -3196,9 +3196,9 @@ BEGIN
                     IF v_stmt_status = 'HIGH_CHURN' THEN
                         RAISE WARNING 'pgfr_record: Skipping pg_stat_statements collection - high churn detected (>95%% utilization)';
                     ELSE
-                -- PG18 renamed blk_read_time → shared_blk_read_time in pg_stat_statements.
-                -- CASE WHEN cannot reference a nonexistent column even in a dead branch;
-                -- use EXECUTE with the correct column name chosen at runtime.
+                -- pg18 renamed blk_read_time -> shared_blk_read_time in pg_stat_statements.
+                -- case when cannot reference a nonexistent column even in a dead branch;
+                -- use execute with the correct column name chosen at runtime.
                 EXECUTE format(
                     $q$
                     WITH current_stmts AS (
@@ -3266,7 +3266,6 @@ BEGIN
                        AND prev.queryid = c.queryid
                        AND prev.dbid = c.dbid
                     $q$,
-                    -- PG18: blk_read_time → shared_blk_read_time
                     CASE WHEN v_pg_version >= 18 THEN 'shared_blk_read_time'  ELSE 'blk_read_time'  END,
                     CASE WHEN v_pg_version >= 18 THEN 'shared_blk_write_time' ELSE 'blk_write_time' END
                 ) USING v_snapshot_id, v_prev_snapshot_id;
@@ -5550,9 +5549,9 @@ begin
         --         Insert condition: new queryid OR calls increased OR calls dropped
         --         (calls drop = pg_stat_statements_reset() partial/full reset)
         -- -------------------------------------------------------------------
-        -- PG18 renamed blk_read_time → shared_blk_read_time in pg_stat_statements.
-        -- CASE WHEN cannot reference a nonexistent column even in a dead branch,
-        -- so we use EXECUTE with the correct column name chosen at runtime.
+        -- pg18 renamed blk_read_time -> shared_blk_read_time in pg_stat_statements.
+        -- case when cannot reference a nonexistent column even in a dead branch,
+        -- so use execute with the correct column name chosen at runtime.
         execute format(
             $q$
             insert into pgfr_record.statement_snapshots_v2 (
@@ -5584,7 +5583,6 @@ begin
                 or pss.calls > ls.calls
                 or pss.calls < ls.calls
             $q$,
-            -- PG18: blk_read_time → shared_blk_read_time
             case when v_pg_version >= 18 then 'shared_blk_read_time'  else 'blk_read_time'  end,
             case when v_pg_version >= 18 then 'shared_blk_write_time' else 'blk_write_time' end
         ) using p_snapshot_id, v_sample_ts, v_dealloc_warning;
