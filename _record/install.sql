@@ -5033,11 +5033,19 @@ begin
         from pg_catalog.pg_partitioned_table pt
         where pt.partrelid = v_parent_oid;
 
-        -- Assert RANGE partitioning
+        -- Skip LIST-partitioned tables (ring buffer v2 slot tables: wait_samples,
+        -- lock_samples, activity_samples). GC is handled by rotate_ring() TRUNCATE,
+        -- not by _partition_inventory() / truncate_old_partitions().
+        if v_partstrat = 'l' then
+            continue;
+        end if;
+
+        -- Assert RANGE partitioning for all non-LIST tables
         if v_partstrat <> 'r' then
             raise exception
                 '_partition_inventory(): table pgfr_record.% uses partitioning strategy "%" — '
-                'only RANGE (r) is supported. Fix the table or exclude it from pgfr_record schema.',
+                'only RANGE (r) is supported (LIST is allowed for ring buffer slot tables). '
+                'Fix the table or exclude it from pgfr_record schema.',
                 v_parent_name, v_partstrat;
         end if;
 
@@ -5056,6 +5064,14 @@ begin
           on pa.attrelid = pt.partrelid
          and pa.attnum   = pt.partattrs[0]
         where pt.partrelid = v_parent_oid;
+
+        -- explicit null guard: attribute lookup failing silently would skip the assertion
+        if v_atttypid is null then
+            raise exception
+                '_partition_inventory(): table pgfr_record.% — could not determine partition '
+                'key type (pg_attribute lookup returned null). Schema corruption?',
+                v_parent_name;
+        end if;
 
         if v_atttypid <> 23 then  -- 23 = int4
             raise exception

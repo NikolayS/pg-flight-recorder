@@ -10,7 +10,7 @@
 set client_min_messages to warning;
 
 begin;
-select plan(21);
+select plan(23);
 
 -- =========================================================================
 -- Setup: snapshot of ring state before tests
@@ -515,6 +515,31 @@ select ok(
           and array_length(p.proargtypes, 1) = 1
     ),
     'F20: _rebuild_statement_last_state has 1-parameter overload accepting p_sample_ts (B7 guard)'
+);
+
+-- =========================================================================
+-- Finish
+-- =========================================================================
+
+-- =========================================================================
+-- F21. _partition_inventory() does not raise on LIST-partitioned ring tables
+--      (wait_samples, lock_samples, activity_samples are LIST by slot)
+-- =========================================================================
+select ok(
+    (select count(*) from pgfr_record._partition_inventory()) >= 0,
+    'F21: _partition_inventory() runs without error alongside LIST ring buffer tables'
+);
+
+-- =========================================================================
+-- F22. _partition_inventory() does not return ring buffer LIST tables in results
+--      (they are GC'd by rotate_ring(), not by truncate_old_partitions())
+-- =========================================================================
+select ok(
+    not exists (
+        select 1 from pgfr_record._partition_inventory()
+        where parent_table in ('wait_samples', 'lock_samples', 'activity_samples')
+    ),
+    'F22: _partition_inventory() excludes LIST-partitioned ring buffer tables from GC scope'
 );
 
 -- =========================================================================
