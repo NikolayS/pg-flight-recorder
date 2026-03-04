@@ -66,7 +66,7 @@
 
 ### Phase 2 — ring buffer redesign (target: `storage-overhaul` on fork of `dventimisupabase/pg-flight-recorder`)
 
-- [ ] fork `dventimisupabase/pg-flight-recorder` — confirm destination: `NikolayS/` or `postgres-ai/`
+- [ ] open `storage-overhaul` branch on `NikolayS/pg-flight-recorder`
 - [ ] `sample_ring_config` singleton table
 - [ ] `wait_samples_0/1/2`, `activity_samples_0/1/2`, `lock_samples_0/1/2` — LOGGED, TRUNCATE-rotated
 - [ ] `wait_event_map`, `query_map_0/1/2` — independent dictionaries (not shared with `pg_ash`)
