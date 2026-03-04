@@ -5406,10 +5406,17 @@ comment on table pgfr_record.statement_last_state is
 -- ---------------------------------------------------------------------------
 -- 4. _rebuild_statement_last_state()
 -- ---------------------------------------------------------------------------
-create or replace function pgfr_record._rebuild_statement_last_state()
+create or replace function pgfr_record._rebuild_statement_last_state(p_sample_ts int4 default null)
 returns void
 language plpgsql as $$
+declare
+    v_ts int4;
 begin
+    -- use caller-supplied tick timestamp when available to avoid skew between
+    -- now() (transaction start) and the collector's clock_timestamp()-based v_sample_ts
+    v_ts := coalesce(p_sample_ts,
+                     extract(epoch from now() - pgfr_record.epoch())::int4);
+
     truncate pgfr_record.statement_last_state;
     insert into pgfr_record.statement_last_state (queryid, dbid, userid, toplevel, calls, sample_ts)
     select
@@ -5418,13 +5425,14 @@ begin
         userid,
         toplevel,
         calls,
-        extract(EPOCH from now() - pgfr_record.epoch())::INT4
+        v_ts
     from pg_stat_statements;
     analyze pgfr_record.statement_last_state;
 end;
 $$;
-comment on function pgfr_record._rebuild_statement_last_state() is
+comment on function pgfr_record._rebuild_statement_last_state(int4) is
 'Full rebuild of statement_last_state from pg_stat_statements. '
+'p_sample_ts: caller-supplied tick timestamp (seconds since epoch()); avoids now() skew. '
 'Called on crash recovery (UNLOGGED table empty) or clean-restart desync '
 '(PGSS stats_reset newer than max(sample_ts) in last_state). '
 'Caller must hold pg_try_advisory_xact_lock before calling. '
@@ -5512,9 +5520,9 @@ begin
                         updated_at = EXCLUDED.updated_at;
                 return;
             end if;
-            perform pgfr_record._rebuild_statement_last_state();
+            perform pgfr_record._rebuild_statement_last_state(v_sample_ts);
             -- After rebuild, re-read last_sample_ts for boundary check below
-            select MAX(sample_ts) into v_last_sample_ts from pgfr_record.statement_last_state;
+            select max(sample_ts) into v_last_sample_ts from pgfr_record.statement_last_state;
         end if;
 
         -- -------------------------------------------------------------------
@@ -5540,8 +5548,16 @@ begin
                         updated_at = EXCLUDED.updated_at;
                 return;
             end if;
-            perform pgfr_record._rebuild_statement_last_state();
-            select MAX(sample_ts) into v_last_sample_ts from pgfr_record.statement_last_state;
+            perform pgfr_record._rebuild_statement_last_state(v_sample_ts);
+            select max(sample_ts) into v_last_sample_ts from pgfr_record.statement_last_state;
+
+            -- B2 fix: after boundary rebuild last_state reflects current calls,
+            -- so the sparse WHERE would match nothing and insert 0 rows —
+            -- silently losing the baseline for the new day's partition.
+            -- Force all rows to match by poisoning calls to -1 so pss.calls > ls.calls
+            -- is always true on the next INSERT. This ensures a full baseline row
+            -- is written to statement_snapshots_v2 at the start of every daily partition.
+            update pgfr_record.statement_last_state set calls = -1;
         end if;
 
         -- -------------------------------------------------------------------
@@ -5549,7 +5565,7 @@ begin
         --         Insert condition: new queryid OR calls increased OR calls dropped
         --         (calls drop = pg_stat_statements_reset() partial/full reset)
         -- -------------------------------------------------------------------
-        -- pg18 renamed blk_read_time -> shared_blk_read_time in pg_stat_statements.
+        -- PG17 renamed blk_read_time -> shared_blk_read_time in pg_stat_statements.
         -- case when cannot reference a nonexistent column even in a dead branch,
         -- so use execute with the correct column name chosen at runtime.
         execute format(
@@ -5583,8 +5599,8 @@ begin
                 or pss.calls > ls.calls
                 or pss.calls < ls.calls
             $q$,
-            case when v_pg_version >= 18 then 'shared_blk_read_time'  else 'blk_read_time'  end,
-            case when v_pg_version >= 18 then 'shared_blk_write_time' else 'blk_write_time' end
+            case when v_pg_version >= 17 then 'shared_blk_read_time'  else 'blk_read_time'  end,
+            case when v_pg_version >= 17 then 'shared_blk_write_time' else 'blk_write_time' end
         ) using p_snapshot_id, v_sample_ts, v_dealloc_warning;
 
         get diagnostics v_rows_inserted = ROW_COUNT;
@@ -5773,7 +5789,6 @@ declare
     v_sample_ts  int4;
     v_top_n      integer;
     v_dbid       oid;
-    v_last_count bigint;
 begin
     -- ensure partition exists for today (O(1) on happy path)
     perform pgfr_record._ensure_partition('table_snapshots_v2', current_date,
@@ -5786,8 +5801,8 @@ begin
 
     begin
         -- crash recovery: if UNLOGGED table was truncated on restart, rebuild it
-        select count(*) into v_last_count from pgfr_record.table_last_state;
-        if v_last_count = 0 then
+        -- exists() short-circuits on first row — avoids full scan on every tick
+        if not exists (select 1 from pgfr_record.table_last_state) then
             perform pgfr_record._rebuild_table_last_state();
         end if;
 
@@ -6020,7 +6035,6 @@ language plpgsql as $$
 declare
     v_sample_ts  int4;
     v_dbid       oid;
-    v_last_count bigint;
 begin
     -- ensure partition exists for today (O(1) on happy path)
     perform pgfr_record._ensure_partition('index_snapshots_v2', current_date,
@@ -6032,8 +6046,8 @@ begin
 
     begin
         -- crash recovery: if UNLOGGED table was truncated on restart, rebuild it
-        select count(*) into v_last_count from pgfr_record.index_last_state;
-        if v_last_count = 0 then
+        -- exists() short-circuits on first row — avoids full scan on every tick
+        if not exists (select 1 from pgfr_record.index_last_state) then
             perform pgfr_record._rebuild_index_last_state();
         end if;
 
@@ -6121,6 +6135,7 @@ create or replace function pgfr_record._ensure_partition(
 )
 returns void
 language plpgsql
+security invoker  -- caller must have DDL rights; prevents privilege escalation via %s injection
 as $$
 declare
     v_partition_name text;
@@ -6422,13 +6437,12 @@ declare
     v_id   int4;
 begin
     v_slot := pgfr_record.ring_current_slot();
+    -- single round-trip: INSERT ... ON CONFLICT DO UPDATE (no-op) RETURNING id
+    -- avoids a separate SELECT when the row already exists
     execute format(
         'insert into pgfr_record.query_map_%s (query_id) values ($1) '
-        'on conflict (query_id) do nothing',
-        v_slot
-    ) using p_query_id;
-    execute format(
-        'select id from pgfr_record.query_map_%s where query_id = $1',
+        'on conflict (query_id) do update set query_id = excluded.query_id '
+        'returning id',
         v_slot
     ) into v_id using p_query_id;
     return v_id;
@@ -6438,11 +6452,17 @@ $$;
 comment on function pgfr_record._register_query(int8) is
 'Register a query_id in the current slot''s query_map table. '
 'Returns the local int4 id (sequence-based, resets on TRUNCATE at rotation). '
+'Single round-trip via INSERT ... ON CONFLICT DO UPDATE RETURNING id. '
 'Called during sample_ring() to build the query_map ids used in data encoding.';
 
 -- 7. rotate_ring() — N-partition TRUNCATE rotation
 -- Advisory lock prevents concurrent rotation from pg_cron overlap.
 -- Advances current_slot first, then TRUNCATEs the oldest partition.
+--
+-- Uses pg_try_advisory_xact_lock (not session-level pg_try_advisory_lock) so
+-- the lock is automatically released on transaction end — including on errors.
+-- Session-level locks inside exception handlers are not released when the
+-- handler's subtransaction rolls back, causing lock leaks on unexpected errors.
 create or replace function pgfr_record.rotate_ring()
 returns text
 language plpgsql
@@ -6455,21 +6475,21 @@ declare
     v_rotation_period interval;
     v_rotated_at      timestamptz;
 begin
-    if not pg_try_advisory_lock(hashtext('pgfr_rotate_ring')) then
+    -- xact-level: auto-released on commit or rollback — no explicit unlock needed
+    if not pg_try_advisory_xact_lock(hashtext('pgfr_rotate_ring')) then
         return 'skipped: another rotation in progress';
     end if;
 
+    select current_slot, num_slots, rotation_period, rotated_at
+    into v_old_slot, v_num_slots, v_rotation_period, v_rotated_at
+    from pgfr_record.ring_config where singleton;
+
+    -- idempotent: skip if rotated too recently (within 90% of rotation_period)
+    if now() - v_rotated_at < v_rotation_period * 0.9 then
+        return 'skipped: rotated too recently at ' || v_rotated_at::text;
+    end if;
+
     begin
-        select current_slot, num_slots, rotation_period, rotated_at
-        into v_old_slot, v_num_slots, v_rotation_period, v_rotated_at
-        from pgfr_record.ring_config where singleton;
-
-        -- idempotent: skip if rotated too recently (within 90% of rotation_period)
-        if now() - v_rotated_at < v_rotation_period * 0.9 then
-            perform pg_advisory_unlock(hashtext('pgfr_rotate_ring'));
-            return 'skipped: rotated too recently at ' || v_rotated_at::text;
-        end if;
-
         set local lock_timeout = '2s';
 
         v_new_slot      := (v_old_slot + 1) % v_num_slots;
@@ -6491,15 +6511,13 @@ begin
             v_truncate_slot
         );
 
-        perform pg_advisory_unlock(hashtext('pgfr_rotate_ring'));
         return format('rotated: slot %s -> %s, truncated slot %s',
                       v_old_slot, v_new_slot, v_truncate_slot);
 
     exception when lock_not_available then
-        perform pg_advisory_unlock(hashtext('pgfr_rotate_ring'));
+        -- xact-level advisory lock released automatically on rollback
         return 'failed: lock timeout on truncate, will retry next cycle';
     when others then
-        perform pg_advisory_unlock(hashtext('pgfr_rotate_ring'));
         raise;
     end;
 end;

@@ -19,7 +19,7 @@
 
 begin;
 
-select plan(26);
+select plan(28);
 
 -- ---------------------------------------------------------------------------
 -- Helper: ensure a clean test partition exists
@@ -608,6 +608,75 @@ select ok(
     ),
     'Old statement_snapshots table must still exist (dual-write approach)'
 );
+
+-- ===========================================================================
+-- T27: boundary tick inserts baseline rows (B2 regression guard)
+--      Simulate a day boundary by backdating statement_last_state.sample_ts
+--      and verify that _collect_statement_snapshot_sparse() inserts rows.
+-- ===========================================================================
+do $$
+declare
+    v_count_before int;
+    v_count_after  int;
+    v_snapshot_id  bigint := -77777;
+begin
+    if not exists (select 1 from pg_extension where extname = 'pg_stat_statements') then
+        raise notice 'T27: pg_stat_statements not available — skipping boundary tick test';
+        return;
+    end if;
+
+    -- backdate all last_state rows to yesterday (simulate day boundary)
+    if exists (select 1 from pgfr_record.statement_last_state) then
+        update pgfr_record.statement_last_state
+        set sample_ts = extract(epoch from (now() - interval '26 hours') - pgfr_record.epoch())::int4;
+    else
+        perform pgfr_record._rebuild_statement_last_state();
+        update pgfr_record.statement_last_state
+        set sample_ts = extract(epoch from (now() - interval '26 hours') - pgfr_record.epoch())::int4;
+    end if;
+
+    select count(*)::int into v_count_before
+    from pgfr_record.statement_snapshots_v2
+    where snapshot_id = v_snapshot_id;
+
+    perform pgfr_record._collect_statement_snapshot_sparse(v_snapshot_id);
+
+    select count(*)::int into v_count_after
+    from pgfr_record.statement_snapshots_v2
+    where snapshot_id = v_snapshot_id;
+
+    if v_count_after = 0 then
+        raise exception
+            'T27: boundary tick inserted 0 rows — baseline lost for new day partition (B2 bug)';
+    end if;
+end $$;
+
+select ok(true, 'T27: boundary tick inserts baseline rows into new day partition (B2 regression guard)');
+
+-- ===========================================================================
+-- T28: _rebuild_statement_last_state() stores caller-supplied sample_ts (B7 guard)
+-- ===========================================================================
+do $$
+declare
+    v_expected_ts int4 := 12345678;
+    v_actual_ts   int4;
+begin
+    if not exists (select 1 from pg_extension where extname = 'pg_stat_statements') then
+        raise notice 'T28: pg_stat_statements not available — skipping';
+        return;
+    end if;
+
+    perform pgfr_record._rebuild_statement_last_state(v_expected_ts);
+
+    select max(sample_ts) into v_actual_ts from pgfr_record.statement_last_state;
+
+    if v_actual_ts <> v_expected_ts then
+        raise exception 'T28: _rebuild_statement_last_state stored ts % instead of supplied %',
+            v_actual_ts, v_expected_ts;
+    end if;
+end $$;
+
+select ok(true, 'T28: _rebuild_statement_last_state stores caller-supplied p_sample_ts (B7 guard)');
 
 -- Cleanup: rebuild last_state to a clean state after tests
 do $$
