@@ -87,7 +87,7 @@
 - [x] rewrite `archive_ring_samples()` — reads v2 ring tables; decodes lock_type via `lock_type_map`
 - [x] `sample_ring()` v2 — adds activity INSERT (top 25 sessions by query age) to existing wait+lock sampling
 - [x] update `_analyze/install.sql` reader functions — `recent_waits_current()`, `recent_activity_current()`, `recent_locks_current()`, `wait_summary()` all rewritten for v2 ring tables (commit `4885dd2`)
-- [ ] benchmark: ring bloat before vs after on Hetzner VM with real pgbench load
+- [x] benchmark: ring bloat before vs after — `BENCH_RING.md` (commit `c374c8e`): 95% size reduction, 0 dead tuples vs 543, 175 bytes/row measured
 
 ### Phase 3 — partition all remaining tables
 
