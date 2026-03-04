@@ -29,6 +29,7 @@
 
 ## Table of Contents
 
+- [Implementation Progress](#implementation-progress)
 1. [Background and Motivation](#1-background-and-motivation)
 2. [Scope and Constraints](#2-scope-and-constraints)
 3. [Storage Analysis: Where the Problem Actually Is](#3-storage-analysis-where-the-problem-actually-is)
@@ -39,6 +40,51 @@
 8. [Retention Model](#8-retention-model)
 9. [Benchmarking and Testing](#9-benchmarking-and-testing)
 10. [Open Questions](#10-open-questions)
+
+---
+
+## Implementation Progress
+
+### Phase 1 — sparse inserts, partition infrastructure, v2 readers (target: `storage-overhaul-spec`)
+
+- [x] `statement_snapshots_v2` — partitioned table with `int4 sample_ts` (PR #5)
+- [x] `table_snapshots_v2`, `index_snapshots_v2` — partitioned tables (PR #5)
+- [x] `_ensure_partition()` — O(1) happy path, UTC-enforced bounds, B-tree + BRIN indexes (PR #6)
+- [x] `_partition_inventory()` — scans `pg_inherits`, returns bounds + empty flag (PR #6)
+- [x] `truncate_old_partitions()` — nightly GC, 50 ms lock timeout, best-effort (PR #7)
+- [x] `drop_ancient_partitions()` — monthly GC, empty-only, 2× retention guard (PR #7)
+- [x] `partition_gc_health` view (PR #7)
+- [x] `statement_last_state` — HOT-friendly side table, fillfactor=90 (PR #8)
+- [x] `_rebuild_statement_last_state()` — advisory lock, ANALYZE after rebuild (PR #8)
+- [x] `_collect_statement_snapshot_sparse()` — clean-restart desync trap, dealloc tracking (PR #9)
+- [x] `table_last_state`, `index_last_state` + sparse collectors (PR #12)
+- [x] `migrate_phase1.sql` — migration path for existing installations (PR #10, Q2 resolved)
+- [x] `pgfr_analyze` v2-native reader functions — `statement_activity_v2`, `table_activity_v2`, `index_activity_v2` (PR #11, Q2b resolved)
+- [x] pg_cron jobs: `pgfr-truncate-old-partitions`, `pgfr-drop-ancient-partitions` (PR #7)
+- [x] pgTAP suite — 688 assertions across 20 test files
+- [x] PG18 compatibility — `pg_stat_wal` column removals, PGSS column renames, `_ensure_partition()` index fix (commit `c5b7f52`)
+
+### Phase 2 — ring buffer redesign (target: `storage-overhaul` on fork of `dventimisupabase/pg-flight-recorder`)
+
+- [ ] fork `dventimisupabase/pg-flight-recorder` — confirm destination: `NikolayS/` or `postgres-ai/`
+- [ ] `sample_ring_config` singleton table
+- [ ] `wait_samples_0/1/2`, `activity_samples_0/1/2`, `lock_samples_0/1/2` — LOGGED, TRUNCATE-rotated
+- [ ] `wait_event_map`, `query_map_0/1/2` — independent dictionaries (not shared with `pg_ash`)
+- [ ] `rotate_ring()` — advisory-lock protected, slot advance + TRUNCATE oldest partition
+- [ ] `current_slot()` helper
+- [ ] rewrite `sample()` — INSERT-based, reads `pg_stat_activity` into ring partitions
+- [ ] rewrite `flush_ring_to_aggregates()` — reads from named partitions via `EXECUTE`
+- [ ] rewrite `archive_ring_samples()` — drains ring into archive before rotation
+- [ ] update `_analyze/install.sql` reader views — query ring partitions by name
+- [ ] pgTAP suite for Phase 2
+- [ ] benchmark: ring bloat before vs after on Hetzner VM with real pgbench load
+
+### Phase 3 — partition all remaining tables
+
+- [ ] `snapshots`, `replication_snapshots`, `vacuum_progress_snapshots` — daily partitions
+- [ ] archive tables — daily partitions
+- [ ] `retention_archive_days` GC wired to `truncate_old_partitions()` / `drop_ancient_partitions()`
+- [ ] deprecate old config key aliases
 
 ---
 
