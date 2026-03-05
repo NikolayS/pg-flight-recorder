@@ -167,12 +167,11 @@ LANGUAGE sql STABLE AS $$
         ('default', 'enable_progress', 'true', 'Collect operation progress'),
         ('default', 'snapshot_based_collection', 'true', 'Use snapshot-based collection (67% fewer locks)'),
         ('default', 'retention_snapshots_days', '30', 'Keep 30 days of snapshot data'),
-        ('default', 'aggregate_retention_days', '7', 'Keep 7 days of aggregate data'),
+        ('default', 'retention_archive_days', '7', 'Keep 7 days of aggregate data'),
         ('default', 'table_stats_enabled', 'true', 'Collect table statistics'),
         ('default', 'index_stats_enabled', 'true', 'Collect index statistics'),
         ('default', 'config_snapshots_enabled', 'true', 'Collect config snapshots'),
         ('default', 'db_role_config_snapshots_enabled', 'true', 'Collect database/role config overrides'),
-        ('default', 'retention_samples_days', '7', 'Keep raw samples 7 days'),
         ('default', 'retention_statements_days', '30', 'Keep statement snapshots 30 days'),
         ('default', 'retention_collection_stats_days', '30', 'Keep collection stats 30 days'),
         ('default', 'section_timeout_ms', '250', 'Per-section timeout 250ms'),
@@ -194,12 +193,11 @@ LANGUAGE sql STABLE AS $$
         ('production_safe', 'snapshot_based_collection', 'true', 'Snapshot-based collection'),
         ('production_safe', 'lock_timeout_ms', '50', 'Faster lock timeout (50ms vs 100ms)'),
         ('production_safe', 'retention_snapshots_days', '30', 'Keep 30 days'),
-        ('production_safe', 'aggregate_retention_days', '7', 'Keep 7 days'),
+        ('production_safe', 'retention_archive_days', '7', 'Keep 7 days'),
         ('production_safe', 'table_stats_enabled', 'true', 'Collect table statistics'),
         ('production_safe', 'index_stats_enabled', 'true', 'Collect index statistics'),
         ('production_safe', 'config_snapshots_enabled', 'true', 'Collect config snapshots'),
         ('production_safe', 'db_role_config_snapshots_enabled', 'true', 'Collect database/role config overrides'),
-        ('production_safe', 'retention_samples_days', '7', 'Keep raw samples 7 days'),
         ('production_safe', 'retention_statements_days', '30', 'Keep statement snapshots 30 days'),
         ('production_safe', 'retention_collection_stats_days', '30', 'Keep collection stats 30 days'),
         ('production_safe', 'section_timeout_ms', '200', 'Faster per-section timeout'),
@@ -218,12 +216,11 @@ LANGUAGE sql STABLE AS $$
         ('development', 'enable_progress', 'true', 'Collect progress data'),
         ('development', 'snapshot_based_collection', 'true', 'Snapshot-based collection'),
         ('development', 'retention_snapshots_days', '7', 'Keep 7 days (less than production)'),
-        ('development', 'aggregate_retention_days', '3', 'Keep 3 days'),
+        ('development', 'retention_archive_days', '3', 'Keep 3 days'),
         ('development', 'table_stats_enabled', 'true', 'Collect table statistics'),
         ('development', 'index_stats_enabled', 'true', 'Collect index statistics'),
         ('development', 'config_snapshots_enabled', 'true', 'Collect config snapshots'),
         ('development', 'db_role_config_snapshots_enabled', 'true', 'Collect database/role config overrides'),
-        ('development', 'retention_samples_days', '3', 'Keep raw samples 3 days'),
         ('development', 'retention_statements_days', '7', 'Keep statement snapshots 7 days'),
         ('development', 'retention_collection_stats_days', '7', 'Keep collection stats 7 days'),
         ('development', 'section_timeout_ms', '250', 'Standard per-section timeout'),
@@ -244,7 +241,7 @@ LANGUAGE sql STABLE AS $$
         ('troubleshooting', 'snapshot_based_collection', 'true', 'Snapshot-based collection'),
         ('troubleshooting', 'statements_top_n', '100', 'Collect top 100 queries'),
         ('troubleshooting', 'retention_snapshots_days', '7', 'Keep 7 days'),
-        ('troubleshooting', 'aggregate_retention_days', '3', 'Keep 3 days'),
+        ('troubleshooting', 'retention_archive_days', '3', 'Keep 3 days'),
         ('troubleshooting', 'table_stats_enabled', 'true', 'Collect table statistics'),
         ('troubleshooting', 'index_stats_enabled', 'true', 'Collect index statistics'),
         ('troubleshooting', 'config_snapshots_enabled', 'true', 'Collect config snapshots'),
@@ -255,7 +252,6 @@ LANGUAGE sql STABLE AS $$
         ('troubleshooting', 'storm_lookback_interval', '30 minutes', 'Shorter lookback window'),
         ('troubleshooting', 'regression_baseline_days', '3', 'Shorter baseline for faster detection'),
         ('troubleshooting', 'regression_lookback_interval', '30 minutes', 'Shorter lookback window'),
-        ('troubleshooting', 'retention_samples_days', '7', 'Keep raw samples 7 days'),
         ('troubleshooting', 'retention_statements_days', '7', 'Keep statement snapshots 7 days'),
         ('troubleshooting', 'retention_collection_stats_days', '7', 'Keep collection stats 7 days'),
         ('troubleshooting', 'section_timeout_ms', '500', 'Longer per-section timeout for detailed collection'),
@@ -276,12 +272,11 @@ LANGUAGE sql STABLE AS $$
         ('minimal_overhead', 'snapshot_based_collection', 'true', 'Snapshot-based collection'),
         ('minimal_overhead', 'statements_enabled', 'false', 'Disable pg_stat_statements collection'),
         ('minimal_overhead', 'retention_snapshots_days', '7', 'Keep 7 days'),
-        ('minimal_overhead', 'aggregate_retention_days', '3', 'Keep 3 days'),
+        ('minimal_overhead', 'retention_archive_days', '3', 'Keep 3 days'),
         ('minimal_overhead', 'table_stats_enabled', 'false', 'Disable table statistics (reduce overhead)'),
         ('minimal_overhead', 'index_stats_enabled', 'false', 'Disable index statistics (reduce overhead)'),
         ('minimal_overhead', 'config_snapshots_enabled', 'true', 'Collect config snapshots (low overhead)'),
         ('minimal_overhead', 'db_role_config_snapshots_enabled', 'true', 'Collect database/role config overrides'),
-        ('minimal_overhead', 'retention_samples_days', '3', 'Keep raw samples 3 days'),
         ('minimal_overhead', 'retention_statements_days', '7', 'Keep statement snapshots 7 days'),
         ('minimal_overhead', 'retention_collection_stats_days', '7', 'Keep collection stats 7 days'),
         ('minimal_overhead', 'section_timeout_ms', '100', 'Very fast per-section timeout'),
@@ -481,14 +476,66 @@ $$;
 
 -- Retrieves configuration values by key from the config table with optional fallback
 -- Returns the provided default value if the key does not exist
-CREATE OR REPLACE FUNCTION pgfr_record._get_config(p_key TEXT, p_default TEXT DEFAULT NULL)
-RETURNS TEXT
-LANGUAGE sql STABLE AS $$
-    SELECT COALESCE(
-        (SELECT value FROM pgfr_record.config WHERE key = p_key),
+-- Deprecated config key aliases → canonical keys.
+-- _get_config() resolves these transparently (reads canonical key if old key absent).
+-- install() / migrate_config_keys() renames them in the config table on first run.
+CREATE OR REPLACE FUNCTION pgfr_record._resolve_config_key(p_key text)
+returns text language sql immutable as $$
+    select case p_key
+        when 'retention_samples_days'   then 'retention_archive_days'
+        when 'aggregate_retention_days' then 'retention_archive_days'
+        else p_key
+    end
+$$;
+comment on function pgfr_record._resolve_config_key(text) is
+'Maps deprecated config key aliases to canonical keys. Add new aliases here as keys are renamed.';
+
+create or replace function pgfr_record._get_config(p_key text, p_default text default null)
+returns text language sql stable as $$
+    select coalesce(
+        -- try the key as given (supports explicit old-key lookup during transition)
+        (select value from pgfr_record.config where key = p_key),
+        -- fall back to canonical key if different (alias resolution)
+        case when pgfr_record._resolve_config_key(p_key) <> p_key then
+            (select value from pgfr_record.config
+             where key = pgfr_record._resolve_config_key(p_key))
+        end,
         p_default
     )
 $$;
+comment on function pgfr_record._get_config(text, text) is
+'Reads config value by key. Deprecated key aliases are transparently resolved to canonical keys via _resolve_config_key().';
+
+-- Migrates old config key names to canonical names in the live config table.
+-- Safe to run multiple times (idempotent). Called automatically by install().
+create or replace function pgfr_record.migrate_config_keys()
+returns table(old_key text, new_key text, action text)
+language plpgsql as $$
+declare
+    v_alias text[];
+    v_aliases text[][] := array[
+        ['retention_samples_days',   'retention_archive_days'],
+        ['aggregate_retention_days', 'retention_archive_days']
+    ];
+begin
+    foreach v_alias slice 1 in array v_aliases loop
+        if exists (select 1 from pgfr_record.config where key = v_alias[1]) then
+            if exists (select 1 from pgfr_record.config where key = v_alias[2]) then
+                -- canonical key already present: remove the old alias row
+                delete from pgfr_record.config where key = v_alias[1];
+                return query select v_alias[1], v_alias[2], 'deleted (canonical exists)'::text;
+            else
+                -- canonical key absent: rename
+                update pgfr_record.config set key = v_alias[2] where key = v_alias[1];
+                return query select v_alias[1], v_alias[2], 'renamed to canonical'::text;
+            end if;
+        else
+            return query select v_alias[1], v_alias[2], 'not present (skipped)'::text;
+        end if;
+    end loop;
+end $$;
+comment on function pgfr_record.migrate_config_keys() is
+'Renames deprecated config key aliases to canonical names in pgfr_record.config. Idempotent.';
 
 -- Returns the configured ring buffer slot count, clamped to valid range (72-2880)
 -- Default is 120 slots for backwards compatibility

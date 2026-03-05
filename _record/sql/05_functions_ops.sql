@@ -27,7 +27,7 @@ BEGIN
         v_stats_cutoff := now() - p_retain_interval;
     ELSE
         v_samples_retention_days := COALESCE(
-            pgfr_record._get_config('retention_samples_days', '7')::integer,
+            pgfr_record._get_config('retention_archive_days', '7')::integer,
             7
         );
         v_snapshots_retention_days := COALESCE(
@@ -770,7 +770,7 @@ BEGIN
       AND success = true
       AND skipped = false
       AND started_at > now() - interval '24 hours';
-    v_retention_samples := pgfr_record._get_config('retention_samples_days', '7')::integer;
+    v_retention_samples := pgfr_record._get_config('retention_archive_days', '7')::integer;
     v_retention_snapshots := pgfr_record._get_config('retention_snapshots_days', '30')::integer;
     IF v_avg_sample_ms > 1000 AND v_mode = 'normal' THEN
         RETURN QUERY SELECT
@@ -791,7 +791,7 @@ BEGIN
             'Storage'::text,
             'Reduce sample retention period'::text,
             format('High sample count (%s) with %s day retention', v_sample_count, v_retention_samples),
-            format('UPDATE pgfr_record.config SET value = ''3'' WHERE key = ''retention_samples_days'';')::text;
+            format('UPDATE pgfr_record.config SET value = ''3'' WHERE key = ''retention_archive_days'';')::text;
     END IF;
     IF NOT FOUND THEN
         RETURN QUERY SELECT

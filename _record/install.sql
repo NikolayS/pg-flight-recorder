@@ -25,3 +25,7 @@
 \i sql/07_sparse_collectors.sql
 \i sql/08_ring_buffer_v2.sql
 \i sql/09_phase3_snapshots_v2.sql
+
+-- Post-install: migrate deprecated config key aliases to canonical names.
+-- Idempotent; safe on fresh install (keys won't exist yet) and upgrades.
+select old_key, new_key, action from pgfr_record.migrate_config_keys();
