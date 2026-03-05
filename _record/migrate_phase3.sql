@@ -249,7 +249,8 @@ select
 from pgfr_record.vacuum_progress_snapshots_legacy;
 
 comment on view pgfr_record.vacuum_progress_snapshots is
-'Backwards-compatible view: UNION ALL of vacuum_progress_snapshots_v2 and _legacy. Read-only.';
+'Backwards-compatible view: UNION ALL of vacuum_progress_snapshots_v2 and _legacy. Read-only. '
+'Note: relname is null for v2 rows (derive via relid::regclass). Filter on relid for cross-version queries.';
 
 -- statement_snapshots — v2 has sparse columns; legacy has delta columns not in v2
 -- expose minimal common set useful for cross-version queries
