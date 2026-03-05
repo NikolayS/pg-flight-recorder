@@ -95,7 +95,7 @@
 - [x] archive tables (`activity_samples_archive_v2`, `lock_samples_archive_v2`, `wait_samples_archive_v2`) — daily RANGE partitions (commit `90f2884`)
 - [x] `retention_archive_days` GC wired — `_partition_inventory()` uses two-tier cutoffs: `retention_snapshots_days` for snapshot tables, `retention_archive_days` for `*_archive_v2` tables (commit `90f2884`)
 - [x] disable `cleanup()` DELETE paths — `pgfr_cleanup` cron replaced with partition GC jobs in migration (commit `cc57d51`)
-- [ ] deprecate old config key aliases
+- [x] deprecate old config key aliases — _resolve_config_key(), migrate_config_keys(), install.sql auto-migration (commit 780e41f)
 - [x] migration script — `migrate_phase3.sql` + `migrate_phase3_rollback.sql` (commit `cc57d51`):
   - pre-flight: verifies v2 tables exist and have data
   - renames 11 legacy tables to `_legacy`
