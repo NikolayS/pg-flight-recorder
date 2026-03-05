@@ -427,6 +427,11 @@ begin
 
     v_id := nextval('pgfr_record.snapshots_v2_snapshot_id_seq');
 
+    -- default pg_version when caller omits it (e.g. bare INSERT INTO snapshots (captured_at))
+    if new.pg_version is null then
+        new.pg_version := pgfr_record._pg_version();
+    end if;
+
     insert into pgfr_record.snapshots_v2 (
         snapshot_id, sample_ts, captured_at, pg_version,
         wal_records, wal_fpi, wal_bytes, wal_write_time, wal_sync_time,

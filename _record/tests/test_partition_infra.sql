@@ -9,7 +9,7 @@
 --
 -- NOTE on test isolation:
 --   _partition_inventory() scans ALL pgfr_record partitioned tables.
---   This test creates its own test table (statement_snapshots_v2) to stay
+--   This test creates its own test table (_test_partition_probe_v2) to stay
 --   hermetic, then drops it at the end.
 --
 --   Retention window is temporarily lowered to 7 days so that "expired" and
@@ -33,7 +33,7 @@ update pgfr_record.config set value = '7' where key = 'retention_snapshots_days'
 -- Create a test partitioned parent table mirroring SPEC.md §7.1 structure.
 -- Must include (queryid, dbid, userid, toplevel, sample_ts) because
 -- _ensure_partition() hardcodes those columns in the B-tree index.
-create table pgfr_record.statement_snapshots_v2 (
+create table pgfr_record._test_partition_probe_v2 (
     sample_ts  int4    not null,
     queryid    bigint  not null,
     dbid       oid     not null,
@@ -92,15 +92,15 @@ select is(
 -- 2. _ensure_partition()
 -- =============================================================================
 
--- T3: Creates partition for statement_snapshots_v2 for 2026-02-15 without error
+-- T3: Creates partition for _test_partition_probe_v2 for 2026-02-15 without error
 select lives_ok(
-    $$ select pgfr_record._ensure_partition('statement_snapshots_v2', '2026-02-15'::date) $$,
-    'T3: _ensure_partition() should create partition for statement_snapshots_v2 on 2026-02-15 without error'
+    $$ select pgfr_record._ensure_partition('_test_partition_probe_v2', '2026-02-15'::date) $$,
+    'T3: _ensure_partition() should create partition for _test_partition_probe_v2 on 2026-02-15 without error'
 );
 
 -- T4: Idempotent — calling twice does not error
 select lives_ok(
-    $$ select pgfr_record._ensure_partition('statement_snapshots_v2', '2026-02-15'::date) $$,
+    $$ select pgfr_record._ensure_partition('_test_partition_probe_v2', '2026-02-15'::date) $$,
     'T4: _ensure_partition() is idempotent — second call should not error'
 );
 
@@ -111,9 +111,9 @@ select ok(
         from pg_catalog.pg_class c
         join pg_catalog.pg_namespace n on n.oid = c.relnamespace
         where n.nspname = 'pgfr_record'
-          and c.relname = 'statement_snapshots_v2_2026_02_15'
+          and c.relname = '_test_partition_probe_v2_2026_02_15'
     ),
-    'T5: Created partition should be named statement_snapshots_v2_2026_02_15'
+    'T5: Created partition should be named _test_partition_probe_v2_2026_02_15'
 );
 
 -- T6: B-tree index exists on (queryid, dbid, userid, toplevel, sample_ts DESC)
@@ -125,10 +125,10 @@ select ok(
         join pg_catalog.pg_class tc on tc.oid = ix.indrelid
         join pg_catalog.pg_namespace n on n.oid = tc.relnamespace
         where n.nspname = 'pgfr_record'
-          and tc.relname = 'statement_snapshots_v2_2026_02_15'
-          and ic.relname = 'statement_snapshots_v2_2026_02_15_btree_idx'
+          and tc.relname = '_test_partition_probe_v2_2026_02_15'
+          and ic.relname = '_test_partition_probe_v2_2026_02_15_btree_idx'
     ),
-    'T6: B-tree index statement_snapshots_v2_2026_02_15_btree_idx should exist'
+    'T6: B-tree index _test_partition_probe_v2_2026_02_15_btree_idx should exist'
 );
 
 -- T7: BRIN index exists on (sample_ts)
@@ -140,11 +140,11 @@ select ok(
         join pg_catalog.pg_class tc on tc.oid = ix.indrelid
         join pg_catalog.pg_namespace n on n.oid = tc.relnamespace
         where n.nspname = 'pgfr_record'
-          and tc.relname = 'statement_snapshots_v2_2026_02_15'
-          and ic.relname = 'statement_snapshots_v2_2026_02_15_brin_idx'
+          and tc.relname = '_test_partition_probe_v2_2026_02_15'
+          and ic.relname = '_test_partition_probe_v2_2026_02_15_brin_idx'
           and ic.relam = (select oid from pg_catalog.pg_am where amname = 'brin')
     ),
-    'T7: BRIN index statement_snapshots_v2_2026_02_15_brin_idx should exist with brin access method'
+    'T7: BRIN index _test_partition_probe_v2_2026_02_15_brin_idx should exist with brin access method'
 );
 
 -- T7b: BRIN index has pages_per_range = 8
@@ -156,7 +156,7 @@ select ok(
         join pg_catalog.pg_options_to_table(ic.reloptions) o(option_name, option_value)
           on o.option_name = 'pages_per_range' and o.option_value = '8'
         where n.nspname = 'pgfr_record'
-          and ic.relname = 'statement_snapshots_v2_2026_02_15_brin_idx'
+          and ic.relname = '_test_partition_probe_v2_2026_02_15_brin_idx'
     ),
     'T7b: BRIN index should have pages_per_range = 8'
 );
@@ -166,7 +166,7 @@ select is(
     (
         select bound_start
         from pgfr_record._partition_inventory()
-        where partition_name = 'statement_snapshots_v2_2026_02_15'
+        where partition_name = '_test_partition_probe_v2_2026_02_15'
     ),
     extract(epoch from ('2026-02-15 00:00:00+00'::timestamptz - pgfr_record.epoch()))::int4,
     'T8: bound_start should equal seconds from epoch() to midnight UTC of 2026-02-15'
@@ -177,13 +177,13 @@ select is(
 -- 3. _partition_inventory()
 -- =============================================================================
 
--- T9: Returns rows for statement_snapshots_v2
+-- T9: Returns rows for _test_partition_probe_v2
 select ok(
     exists (
         select 1 from pgfr_record._partition_inventory()
-        where parent_table = 'statement_snapshots_v2'
+        where parent_table = '_test_partition_probe_v2'
     ),
-    'T9: _partition_inventory() should return rows for statement_snapshots_v2'
+    'T9: _partition_inventory() should return rows for _test_partition_probe_v2'
 );
 
 -- T10: is_empty = true for a freshly created empty partition
@@ -191,19 +191,19 @@ select ok(
     (
         select is_empty
         from pgfr_record._partition_inventory()
-        where partition_name = 'statement_snapshots_v2_2026_02_15'
+        where partition_name = '_test_partition_probe_v2_2026_02_15'
     ),
     'T10: Freshly created partition should have is_empty = true (pg_relation_size = 0)'
 );
 
 -- T11: Today's partition should not be expired (retention=7 days, today's upper bound is tomorrow)
-select pgfr_record._ensure_partition('statement_snapshots_v2', current_date);
+select pgfr_record._ensure_partition('_test_partition_probe_v2', current_date);
 
 select ok(
     not (
         select is_expired
         from pgfr_record._partition_inventory()
-        where partition_name = 'statement_snapshots_v2_' || to_char(current_date, 'YYYY_MM_DD')
+        where partition_name = '_test_partition_probe_v2_' || to_char(current_date, 'YYYY_MM_DD')
     ),
     'T11: Today''s partition should have is_expired = false'
 );
@@ -211,13 +211,13 @@ select ok(
 -- T12: is_expired = true for an old partition.
 -- With retention=7, the cutoff = today - 7 days.
 -- Create a partition for 2026-01-10: upper bound = 2026-01-11, well within expiry range.
-select pgfr_record._ensure_partition('statement_snapshots_v2', '2026-01-10'::date);
+select pgfr_record._ensure_partition('_test_partition_probe_v2', '2026-01-10'::date);
 
 select ok(
     (
         select is_expired
         from pgfr_record._partition_inventory()
-        where partition_name = 'statement_snapshots_v2_2026_01_10'
+        where partition_name = '_test_partition_probe_v2_2026_01_10'
     ),
     'T12: Partition for 2026-01-10 should have is_expired = true with retention=7 days'
 );
@@ -227,7 +227,7 @@ select is(
     (
         select bound_end
         from pgfr_record._partition_inventory()
-        where partition_name = 'statement_snapshots_v2_2026_02_15'
+        where partition_name = '_test_partition_probe_v2_2026_02_15'
     ),
     extract(epoch from ('2026-02-16 00:00:00+00'::timestamptz - pgfr_record.epoch()))::int4,
     'T13: bound_end should equal seconds from epoch() to midnight UTC of 2026-02-16'
@@ -247,7 +247,7 @@ select lives_ok(
 
 -- T15: After inserting data into an expired partition, truncate_old_partitions() empties it.
 -- Insert a row into the 2026-01-10 partition (sample_ts within that day's range).
-insert into pgfr_record.statement_snapshots_v2 (sample_ts, queryid, dbid, userid, toplevel, calls)
+insert into pgfr_record._test_partition_probe_v2 (sample_ts, queryid, dbid, userid, toplevel, calls)
 values (
     extract(epoch from ('2026-01-10 12:00:00+00'::timestamptz - pgfr_record.epoch()))::int4,
     12345, 16384, 10, true, 1
@@ -258,7 +258,7 @@ select ok(
     not (
         select is_empty
         from pgfr_record._partition_inventory()
-        where partition_name = 'statement_snapshots_v2_2026_01_10'
+        where partition_name = '_test_partition_probe_v2_2026_01_10'
     ),
     'T15 pre-check: Expired partition for 2026-01-10 should have data before truncation'
 );
@@ -272,7 +272,7 @@ select ok(
     (
         select is_empty
         from pgfr_record._partition_inventory()
-        where partition_name = 'statement_snapshots_v2_2026_01_10'
+        where partition_name = '_test_partition_probe_v2_2026_01_10'
     ),
     'T15: After truncate_old_partitions(), expired partition should be is_empty = true'
 );
@@ -286,7 +286,7 @@ select ok(
 -- With retention=7, ancient cutoff = today - 14 days ≈ 2026-02-12.
 -- Create a partition for 2026-01-05 (ancient: upper bound 2026-01-06, < 2026-02-12),
 -- and leave it empty so drop_ancient_partitions() will target it.
-select pgfr_record._ensure_partition('statement_snapshots_v2', '2026-01-05'::date);
+select pgfr_record._ensure_partition('_test_partition_probe_v2', '2026-01-05'::date);
 
 select lives_ok(
     $$ select pgfr_record.drop_ancient_partitions() $$,
@@ -298,16 +298,16 @@ select ok(
         select 1 from pg_catalog.pg_class c
         join pg_catalog.pg_namespace n on n.oid = c.relnamespace
         where n.nspname = 'pgfr_record'
-          and c.relname = 'statement_snapshots_v2_2026_01_05'
+          and c.relname = '_test_partition_probe_v2_2026_01_05'
     ),
     'T16b: ancient empty partition should be physically dropped'
 );
 
 -- T17: Does not drop a NON-EMPTY ancient partition.
 -- Create another ancient partition (2026-01-03) and insert data into it.
-select pgfr_record._ensure_partition('statement_snapshots_v2', '2026-01-03'::date);
+select pgfr_record._ensure_partition('_test_partition_probe_v2', '2026-01-03'::date);
 
-insert into pgfr_record.statement_snapshots_v2 (sample_ts, queryid, dbid, userid, toplevel, calls)
+insert into pgfr_record._test_partition_probe_v2 (sample_ts, queryid, dbid, userid, toplevel, calls)
 values (
     extract(epoch from ('2026-01-03 08:00:00+00'::timestamptz - pgfr_record.epoch()))::int4,
     99999, 16384, 10, true, 5
@@ -324,7 +324,7 @@ select ok(
         from pg_catalog.pg_class c
         join pg_catalog.pg_namespace n on n.oid = c.relnamespace
         where n.nspname = 'pgfr_record'
-          and c.relname = 'statement_snapshots_v2_2026_01_03'
+          and c.relname = '_test_partition_probe_v2_2026_01_03'
     ),
     'T17: Non-empty ancient partition should NOT be dropped by drop_ancient_partitions()'
 );
@@ -342,14 +342,14 @@ select lives_ok(
 
 -- T19: pending_truncation = 0 when all data is current.
 -- Truncate the 2026-01-03 partition manually, then verify pending_truncation = 0.
-truncate pgfr_record.statement_snapshots_v2_2026_01_03;
+truncate pgfr_record._test_partition_probe_v2_2026_01_03;
 
 select ok(
     coalesce(
         (
             select pending_truncation
             from pgfr_record.partition_gc_health
-            where parent_table = 'statement_snapshots_v2'
+            where parent_table = '_test_partition_probe_v2'
         ),
         0
     ) = 0,
@@ -360,7 +360,7 @@ select ok(
 -- =============================================================================
 -- TEARDOWN
 -- =============================================================================
-drop table pgfr_record.statement_snapshots_v2 cascade;
+drop table pgfr_record._test_partition_probe_v2 cascade;
 
 select * from finish();
 rollback;

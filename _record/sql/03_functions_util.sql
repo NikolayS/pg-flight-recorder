@@ -490,19 +490,43 @@ $$;
 comment on function pgfr_record._resolve_config_key(text) is
 'Maps deprecated config key aliases to canonical keys. Add new aliases here as keys are renamed.';
 
-create or replace function pgfr_record._get_config(p_key text, p_default text default null)
-returns text language sql stable as $$
-    select coalesce(
-        -- try the key as given (supports explicit old-key lookup during transition)
-        (select value from pgfr_record.config where key = p_key),
-        -- fall back to canonical key if different (alias resolution)
-        case when pgfr_record._resolve_config_key(p_key) <> p_key then
-            (select value from pgfr_record.config
-             where key = pgfr_record._resolve_config_key(p_key))
-        end,
-        p_default
-    )
+-- Reverse alias map: canonical key → deprecated keys that may hold its value.
+-- Used by _get_config() to find a value stored under an old key name.
+create or replace function pgfr_record._alias_keys_for(p_canonical text)
+returns text[] language sql immutable as $$
+    select case p_canonical
+        when 'retention_archive_days' then array['retention_samples_days', 'aggregate_retention_days']
+        else array[]::text[]
+    end
 $$;
+comment on function pgfr_record._alias_keys_for(text) is
+'Returns deprecated key names that map to a given canonical key. Complement of _resolve_config_key().';
+
+create or replace function pgfr_record._get_config(p_key text, p_default text default null)
+returns text language plpgsql stable as $$
+declare
+    v_val   text;
+    v_alias text;
+begin
+    -- 1. exact key match
+    select value into v_val from pgfr_record.config where key = p_key;
+    if found then return v_val; end if;
+
+    -- 2. canonical → alias fallback (e.g. 'retention_archive_days' stored as old key)
+    foreach v_alias in array pgfr_record._alias_keys_for(p_key) loop
+        select value into v_val from pgfr_record.config where key = v_alias;
+        if found then return v_val; end if;
+    end loop;
+
+    -- 3. old key → canonical fallback (e.g. caller uses 'retention_samples_days')
+    if pgfr_record._resolve_config_key(p_key) <> p_key then
+        select value into v_val from pgfr_record.config
+        where key = pgfr_record._resolve_config_key(p_key);
+        if found then return v_val; end if;
+    end if;
+
+    return p_default;
+end $$;
 comment on function pgfr_record._get_config(text, text) is
 'Reads config value by key. Deprecated key aliases are transparently resolved to canonical keys via _resolve_config_key().';
 

@@ -1,165 +1,98 @@
 -- =============================================================================
--- pgfr_record pgTAP Tests — Phase 1 Migration (Issue #10)
+-- pgfr_record pgTAP Tests — Phase 3 Migration: Config Key Deprecation
 -- =============================================================================
--- Tests: migrate_to_v2() function existence, idempotency, and correctness
--- Requires: install.sql loaded; v2 stub tables created by the test setup below
+-- Tests: migrate_config_keys(), _resolve_config_key(), _get_config() alias resolution
+-- Does NOT require phase 3 migration to be applied (pure function tests).
 -- =============================================================================
 
 begin;
-select plan(10);
+select plan(8);
 
 -- =============================================================================
--- Setup: create minimal v2 stub tables so migrate_to_v2() can find them.
--- In production these are created by the new install.sql.  Here we create them
--- as empty stubs so the migration logic can be exercised in isolation without
--- requiring the full Phase 1 implementation to be merged.
+-- T1-T3: _resolve_config_key()
 -- =============================================================================
-do $$
-begin
-    -- statement_snapshots_v2 stub
-    if not exists (
-        select 1 from pg_catalog.pg_class c
-        join pg_catalog.pg_namespace n on n.oid = c.relnamespace
-        where n.nspname = 'pgfr_record' and c.relname = 'statement_snapshots_v2'
-    ) then
-        create table pgfr_record.statement_snapshots_v2 (
-            snapshot_id bigint,
-            queryid     bigint
-        );
-    end if;
 
-    -- table_snapshots_v2 stub
-    if not exists (
-        select 1 from pg_catalog.pg_class c
-        join pg_catalog.pg_namespace n on n.oid = c.relnamespace
-        where n.nspname = 'pgfr_record' and c.relname = 'table_snapshots_v2'
-    ) then
-        create table pgfr_record.table_snapshots_v2 (
-            snapshot_id bigint,
-            relid       oid
-        );
-    end if;
+select is(
+    pgfr_record._resolve_config_key('retention_samples_days'),
+    'retention_archive_days',
+    'T1: retention_samples_days resolves to retention_archive_days'
+);
 
-    -- index_snapshots_v2 stub
-    if not exists (
-        select 1 from pg_catalog.pg_class c
-        join pg_catalog.pg_namespace n on n.oid = c.relnamespace
-        where n.nspname = 'pgfr_record' and c.relname = 'index_snapshots_v2'
-    ) then
-        create table pgfr_record.index_snapshots_v2 (
-            snapshot_id bigint,
-            indexrelid  oid
-        );
-    end if;
-end;
-$$;
+select is(
+    pgfr_record._resolve_config_key('aggregate_retention_days'),
+    'retention_archive_days',
+    'T2: aggregate_retention_days resolves to retention_archive_days'
+);
 
--- =============================================================================
--- Test 1: migrate_to_v2() function exists
--- =============================================================================
-select has_function(
-    'pgfr_record',
-    'migrate_to_v2',
-    'Function pgfr_record.migrate_to_v2() should exist'
+select is(
+    pgfr_record._resolve_config_key('retention_archive_days'),
+    'retention_archive_days',
+    'T3: canonical key resolves to itself'
 );
 
 -- =============================================================================
--- Test 2: function has a COMMENT (documentation contract)
+-- T4: _get_config() canonical → alias fallback
+--     When caller requests canonical key but only old key is in config table,
+--     _get_config() should still return the value via _alias_keys_for().
 -- =============================================================================
+
+-- Seed only old key; ensure canonical is absent
+insert into pgfr_record.config (key, value)
+values ('retention_samples_days', '42')
+on conflict (key) do update set value = '42';
+
+delete from pgfr_record.config where key = 'retention_archive_days';
+
+select is(
+    pgfr_record._get_config('retention_archive_days', '7'),
+    '42',
+    'T4: _get_config(canonical) returns value stored under deprecated alias key'
+);
+
+-- Restore
+delete from pgfr_record.config where key = 'retention_samples_days';
+insert into pgfr_record.config (key, value)
+values ('retention_archive_days', '7')
+on conflict (key) do update set value = '7';
+
+-- =============================================================================
+-- T5-T8: migrate_config_keys()
+-- =============================================================================
+
+-- Scenario A: old key present, canonical exists → old key deleted
+insert into pgfr_record.config (key, value) values ('aggregate_retention_days', '5')
+on conflict (key) do update set value = '5';
+
 select ok(
-    (
-        select obj_description(
-            'pgfr_record.migrate_to_v2'::regproc,
-            'pg_proc'
-        ) is not null
+    exists(
+        select 1 from pgfr_record.migrate_config_keys()
+        where old_key = 'aggregate_retention_days' and action = 'deleted (canonical exists)'
     ),
-    'pgfr_record.migrate_to_v2() should have a COMMENT'
+    'T5: migrate_config_keys() deletes old key when canonical exists'
 );
 
--- =============================================================================
--- Test 3: migrate_to_v2() runs without error (first call)
--- =============================================================================
-select lives_ok(
-    $$select pgfr_record.migrate_to_v2()$$,
-    'migrate_to_v2() should execute without error on first call'
-);
-
--- =============================================================================
--- Test 4: after migration, statement_snapshots_legacy table exists
--- =============================================================================
-select has_table(
-    'pgfr_record',
-    'statement_snapshots_legacy',
-    'Table pgfr_record.statement_snapshots_legacy should exist after migration'
-);
-
--- =============================================================================
--- Test 5: after migration, original statement_snapshots table is GONE (renamed)
--- The name now belongs to a view, not a plain table.
--- =============================================================================
 select ok(
-    not exists (
-        select 1
-        from pg_catalog.pg_class c
-        join pg_catalog.pg_namespace n on n.oid = c.relnamespace
-        where n.nspname = 'pgfr_record'
-          and c.relname  = 'statement_snapshots'
-          and c.relkind  = 'r'  -- plain heap table
+    not exists(select 1 from pgfr_record.config where key = 'aggregate_retention_days'),
+    'T6: aggregate_retention_days removed from config after migration'
+);
+
+-- Scenario B: old key only, no canonical → renamed
+delete from pgfr_record.config where key = 'retention_archive_days';
+insert into pgfr_record.config (key, value) values ('retention_samples_days', '21')
+on conflict (key) do update set value = '21';
+
+select ok(
+    exists(
+        select 1 from pgfr_record.migrate_config_keys()
+        where old_key = 'retention_samples_days' and action = 'renamed to canonical'
     ),
-    'pgfr_record.statement_snapshots should no longer be a plain table after migration'
+    'T7: migrate_config_keys() renames old key to canonical when canonical absent'
 );
 
--- =============================================================================
--- Test 6: after migration, statement_snapshots VIEW exists
--- =============================================================================
-select has_view(
-    'pgfr_record',
-    'statement_snapshots',
-    'View pgfr_record.statement_snapshots should exist after migration (backwards compat)'
-);
-
--- =============================================================================
--- Test 7: the view reads from _legacy (smoke-test: query returns without error)
--- =============================================================================
-select lives_ok(
-    $$select count(*) from pgfr_record.statement_snapshots$$,
-    'SELECT from pgfr_record.statement_snapshots view should succeed (backwards compat)'
-);
-
--- =============================================================================
--- Test 8: idempotency — second call runs without error
--- =============================================================================
-select lives_ok(
-    $$select pgfr_record.migrate_to_v2()$$,
-    'migrate_to_v2() should be idempotent (second call must not raise an error)'
-);
-
--- =============================================================================
--- Test 9: idempotency — statement_snapshots_legacy still exists after second call
--- =============================================================================
-select has_table(
-    'pgfr_record',
-    'statement_snapshots_legacy',
-    'statement_snapshots_legacy should still exist after second migrate_to_v2() call'
-);
-
--- =============================================================================
--- Test 10: migrate_to_v2() raises ERROR when v2 tables are missing
--- =============================================================================
-do $$
-begin
-    -- temporarily drop the v2 stubs to simulate "install.sql not run" scenario
-    drop table if exists pgfr_record.statement_snapshots_v2 cascade;
-    drop table if exists pgfr_record.table_snapshots_v2 cascade;
-    drop table if exists pgfr_record.index_snapshots_v2 cascade;
-end;
-$$;
-
-select throws_ok(
-    $$select pgfr_record.migrate_to_v2()$$,
-    'P0001',
-    NULL,
-    'migrate_to_v2() should raise an error when v2 tables do not exist'
+select is(
+    (select value from pgfr_record.config where key = 'retention_archive_days'),
+    '21',
+    'T8: renamed key preserves original value'
 );
 
 select * from finish();

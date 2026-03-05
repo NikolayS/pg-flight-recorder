@@ -124,9 +124,12 @@ begin
     -- rebuild to a clean baseline
     perform pgfr_record._rebuild_table_last_state();
 
-    -- artificially lower seq_scan in last_state to force change detection
+    -- Corrupt n_dead_tup in last_state to force change detection.
+    -- n_dead_tup is in the change-detection predicate but NOT in the activity-score
+    -- top_n subquery, so the table stays in the top-N selection.
+    -- Live value >= 0 > -999999 always triggers "is distinct from" detection.
     update pgfr_record.table_last_state
-    set seq_scan = greatest(0, coalesce(seq_scan, 0) - 999999)
+    set n_dead_tup = -999999
     where relid = (select relid from pgfr_record.table_last_state limit 1);
 
     v_sample_ts := extract(epoch from now() - pgfr_record.epoch())::int4;
@@ -249,9 +252,11 @@ begin
     -- rebuild to a clean baseline
     perform pgfr_record._rebuild_index_last_state();
 
-    -- artificially lower idx_scan in last_state to force change detection
+    -- Corrupt idx_tup_read in last_state to force change detection.
+    -- idx_tup_read is in the change-detection predicate.
+    -- Live value >= 0 > -999999 always triggers "is distinct from" detection.
     update pgfr_record.index_last_state
-    set idx_scan = greatest(0, coalesce(idx_scan, 0) - 999999)
+    set idx_tup_read = -999999
     where indexrelid = (select indexrelid from pgfr_record.index_last_state limit 1);
 
     v_sample_ts := extract(epoch from now() - pgfr_record.epoch())::int4;
