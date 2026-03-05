@@ -40,9 +40,7 @@ declare
         'index_snapshots',
         'activity_samples_archive',
         'lock_samples_archive',
-        'wait_samples_archive',
-        'table_snapshots',
-        'index_snapshots'
+        'wait_samples_archive'
     ];
 begin
     foreach v_tbl in array v_tables loop
