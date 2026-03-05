@@ -17,7 +17,7 @@ set -euo pipefail
 CONTAINER="${1:-pgfr_record_test-17}"
 DB="${2:-pgfr_bench}"
 PSQL="docker exec -i ${CONTAINER} psql -U postgres -d ${DB}"
-TICKS=200
+TICKS=2000
 
 echo "=== pg-flight-recorder: Storage Comparison ==="
 echo "Container : ${CONTAINER}"
@@ -143,7 +143,7 @@ begin
                 wait_event = 'Event' || row_num::text,
                 state = 'active',
                 count = 1 + (random() * 10)::int
-            where slot_id = v_slot and row_num < 20;
+            where slot_id = v_slot and row_num < 100;
     end loop;
 end;
 \$\$;
@@ -217,7 +217,7 @@ begin
                 wait_event = 'Event' || row_num::text,
                 state = 'active',
                 count = 1 + (random() * 10)::int
-            where slot_id = v_slot and row_num < 20;
+            where slot_id = v_slot and row_num < 100;
     end loop;
 end;
 \$\$;
@@ -285,7 +285,7 @@ begin
                     (array[''Lock'',''LWLock'',''IO'',''Client''])[1 + (n %% 4)],
                     ''active'',
                     1 + (random() * 10)::int
-             from generate_series(1, 8 + (random()*12)::int) as n',
+             from generate_series(1, 80 + (random()*40)::int) as n',
             v_slot
         );
 
