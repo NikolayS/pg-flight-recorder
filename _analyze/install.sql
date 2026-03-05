@@ -5111,18 +5111,20 @@ begin
 
     return query
     with
-    -- earliest snapshot per query in range
+    -- last known state BEFORE the window opens — the baseline for delta computation.
+    -- Using sample_ts < v_ts_start (not >= v_ts_start) is critical: picking the first
+    -- row inside the window produces deltas relative to an arbitrary mid-window
+    -- snapshot, understating activity for queries that ran before the window opened.
     snap_start as (
         select distinct on (ss.queryid, ss.dbid, ss.userid, ss.toplevel)
             ss.queryid, ss.dbid, ss.userid, ss.toplevel,
             ss.calls, ss.total_exec_time, ss.rows,
             ss.shared_blks_hit, ss.shared_blks_read, ss.temp_blks_written
         from pgfr_record.statement_snapshots_v2 ss
-        where ss.sample_ts >= v_ts_start
-          and ss.sample_ts <  v_ts_end
-        order by ss.queryid, ss.dbid, ss.userid, ss.toplevel, ss.sample_ts asc
+        where ss.sample_ts < v_ts_start
+        order by ss.queryid, ss.dbid, ss.userid, ss.toplevel, ss.sample_ts desc
     ),
-    -- latest snapshot per query in range
+    -- latest snapshot per query inside the window — the end of the delta
     snap_end as (
         select distinct on (se.queryid, se.dbid, se.userid, se.toplevel)
             se.queryid, se.dbid, se.userid, se.toplevel,
@@ -5210,16 +5212,17 @@ begin
 
     return query
     with
+    -- last known state before the window — baseline for delta computation
     snap_start as (
         select distinct on (ts.relid, ts.dbid)
             ts.relid, ts.dbid,
             ts.n_tup_ins, ts.n_tup_upd, ts.n_tup_del, ts.n_tup_hot_upd,
             ts.seq_scan, ts.idx_scan
         from pgfr_record.table_snapshots_v2 ts
-        where ts.sample_ts >= v_ts_start
-          and ts.sample_ts <  v_ts_end
-        order by ts.relid, ts.dbid, ts.sample_ts asc
+        where ts.sample_ts < v_ts_start
+        order by ts.relid, ts.dbid, ts.sample_ts desc
     ),
+    -- latest snapshot inside the window — end of the delta
     snap_end as (
         select distinct on (te.relid, te.dbid)
             te.relid, te.dbid,
@@ -5300,15 +5303,16 @@ begin
 
     return query
     with
+    -- last known state before the window — baseline for delta computation
     snap_start as (
         select distinct on (si.relid, si.indexrelid, si.dbid)
             si.relid, si.indexrelid, si.dbid,
             si.idx_scan, si.idx_tup_read, si.idx_tup_fetch
         from pgfr_record.index_snapshots_v2 si
-        where si.sample_ts >= v_ts_start
-          and si.sample_ts <  v_ts_end
-        order by si.relid, si.indexrelid, si.dbid, si.sample_ts asc
+        where si.sample_ts < v_ts_start
+        order by si.relid, si.indexrelid, si.dbid, si.sample_ts desc
     ),
+    -- latest snapshot inside the window — end of the delta
     snap_end as (
         select distinct on (ie.relid, ie.indexrelid, ie.dbid)
             ie.relid, ie.indexrelid, ie.dbid,
