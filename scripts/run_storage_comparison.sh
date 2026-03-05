@@ -17,7 +17,7 @@ set -euo pipefail
 CONTAINER="${1:-pgfr_record_test-17}"
 DB="${2:-pgfr_bench}"
 PSQL="docker exec -i ${CONTAINER} psql -U postgres -d ${DB}"
-TICKS=2000
+TICKS=10000
 
 echo "=== pg-flight-recorder: Storage Comparison ==="
 echo "Container : ${CONTAINER}"
@@ -46,7 +46,7 @@ create unlogged table pgfr_bloat_demo.samples_ring (
 
 create unlogged table pgfr_bloat_demo.wait_samples_ring (
     slot_id          integer references pgfr_bloat_demo.samples_ring(slot_id) on delete cascade,
-    row_num          integer not null check (row_num >= 0 and row_num < 100),
+    row_num          integer not null check (row_num >= 0 and row_num < 1000),
     wait_event_type  text,
     wait_event       text,
     state            text,
@@ -61,7 +61,7 @@ select g, now(), 0 from generate_series(0, 119) as g;
 insert into pgfr_bloat_demo.wait_samples_ring (slot_id, row_num)
 select s, r
 from generate_series(0, 119) as s
-cross join generate_series(0, 99) as r;
+cross join generate_series(0, 999) as r;
 
 create extension if not exists pgstattuple;
 
@@ -143,7 +143,7 @@ begin
                 wait_event = 'Event' || row_num::text,
                 state = 'active',
                 count = 1 + (random() * 10)::int
-            where slot_id = v_slot and row_num < 100;
+            where slot_id = v_slot and row_num < 1000;
     end loop;
 end;
 \$\$;
@@ -171,7 +171,7 @@ select g, now(), 0 from generate_series(0, 119) as g;
 insert into pgfr_bloat_demo.wait_samples_ring (slot_id, row_num)
 select s, r
 from generate_series(0, 119) as s
-cross join generate_series(0, 99) as r;
+cross join generate_series(0, 999) as r;
 -- ensure stats are fresh
 vacuum analyze pgfr_bloat_demo.wait_samples_ring;
 SQL
@@ -217,7 +217,7 @@ begin
                 wait_event = 'Event' || row_num::text,
                 state = 'active',
                 count = 1 + (random() * 10)::int
-            where slot_id = v_slot and row_num < 100;
+            where slot_id = v_slot and row_num < 1000;
     end loop;
 end;
 \$\$;
@@ -285,7 +285,7 @@ begin
                     (array[''Lock'',''LWLock'',''IO'',''Client''])[1 + (n %% 4)],
                     ''active'',
                     1 + (random() * 10)::int
-             from generate_series(1, 80 + (random()*40)::int) as n',
+             from generate_series(1, 800 + (random()*400)::int) as n',
             v_slot
         );
 
