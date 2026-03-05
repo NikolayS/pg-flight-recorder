@@ -156,15 +156,18 @@ language plpgsql
 stable
 as $$
 declare
-    v_partstrat      char;
-    v_partnatts      int2;
-    v_atttypid       oid;
-    v_retention_days int;
-    v_cutoff_ts      timestamptz;
-    v_cutoff         int4;
-    v_ancient_cutoff int4;
-    v_parent_oid     oid;
-    v_parent_name    text;
+    v_partstrat          char;
+    v_partnatts          int2;
+    v_atttypid           oid;
+    v_retention_days     int;
+    v_cutoff_ts          timestamptz;
+    v_cutoff             int4;
+    v_ancient_cutoff     int4;
+    v_arc_retention_days int;
+    v_arc_cutoff         int4;
+    v_arc_ancient_cutoff int4;
+    v_parent_oid         oid;
+    v_parent_name        text;
 begin
     -- -------------------------------------------------------------------------
     -- Runtime assertions: verify all pgfr_record partitioned tables conform.
@@ -231,22 +234,42 @@ begin
     end loop;
 
     -- -------------------------------------------------------------------------
-    -- Compute retention cutoffs
+    -- Compute retention cutoffs — two tiers:
+    --   snapshot tier: retention_snapshots_days (default 30)
+    --     tables: statement_snapshots_v2, table_snapshots_v2, index_snapshots_v2,
+    --             snapshots_v2, replication_snapshots_v2, vacuum_progress_snapshots_v2
+    --   archive tier: retention_archive_days (default 7)
+    --     tables: activity_samples_archive_v2, lock_samples_archive_v2,
+    --             wait_samples_archive_v2
     -- -------------------------------------------------------------------------
     v_retention_days := coalesce(
         pgfr_record._get_config('retention_snapshots_days', '30')::int,
         30
     );
 
-    -- Cutoff for is_expired: upper bound < now - retention_days (UTC)
+    -- Snapshot-tier cutoffs
     v_cutoff_ts := date_trunc('day', now() at time zone 'UTC') at time zone 'UTC'
                    - (v_retention_days || ' days')::interval;
-    v_cutoff    := extract(epoch from (v_cutoff_ts - pgfr_record.epoch()))::int4;
-
-    -- Cutoff for is_ancient: upper bound < now - 2× retention_days (UTC)
+    v_cutoff        := extract(epoch from (v_cutoff_ts - pgfr_record.epoch()))::int4;
     v_ancient_cutoff := extract(epoch from
         (v_cutoff_ts - (v_retention_days || ' days')::interval - pgfr_record.epoch())
     )::int4;
+
+    -- Archive-tier cutoffs (shorter retention)
+    v_arc_retention_days := coalesce(
+        pgfr_record._get_config('retention_archive_days', '7')::int,
+        7
+    );
+    v_arc_cutoff := extract(epoch from (
+        date_trunc('day', now() at time zone 'UTC') at time zone 'UTC'
+        - (v_arc_retention_days || ' days')::interval
+        - pgfr_record.epoch()
+    ))::int4;
+    v_arc_ancient_cutoff := extract(epoch from (
+        date_trunc('day', now() at time zone 'UTC') at time zone 'UTC'
+        - (v_arc_retention_days * 2 || ' days')::interval
+        - pgfr_record.epoch()
+    ))::int4;
 
     -- -------------------------------------------------------------------------
     -- Main catalog query with defensive bound parsing via LATERAL join.
@@ -262,10 +285,18 @@ begin
         parsed.bounds[1]::int4                            as bound_start,
         -- Upper int4 bound (second capture group)
         parsed.bounds[2]::int4                            as bound_end,
-        -- is_expired: partition upper bound falls before retention cutoff
-        (parsed.bounds[2]::int4 < v_cutoff)              as is_expired,
-        -- is_ancient: partition upper bound falls before 2× retention cutoff
-        (parsed.bounds[2]::int4 < v_ancient_cutoff)      as is_ancient,
+        -- is_expired: uses archive-tier cutoff for archive_v2 tables, snapshot-tier for rest
+        (parsed.bounds[2]::int4 < case
+            when parent.relname like '%_archive_v2'
+            then v_arc_cutoff
+            else v_cutoff
+        end)                                              as is_expired,
+        -- is_ancient: same tier selection
+        (parsed.bounds[2]::int4 < case
+            when parent.relname like '%_archive_v2'
+            then v_arc_ancient_cutoff
+            else v_ancient_cutoff
+        end)                                              as is_ancient,
         -- is_empty: authoritative — pg_relation_size = 0.
         -- Never reltuples: lags until ANALYZE, unreliable post-TRUNCATE.
         (pg_catalog.pg_relation_size(child.oid) = 0)     as is_empty
@@ -298,13 +329,15 @@ $$;
 
 comment on function pgfr_record._partition_inventory() is
 'Catalog-based partition introspection for pgfr_record schema. '
-'Runtime assertions: verifies RANGE partitioning, single column, int4 key type — raises exception on violation. '
-'is_empty uses pg_relation_size(oid)=0 ONLY (authoritative after TRUNCATE; never reltuples which lags). '
-'LATERAL join evaluates regexp_match once per row (not 5×) for bound parsing efficiency. '
-'Defensive regex parsing of pg_get_expr() output — fails loudly on unexpected format. '
-'Assumes single-column RANGE partitioning on int4 throughout. '
-'Used by truncate_old_partitions(), drop_ancient_partitions(), and partition_gc_health view. '
-'See blueprints/SPEC.md §7.2.';
+'Two retention tiers: snapshot-tier (retention_snapshots_days, default 30) for v2 snapshot '
+'and sparse-collector tables; archive-tier (retention_archive_days, default 7) for '
+'*_archive_v2 tables. is_expired/is_ancient use the correct cutoff per parent table name. '
+'Runtime assertions: verifies RANGE partitioning, single column, int4 key type — raises loudly. '
+'LIST-partitioned ring buffer tables (wait_samples, lock_samples, activity_samples) are skipped '
+'— their GC is handled by rotate_ring() TRUNCATE. '
+'is_empty: pg_relation_size(oid)=0 ONLY (authoritative post-TRUNCATE; never reltuples). '
+'Used by truncate_old_partitions(), drop_ancient_partitions(), partition_gc_health view. '
+'See SPEC §7.2.';
 
 -- -----------------------------------------------------------------------------
 -- 4. pgfr_record.truncate_old_partitions()

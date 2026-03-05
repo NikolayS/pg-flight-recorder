@@ -368,3 +368,146 @@ end $$;
 --------------------------------------------------------------------------------
 -- End of Phase 3
 --------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- Phase 3b: daily-partitioned archive tables
+--
+-- activity_samples_archive, lock_samples_archive, wait_samples_archive get
+-- v2 daily-partitioned twins. Same design as snapshots_v2: no BIGSERIAL PK,
+-- no FK, sample_ts int4, RANGE-partitioned by day. GC via truncate/drop.
+--
+-- The archive_ring_samples() function (08_ring_buffer_v2.sql) is updated
+-- below to dual-write into both legacy and v2 archive tables.
+--------------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- activity_samples_archive_v2
+-- ---------------------------------------------------------------------------
+create table if not exists pgfr_record.activity_samples_archive_v2 (
+    sample_ts           int4        not null,
+    captured_at         timestamptz not null,
+    pid                 integer,
+    usename             text,
+    application_name    text,
+    client_addr         inet,
+    backend_type        text,
+    state               text,
+    wait_event_type     text,
+    wait_event          text,
+    backend_start       timestamptz,
+    xact_start          timestamptz,
+    query_start         timestamptz,
+    state_change        timestamptz,
+    query_preview       text
+) partition by range (sample_ts);
+
+comment on table pgfr_record.activity_samples_archive_v2 is
+'Activity samples archive, daily RANGE-partitioned by int4 sample_ts. '
+'No BIGSERIAL PK, no FK. Retention via truncate_old_partitions() / drop_ancient_partitions(). '
+'Dual-written by archive_ring_samples_v2() alongside legacy table during transition.';
+
+-- ---------------------------------------------------------------------------
+-- lock_samples_archive_v2
+-- ---------------------------------------------------------------------------
+create table if not exists pgfr_record.lock_samples_archive_v2 (
+    sample_ts               int4    not null,
+    captured_at             timestamptz not null,
+    blocked_pid             integer,
+    blocked_user            text,
+    blocked_app             text,
+    blocked_query_preview   text,
+    blocked_duration        interval,
+    blocking_pid            integer,
+    blocking_user           text,
+    blocking_app            text,
+    blocking_query_preview  text,
+    lock_type               text,
+    locked_relation_oid     oid
+) partition by range (sample_ts);
+
+comment on table pgfr_record.lock_samples_archive_v2 is
+'Lock samples archive, daily RANGE-partitioned by int4 sample_ts. '
+'No BIGSERIAL PK, no FK. Retention via truncate_old_partitions() / drop_ancient_partitions().';
+
+-- ---------------------------------------------------------------------------
+-- wait_samples_archive_v2
+-- ---------------------------------------------------------------------------
+create table if not exists pgfr_record.wait_samples_archive_v2 (
+    sample_ts           int4    not null,
+    captured_at         timestamptz not null,
+    backend_type        text,
+    wait_event_type     text,
+    wait_event          text,
+    state               text,
+    count               integer
+) partition by range (sample_ts);
+
+comment on table pgfr_record.wait_samples_archive_v2 is
+'Wait event samples archive, daily RANGE-partitioned by int4 sample_ts. '
+'No BIGSERIAL PK, no FK. Retention via truncate_old_partitions() / drop_ancient_partitions().';
+
+-- ---------------------------------------------------------------------------
+-- Pre-create today + tomorrow partitions for all three archive v2 tables
+-- ---------------------------------------------------------------------------
+do $$
+begin
+    perform pgfr_record._ensure_partition('activity_samples_archive_v2', current_date,
+        'sample_ts desc, pid');
+    perform pgfr_record._ensure_partition('lock_samples_archive_v2', current_date,
+        'sample_ts desc, blocked_pid');
+    perform pgfr_record._ensure_partition('wait_samples_archive_v2', current_date,
+        'sample_ts desc, wait_event_type, wait_event');
+    perform pgfr_record._ensure_partition('activity_samples_archive_v2', current_date + 1,
+        'sample_ts desc, pid');
+    perform pgfr_record._ensure_partition('lock_samples_archive_v2', current_date + 1,
+        'sample_ts desc, blocked_pid');
+    perform pgfr_record._ensure_partition('wait_samples_archive_v2', current_date + 1,
+        'sample_ts desc, wait_event_type, wait_event');
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Wire archive v2 tables into the precreate-partitions cron job
+-- (replaces the job created in the snapshots_v2 section above)
+-- ---------------------------------------------------------------------------
+do $$
+begin
+    -- remove the old job and recreate with expanded scope
+    perform cron.unschedule('pgfr-precreate-partitions')
+    where exists (select 1 from cron.job where jobname = 'pgfr-precreate-partitions');
+
+    perform cron.schedule(
+        'pgfr-precreate-partitions',
+        '55 23 * * *',
+        'do $x$ begin '
+        'perform pgfr_record._ensure_partition(''snapshots_v2'', current_date + 1, ''snapshot_id, sample_ts desc''); '
+        'perform pgfr_record._ensure_partition(''replication_snapshots_v2'', current_date + 1, ''snapshot_id, sample_ts desc''); '
+        'perform pgfr_record._ensure_partition(''vacuum_progress_snapshots_v2'', current_date + 1, ''snapshot_id, sample_ts desc''); '
+        'perform pgfr_record._ensure_partition(''statement_snapshots_v2'', current_date + 1); '
+        'perform pgfr_record._ensure_partition(''table_snapshots_v2'', current_date + 1, ''relid, dbid, sample_ts desc''); '
+        'perform pgfr_record._ensure_partition(''index_snapshots_v2'', current_date + 1, ''indexrelid, dbid, sample_ts desc''); '
+        'perform pgfr_record._ensure_partition(''activity_samples_archive_v2'', current_date + 1, ''sample_ts desc, pid''); '
+        'perform pgfr_record._ensure_partition(''lock_samples_archive_v2'', current_date + 1, ''sample_ts desc, blocked_pid''); '
+        'perform pgfr_record._ensure_partition(''wait_samples_archive_v2'', current_date + 1, ''sample_ts desc, wait_event_type, wait_event''); '
+        'end; $x$'
+    );
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- retention_archive_days: wire GC for archive v2 tables
+-- truncate_old_partitions() and drop_ancient_partitions() pick up all
+-- pgfr_record RANGE-partitioned tables automatically via _partition_inventory().
+-- Add retention_archive_days config key if not present.
+-- ---------------------------------------------------------------------------
+insert into pgfr_record.config (key, value, updated_at)
+values ('retention_archive_days', '7', now())
+on conflict (key) do nothing;
+
+comment on column pgfr_record.config.key is
+'retention_archive_days: days to keep archive_v2 partitions before TRUNCATE (default 7). '
+'truncate_old_partitions() uses retention_snapshots_days for snapshot-tier; '
+'archive-tier uses retention_archive_days. '
+'drop_ancient_partitions() drops empty shells older than 2× respective retention.';
+
+--------------------------------------------------------------------------------
+-- End of Phase 3b
+--------------------------------------------------------------------------------
