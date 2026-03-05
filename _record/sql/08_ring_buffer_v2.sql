@@ -378,7 +378,9 @@ begin
                 end
             ) as wait_event,
             sa.backend_type,
-            sa.query_id
+            -- query_id added in PG14; use NULL on older versions
+            case when (select current_setting('server_version_num')::int >= 140000)
+                 then sa.query_id else null::bigint end as query_id
         from pg_stat_activity sa
         where sa.state in ('active', 'idle in transaction', 'idle in transaction (aborted)')
           and (sa.backend_type = 'client backend'
@@ -408,9 +410,9 @@ begin
 
     -- -----------------------------------------------------------------------
     -- Read 2: register query_ids into current slot's query_map
-    -- 50k hard cap per partition to prevent unbounded growth (PG14/15 volatile
-    -- SQL comments can flood query_map; PG16+ normalises comments).
+    -- query_id in pg_stat_activity requires PG14+; skip on PG13.
     -- -----------------------------------------------------------------------
+    if (select current_setting('server_version_num')::int) >= 140000 then
     execute format(
         'insert into pgfr_record.query_map_%s (query_id) '
         'select distinct sa.query_id '
@@ -427,6 +429,7 @@ begin
         'on conflict (query_id) do nothing',
         v_slot, v_slot
     ) using v_include_bg;
+    end if; -- PG14+ query_id guard
 
     -- -----------------------------------------------------------------------
     -- Reads 3+4: per-database encoding — same CTE pattern as ash.take_sample()
@@ -686,7 +689,8 @@ begin
                 end
             ) as wait_event,
             sa.backend_type,
-            sa.query_id
+            case when (select current_setting('server_version_num')::int >= 140000)
+                 then sa.query_id else null::bigint end as query_id
         from pg_stat_activity sa
         where sa.state in ('active', 'idle in transaction', 'idle in transaction (aborted)')
           and (sa.backend_type = 'client backend'
@@ -715,7 +719,9 @@ begin
 
     -- -------------------------------------------------------------------------
     -- read 2: register query_ids into current slot's query_map (50k hard cap)
+    -- query_id in pg_stat_activity requires PG14+; skip on PG13.
     -- -------------------------------------------------------------------------
+    if (select current_setting('server_version_num')::int) >= 140000 then
     execute format(
         'insert into pgfr_record.query_map_%s (query_id) '
         'select distinct sa.query_id '
@@ -732,6 +738,7 @@ begin
         'on conflict (query_id) do nothing',
         v_slot, v_slot
     ) using v_include_bg;
+    end if; -- PG14+ query_id guard
 
     -- -------------------------------------------------------------------------
     -- reads 3+4: per-database wait encoding (unchanged from original)

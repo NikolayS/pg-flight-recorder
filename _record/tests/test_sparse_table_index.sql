@@ -124,13 +124,21 @@ begin
     -- rebuild to a clean baseline
     perform pgfr_record._rebuild_table_last_state();
 
-    -- Corrupt n_dead_tup in last_state to force change detection.
-    -- n_dead_tup is in the change-detection predicate but NOT in the activity-score
-    -- top_n subquery, so the table stays in the top-N selection.
-    -- Live value >= 0 > -999999 always triggers "is distinct from" detection.
+    -- Corrupt n_dead_tup for the table with the highest activity score.
+    -- The sparse collector has a top_n filter (top 50 by activity score).
+    -- Picking LIMIT 1 from table_last_state without ordering hits a zero-activity
+    -- table that doesn't make it into top_n → no insert. Pick the most active one.
     update pgfr_record.table_last_state
     set n_dead_tup = -999999
-    where relid = (select relid from pgfr_record.table_last_state limit 1);
+    where relid = (
+        select st.relid
+        from pg_stat_user_tables st
+        join pgfr_record.table_last_state ls on ls.relid = st.relid
+        order by coalesce(st.seq_scan,0) + coalesce(st.idx_scan,0)
+               + coalesce(st.n_tup_ins,0) + coalesce(st.n_tup_upd,0)
+               + coalesce(st.n_tup_del,0) desc
+        limit 1
+    );
 
     v_sample_ts := extract(epoch from now() - pgfr_record.epoch())::int4;
 

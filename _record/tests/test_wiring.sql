@@ -101,22 +101,28 @@ select ok(
 -- ===========================================================================
 -- W4: pg_cron job 'pgfr-truncate-old-partitions' exists
 -- ===========================================================================
-select ok(
-    exists (
-        select 1 from cron.job where jobname = 'pgfr-truncate-old-partitions'
-    ),
-    'W4: pg_cron job pgfr-truncate-old-partitions must be registered'
-);
+select case
+    when not exists (
+        select 1 from pg_extension where extname = 'pg_cron'
+    ) then skip('W4: pg_cron not installed in this database — cron job check skipped')
+    else ok(
+        exists (select 1 from cron.job where jobname = 'pgfr-truncate-old-partitions'),
+        'W4: pg_cron job pgfr-truncate-old-partitions must be registered'
+    )
+end;
 
 -- ===========================================================================
 -- W5: pg_cron job 'pgfr-drop-ancient-partitions' exists
 -- ===========================================================================
-select ok(
-    exists (
-        select 1 from cron.job where jobname = 'pgfr-drop-ancient-partitions'
-    ),
-    'W5: pg_cron job pgfr-drop-ancient-partitions must be registered'
-);
+select case
+    when not exists (
+        select 1 from pg_extension where extname = 'pg_cron'
+    ) then skip('W5: pg_cron not installed in this database — cron job check skipped')
+    else ok(
+        exists (select 1 from cron.job where jobname = 'pgfr-drop-ancient-partitions'),
+        'W5: pg_cron job pgfr-drop-ancient-partitions must be registered'
+    )
+end;
 
 -- ===========================================================================
 -- W6: snapshot() returns a timestamptz (completes without error)
@@ -157,22 +163,26 @@ select ok(
 --     truncate job: '0 3 * * *'  (nightly 03:00 UTC)
 --     drop job:     '0 4 1 * *'  (monthly 1st, 04:00 UTC)
 -- ===========================================================================
-select ok(
-    (
-        exists (
-            select 1 from cron.job
-            where jobname = 'pgfr-truncate-old-partitions'
-              and schedule = '0 3 * * *'
-        )
-        and
-        exists (
-            select 1 from cron.job
-            where jobname = 'pgfr-drop-ancient-partitions'
-              and schedule = '0 4 1 * *'
-        )
-    ),
-    'W8: GC cron jobs must have correct schedules (03:00 UTC nightly, 04:00 UTC monthly)'
-);
+select case
+    when not exists (select 1 from pg_extension where extname = 'pg_cron')
+    then skip('W8: pg_cron not in this database — schedule check skipped')
+    else ok(
+        (
+            exists (
+                select 1 from cron.job
+                where jobname = 'pgfr-truncate-old-partitions'
+                  and schedule = '0 3 * * *'
+            )
+            and
+            exists (
+                select 1 from cron.job
+                where jobname = 'pgfr-drop-ancient-partitions'
+                  and schedule = '0 4 1 * *'
+            )
+        ),
+        'W8: GC cron jobs must have correct schedules (03:00 UTC nightly, 04:00 UTC monthly)'
+    )
+end;
 
 select * from finish();
 rollback;
