@@ -378,9 +378,7 @@ begin
                 end
             ) as wait_event,
             sa.backend_type,
-            -- query_id added in PG14; use NULL on older versions
-            case when (select current_setting('server_version_num')::int >= 140000)
-                 then sa.query_id else null::bigint end as query_id
+            null::bigint as query_id   -- populated per-session via query_map on PG14+
         from pg_stat_activity sa
         where sa.state in ('active', 'idle in transaction', 'idle in transaction (aborted)')
           and (sa.backend_type = 'client backend'
@@ -689,8 +687,7 @@ begin
                 end
             ) as wait_event,
             sa.backend_type,
-            case when (select current_setting('server_version_num')::int >= 140000)
-                 then sa.query_id else null::bigint end as query_id
+            null::bigint as query_id   -- populated per-session via query_map on PG14+
         from pg_stat_activity sa
         where sa.state in ('active', 'idle in transaction', 'idle in transaction (aborted)')
           and (sa.backend_type = 'client backend'

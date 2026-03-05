@@ -101,28 +101,32 @@ select ok(
 -- ===========================================================================
 -- W4: pg_cron job 'pgfr-truncate-old-partitions' exists
 -- ===========================================================================
-select case
-    when not exists (
-        select 1 from pg_extension where extname = 'pg_cron'
-    ) then skip('W4: pg_cron not installed in this database — cron job check skipped')
-    else ok(
-        exists (select 1 from cron.job where jobname = 'pgfr-truncate-old-partitions'),
-        'W4: pg_cron job pgfr-truncate-old-partitions must be registered'
-    )
-end;
+do $$
+declare v_found boolean := false;
+begin
+    if not exists (select 1 from pg_extension where extname = 'pg_cron') then
+        perform skip('W4: pg_cron not in this database — cron job check skipped');
+        return;
+    end if;
+    execute 'select exists(select 1 from cron.job where jobname = $1)'
+        into v_found using 'pgfr-truncate-old-partitions';
+    perform ok(v_found, 'W4: pg_cron job pgfr-truncate-old-partitions must be registered');
+end $$;
 
 -- ===========================================================================
 -- W5: pg_cron job 'pgfr-drop-ancient-partitions' exists
 -- ===========================================================================
-select case
-    when not exists (
-        select 1 from pg_extension where extname = 'pg_cron'
-    ) then skip('W5: pg_cron not installed in this database — cron job check skipped')
-    else ok(
-        exists (select 1 from cron.job where jobname = 'pgfr-drop-ancient-partitions'),
-        'W5: pg_cron job pgfr-drop-ancient-partitions must be registered'
-    )
-end;
+do $$
+declare v_found boolean := false;
+begin
+    if not exists (select 1 from pg_extension where extname = 'pg_cron') then
+        perform skip('W5: pg_cron not in this database — cron job check skipped');
+        return;
+    end if;
+    execute 'select exists(select 1 from cron.job where jobname = $1)'
+        into v_found using 'pgfr-drop-ancient-partitions';
+    perform ok(v_found, 'W5: pg_cron job pgfr-drop-ancient-partitions must be registered');
+end $$;
 
 -- ===========================================================================
 -- W6: snapshot() returns a timestamptz (completes without error)
@@ -163,26 +167,22 @@ select ok(
 --     truncate job: '0 3 * * *'  (nightly 03:00 UTC)
 --     drop job:     '0 4 1 * *'  (monthly 1st, 04:00 UTC)
 -- ===========================================================================
-select case
-    when not exists (select 1 from pg_extension where extname = 'pg_cron')
-    then skip('W8: pg_cron not in this database — schedule check skipped')
-    else ok(
-        (
-            exists (
-                select 1 from cron.job
-                where jobname = 'pgfr-truncate-old-partitions'
-                  and schedule = '0 3 * * *'
-            )
+do $$
+declare v_ok boolean := false;
+begin
+    if not exists (select 1 from pg_extension where extname = 'pg_cron') then
+        perform skip('W8: pg_cron not in this database — schedule check skipped');
+        return;
+    end if;
+    execute $q$
+        select (
+            exists(select 1 from cron.job where jobname='pgfr-truncate-old-partitions' and schedule='0 3 * * *')
             and
-            exists (
-                select 1 from cron.job
-                where jobname = 'pgfr-drop-ancient-partitions'
-                  and schedule = '0 4 1 * *'
-            )
-        ),
-        'W8: GC cron jobs must have correct schedules (03:00 UTC nightly, 04:00 UTC monthly)'
-    )
-end;
+            exists(select 1 from cron.job where jobname='pgfr-drop-ancient-partitions' and schedule='0 4 1 * *')
+        )
+    $q$ into v_ok;
+    perform ok(v_ok, 'W8: GC cron jobs must have correct schedules (03:00 UTC nightly, 04:00 UTC monthly)');
+end $$;
 
 select * from finish();
 rollback;
