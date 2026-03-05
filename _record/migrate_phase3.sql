@@ -93,7 +93,9 @@ declare
         'index_snapshots',
         'activity_samples_archive',
         'lock_samples_archive',
-        'wait_samples_archive'
+        'wait_samples_archive',
+        'table_snapshots',
+        'index_snapshots'
     ];
 begin
     foreach v_tbl in array v_tables loop
@@ -483,10 +485,206 @@ begin
 end;
 $$;
 
+drop trigger if exists snapshots_view_insert on pgfr_record.snapshots;
 create trigger snapshots_view_insert
     instead of insert on pgfr_record.snapshots
     for each row
     execute function pgfr_record._snapshots_view_insert();
+
+
+-- table_snapshots — compatible with legacy collector INSERT column set
+create or replace view pgfr_record.table_snapshots as
+select
+    snapshot_id,
+    null::text          as schemaname,
+    null::text          as relname,
+    relid,
+    seq_scan,
+    null::bigint        as seq_tup_read,
+    idx_scan,
+    null::bigint        as idx_tup_fetch,
+    n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd,
+    n_live_tup, n_dead_tup,
+    null::bigint        as n_mod_since_analyze,
+    null::bigint        as vacuum_count,
+    null::bigint        as autovacuum_count,
+    null::bigint        as analyze_count,
+    null::bigint        as autoanalyze_count,
+    null::timestamptz   as last_vacuum,
+    null::timestamptz   as last_autovacuum,
+    null::timestamptz   as last_analyze,
+    null::timestamptz   as last_autoanalyze,
+    null::integer       as relfrozenxid_age,
+    null::bigint        as reltuples,
+    null::boolean       as vacuum_running,
+    null::bigint        as last_vacuum_duration_ms,
+    table_size_bytes,
+    null::bigint        as total_size_bytes,
+    null::bigint        as indexes_size_bytes
+from pgfr_record.table_snapshots_v2
+union all
+select
+    snapshot_id,
+    schemaname, relname, relid,
+    seq_scan, seq_tup_read, idx_scan, idx_tup_fetch,
+    n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd,
+    n_live_tup, n_dead_tup, n_mod_since_analyze,
+    vacuum_count, autovacuum_count, analyze_count, autoanalyze_count,
+    last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,
+    relfrozenxid_age, reltuples, vacuum_running, last_vacuum_duration_ms,
+    table_size_bytes, total_size_bytes,
+    null::bigint        as indexes_size_bytes
+from pgfr_record.table_snapshots_legacy;
+
+comment on view pgfr_record.table_snapshots is
+'Backwards-compatible view: UNION ALL of table_snapshots_v2 and _legacy. Read-only.';
+
+-- index_snapshots
+-- legacy table has no idx_blks_read/hit; index_snapshots_v2 has no schemaname/relname/indexrelname
+create or replace view pgfr_record.index_snapshots as
+select
+    snapshot_id,
+    null::text          as schemaname,
+    null::text          as relname,
+    null::text          as indexrelname,
+    relid,
+    indexrelid,
+    idx_scan, idx_tup_read, idx_tup_fetch,
+    index_size_bytes
+from pgfr_record.index_snapshots_v2
+union all
+select
+    snapshot_id,
+    schemaname, relname, indexrelname, relid, indexrelid,
+    idx_scan, idx_tup_read, idx_tup_fetch,
+    index_size_bytes
+from pgfr_record.index_snapshots_legacy;
+
+comment on view pgfr_record.index_snapshots is
+'Backwards-compatible view: UNION ALL of index_snapshots_v2 and _legacy. Read-only.';
+
+-- ---------------------------------------------------------------------------
+-- Step 5: INSTEAD OF INSERT triggers for remaining views
+--         replication_snapshots, vacuum_progress_snapshots,
+--         table_snapshots, index_snapshots
+-- ---------------------------------------------------------------------------
+
+-- replication_snapshots → replication_snapshots_v2
+create or replace function pgfr_record._replication_snapshots_view_insert()
+returns trigger language plpgsql as $$
+declare
+    v_sample_ts int4;
+begin
+    v_sample_ts := extract(epoch from now() - pgfr_record.epoch())::int4;
+    perform pgfr_record._ensure_partition('replication_snapshots_v2', current_date,
+        'snapshot_id, sample_ts desc');
+    insert into pgfr_record.replication_snapshots_v2 (
+        snapshot_id, sample_ts,
+        pid, client_addr, application_name, state,
+        sent_lsn, write_lsn, flush_lsn, replay_lsn,
+        write_lag, flush_lag, replay_lag, sync_state, reply_time
+    ) values (
+        new.snapshot_id, v_sample_ts,
+        new.pid, new.client_addr, new.application_name, new.state,
+        new.sent_lsn, new.write_lsn, new.flush_lsn, new.replay_lsn,
+        new.write_lag, new.flush_lag, new.replay_lag, new.sync_state,
+        null::timestamptz
+    );
+    return new;
+end $$;
+
+drop trigger if exists replication_snapshots_view_insert on pgfr_record.replication_snapshots;
+create trigger replication_snapshots_view_insert
+    instead of insert on pgfr_record.replication_snapshots
+    for each row
+    execute function pgfr_record._replication_snapshots_view_insert();
+
+-- vacuum_progress_snapshots → vacuum_progress_snapshots_v2
+create or replace function pgfr_record._vacuum_progress_view_insert()
+returns trigger language plpgsql as $$
+declare
+    v_sample_ts int4;
+begin
+    v_sample_ts := extract(epoch from now() - pgfr_record.epoch())::int4;
+    perform pgfr_record._ensure_partition('vacuum_progress_snapshots_v2', current_date,
+        'snapshot_id, sample_ts desc');
+    insert into pgfr_record.vacuum_progress_snapshots_v2 (
+        snapshot_id, sample_ts,
+        pid, datname, relid, phase,
+        heap_blks_total, heap_blks_scanned, heap_blks_vacuumed,
+        index_vacuum_count, max_dead_tuples, num_dead_tuples
+    ) values (
+        new.snapshot_id, v_sample_ts,
+        new.pid, new.datname, new.relid, new.phase,
+        new.heap_blks_total, new.heap_blks_scanned, new.heap_blks_vacuumed,
+        new.index_vacuum_count, new.max_dead_tuples, new.num_dead_tuples
+    );
+    return new;
+end $$;
+
+drop trigger if exists vacuum_progress_view_insert on pgfr_record.vacuum_progress_snapshots;
+create trigger vacuum_progress_view_insert
+    instead of insert on pgfr_record.vacuum_progress_snapshots
+    for each row
+    execute function pgfr_record._vacuum_progress_view_insert();
+
+-- table_snapshots → table_snapshots_v2
+create or replace function pgfr_record._table_snapshots_view_insert()
+returns trigger language plpgsql as $$
+declare
+    v_sample_ts int4;
+begin
+    v_sample_ts := extract(epoch from now() - pgfr_record.epoch())::int4;
+    perform pgfr_record._ensure_partition('table_snapshots_v2', current_date,
+        'relid, dbid, sample_ts desc');
+    insert into pgfr_record.table_snapshots_v2 (
+        snapshot_id, sample_ts, relid, dbid,
+        n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd,
+        seq_scan, idx_scan, n_live_tup, n_dead_tup, table_size_bytes
+    ) values (
+        new.snapshot_id, v_sample_ts,
+        new.relid,
+        (select oid from pg_database where datname = current_database()),
+        new.n_tup_ins, new.n_tup_upd, new.n_tup_del, new.n_tup_hot_upd,
+        new.seq_scan, new.idx_scan, new.n_live_tup, new.n_dead_tup,
+        new.table_size_bytes
+    );
+    return new;
+end $$;
+
+drop trigger if exists table_snapshots_view_insert on pgfr_record.table_snapshots;
+create trigger table_snapshots_view_insert
+    instead of insert on pgfr_record.table_snapshots
+    for each row
+    execute function pgfr_record._table_snapshots_view_insert();
+
+-- index_snapshots → index_snapshots_v2
+create or replace function pgfr_record._index_snapshots_view_insert()
+returns trigger language plpgsql as $$
+declare
+    v_sample_ts int4;
+begin
+    v_sample_ts := extract(epoch from now() - pgfr_record.epoch())::int4;
+    perform pgfr_record._ensure_partition('index_snapshots_v2', current_date,
+        'indexrelid, dbid, sample_ts desc');
+    insert into pgfr_record.index_snapshots_v2 (
+        snapshot_id, sample_ts, relid, indexrelid, dbid,
+        idx_scan, idx_tup_read, idx_tup_fetch, index_size_bytes
+    ) values (
+        new.snapshot_id, v_sample_ts,
+        new.relid, new.indexrelid,
+        (select oid from pg_database where datname = current_database()),
+        new.idx_scan, new.idx_tup_read, new.idx_tup_fetch,
+        new.index_size_bytes
+    );
+    return new;
+end $$;
+
+drop trigger if exists index_snapshots_view_insert on pgfr_record.index_snapshots;
+create trigger index_snapshots_view_insert
+    instead of insert on pgfr_record.index_snapshots
+    for each row
+    execute function pgfr_record._index_snapshots_view_insert();
 
 do $$
 begin

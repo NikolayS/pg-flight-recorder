@@ -22,6 +22,8 @@ drop view if exists pgfr_record.statement_snapshots;
 drop view if exists pgfr_record.activity_samples_archive;
 drop view if exists pgfr_record.lock_samples_archive;
 drop view if exists pgfr_record.wait_samples_archive;
+drop view if exists pgfr_record.table_snapshots;
+drop view if exists pgfr_record.index_snapshots;
 
 do $$ begin raise notice 'rollback: views dropped'; end $$;
 
@@ -38,7 +40,9 @@ declare
         'index_snapshots',
         'activity_samples_archive',
         'lock_samples_archive',
-        'wait_samples_archive'
+        'wait_samples_archive',
+        'table_snapshots',
+        'index_snapshots'
     ];
 begin
     foreach v_tbl in array v_tables loop
