@@ -92,8 +92,8 @@
 ### Phase 3 — partition all remaining tables
 
 - [x] `snapshots_v2`, `replication_snapshots_v2`, `vacuum_progress_snapshots_v2` — daily RANGE partitions, dual-write via trigger (commit `f32c900`)
-- [ ] archive tables (`activity_samples_archive`, `lock_samples_archive`, `wait_samples_archive`) — daily partitions
-- [ ] `retention_archive_days` GC wired to `truncate_old_partitions()` / `drop_ancient_partitions()`
+- [x] archive tables (`activity_samples_archive_v2`, `lock_samples_archive_v2`, `wait_samples_archive_v2`) — daily RANGE partitions (commit `90f2884`)
+- [x] `retention_archive_days` GC wired — `_partition_inventory()` uses two-tier cutoffs: `retention_snapshots_days` for snapshot tables, `retention_archive_days` for `*_archive_v2` tables (commit `90f2884`)
 - [ ] disable `cleanup()` DELETE paths once migration complete; replace `pgfr_cleanup` cron with partition GC
 - [ ] deprecate old config key aliases
 - [ ] migration script: rename legacy heap tables to `_legacy`, create backwards-compat views
