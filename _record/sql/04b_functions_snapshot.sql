@@ -4,7 +4,7 @@ LANGUAGE plpgsql AS $$
 DECLARE
     v_pg_version INTEGER;
     v_captured_at TIMESTAMPTZ := now();
-    v_snapshot_id INTEGER;
+    v_snapshot_id BIGINT;
     v_autovacuum_workers INTEGER;
     v_slots_count INTEGER;
     v_slots_max_retained BIGINT;
@@ -526,7 +526,7 @@ BEGIN
             v_last_statements_collection TIMESTAMPTZ;
             v_statements_interval_minutes INTEGER;
             v_should_collect BOOLEAN := TRUE;
-            v_prev_snapshot_id INTEGER;
+            v_prev_snapshot_id BIGINT;
         BEGIN
             v_statements_interval_minutes := COALESCE(
                 pgfr_record._get_config('statements_interval_minutes', '1')::integer,

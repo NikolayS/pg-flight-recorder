@@ -24,7 +24,7 @@ comment on table pgfr_record.config is
 create table if not exists pgfr_record.ring_config (
     singleton       bool primary key default true check (singleton),
     current_slot    smallint  not null default 0,
-    num_slots       smallint  not null default 3,
+    num_slots       smallint  not null default 3 check (num_slots >= 3),
     rotation_period interval  not null default '2 hours',
     rotated_at      timestamptz not null default clock_timestamp()
 );

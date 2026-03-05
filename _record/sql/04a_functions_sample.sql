@@ -651,7 +651,7 @@ COMMENT ON FUNCTION pgfr_record.cleanup_aggregates() IS 'Cleanup: Remove old agg
 
 -- Collects table-level statistics from pg_stat_user_tables
 -- Captures tables based on configurable sampling mode: top_n, all, or threshold
-CREATE OR REPLACE FUNCTION pgfr_record._collect_table_stats(p_snapshot_id INTEGER)
+CREATE OR REPLACE FUNCTION pgfr_record._collect_table_stats(p_snapshot_id BIGINT)
 RETURNS void
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -835,7 +835,7 @@ $$;
 
 -- Collects index-level statistics from pg_stat_user_indexes
 -- Captures all user indexes with their usage metrics and sizes
-CREATE OR REPLACE FUNCTION pgfr_record._collect_index_stats(p_snapshot_id INTEGER)
+CREATE OR REPLACE FUNCTION pgfr_record._collect_index_stats(p_snapshot_id BIGINT)
 RETURNS void
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -873,7 +873,7 @@ $$;
 
 -- Collects PostgreSQL configuration snapshot from pg_settings
 -- Captures relevant settings for incident analysis and change tracking
-CREATE OR REPLACE FUNCTION pgfr_record._collect_config_snapshot(p_snapshot_id INTEGER)
+CREATE OR REPLACE FUNCTION pgfr_record._collect_config_snapshot(p_snapshot_id BIGINT)
 RETURNS void
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -1003,7 +1003,7 @@ $$;
 
 -- Collects database-level and role-level configuration overrides from pg_db_role_setting
 -- These overrides (ALTER DATABASE/ROLE SET) can significantly impact performance but are easily overlooked
-CREATE OR REPLACE FUNCTION pgfr_record._collect_db_role_config_snapshot(p_snapshot_id INTEGER)
+CREATE OR REPLACE FUNCTION pgfr_record._collect_db_role_config_snapshot(p_snapshot_id BIGINT)
 RETURNS void
 LANGUAGE plpgsql AS $$
 DECLARE
