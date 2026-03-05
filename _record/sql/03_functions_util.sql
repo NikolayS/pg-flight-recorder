@@ -938,11 +938,17 @@ BEGIN
     WHERE n.nspname = 'pgfr_record'
       AND c.relkind IN ('r', 'i', 't');
     v_size_mb := round(v_size_bytes / 1024.0 / 1024.0, 2);
-    SELECT EXISTS (
-        SELECT 1 FROM cron.job
-        WHERE jobname LIKE 'pgfr%'
-          AND active = true
-    ) INTO v_enabled;
+    -- pg_cron may not be installed in this database; treat as enabled if not found
+    BEGIN
+        SELECT EXISTS (
+            SELECT 1 FROM cron.job
+            WHERE jobname LIKE 'pgfr%'
+              AND active = true
+        ) INTO v_enabled;
+    EXCEPTION
+        WHEN undefined_table OR undefined_function THEN
+            v_enabled := false;
+    END;
     IF v_size_mb >= v_critical_mb AND v_enabled THEN
         BEGIN
             PERFORM pgfr_record.cleanup('3 days'::interval);
