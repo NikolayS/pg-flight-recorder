@@ -94,9 +94,15 @@
 - [x] `snapshots_v2`, `replication_snapshots_v2`, `vacuum_progress_snapshots_v2` — daily RANGE partitions, dual-write via trigger (commit `f32c900`)
 - [x] archive tables (`activity_samples_archive_v2`, `lock_samples_archive_v2`, `wait_samples_archive_v2`) — daily RANGE partitions (commit `90f2884`)
 - [x] `retention_archive_days` GC wired — `_partition_inventory()` uses two-tier cutoffs: `retention_snapshots_days` for snapshot tables, `retention_archive_days` for `*_archive_v2` tables (commit `90f2884`)
-- [ ] disable `cleanup()` DELETE paths once migration complete; replace `pgfr_cleanup` cron with partition GC
+- [x] disable `cleanup()` DELETE paths — `pgfr_cleanup` cron replaced with partition GC jobs in migration (commit `cc57d51`)
 - [ ] deprecate old config key aliases
-- [ ] migration script: rename legacy heap tables to `_legacy`, create backwards-compat views
+- [x] migration script — `migrate_phase3.sql` + `migrate_phase3_rollback.sql` (commit `cc57d51`):
+  - pre-flight: verifies v2 tables exist and have data
+  - renames 11 legacy tables to `_legacy`
+  - creates backwards-compat UNION ALL views for all 9 migrated tables
+  - INSTEAD OF INSERT triggers on all 6 collector-targeted views
+  - `snapshot()` routes to v2 with zero warnings post-migration
+  - rollback script verified end-to-end
 
 **GC invariants (locked):**
 - Ring buffer (`wait_samples_N`, `lock_samples_N`, `activity_samples_N`): TRUNCATE only via `rotate_ring()` — no DELETE, no DROP
