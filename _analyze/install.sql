@@ -1,7 +1,7 @@
 -- pg-flight-recorder: _analyze module install script
 --
 -- Requires _record module installed first.
--- Run from the _analyze/ directory so \i resolves correctly.
+-- Uses absolute paths (/analyze_sql/) — safe to run from any working directory.
 --
 -- Files:
 --   01_core_metrics.sql           schema, modification_rate, hot_update_ratio,
@@ -21,13 +21,13 @@
 --   10_v2_readers.sql             v2_time_range, statement/table/index_activity_v2,
 --                                 ring v2 reader rewrites
 
-\i sql/01_core_metrics.sql
-\i sql/02_ring_readers.sql
-\i sql/03_activity_storms_regressions.sql
-\i sql/04_reports.sql
-\i sql/05_capacity.sql
-\i sql/06_table_analysis.sql
-\i sql/07_index_analysis.sql
-\i sql/08_config.sql
-\i sql/09_incident_analysis.sql
-\i sql/10_v2_readers.sql
+\i /analyze_sql/01_core_metrics.sql
+\i /analyze_sql/02_ring_readers.sql
+\i /analyze_sql/03_activity_storms_regressions.sql
+\i /analyze_sql/04_reports.sql
+\i /analyze_sql/05_capacity.sql
+\i /analyze_sql/06_table_analysis.sql
+\i /analyze_sql/07_index_analysis.sql
+\i /analyze_sql/08_config.sql
+\i /analyze_sql/09_incident_analysis.sql
+\i /analyze_sql/10_v2_readers.sql

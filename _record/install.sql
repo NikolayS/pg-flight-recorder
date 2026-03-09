@@ -15,16 +15,16 @@
 --   08_ring_buffer_v2.sql    ring buffer v2 tables, sample_ring, rotate_ring, flush, archive
 --   09_phase3_snapshots_v2.sql snapshots_v2 partitioned tables + dual-write trigger
 
-\i sql/01_schema.sql
-\i sql/02_tables_legacy.sql
-\i sql/03_functions_util.sql
-\i sql/04a_functions_sample.sql
-\i sql/04b_functions_snapshot.sql
-\i sql/05_functions_ops.sql
-\i sql/06_partition_infra.sql
-\i sql/07_sparse_collectors.sql
-\i sql/08_ring_buffer_v2.sql
-\i sql/09_phase3_snapshots_v2.sql
+\i /record_sql/01_schema.sql
+\i /record_sql/02_tables_legacy.sql
+\i /record_sql/03_functions_util.sql
+\i /record_sql/04a_functions_sample.sql
+\i /record_sql/04b_functions_snapshot.sql
+\i /record_sql/05_functions_ops.sql
+\i /record_sql/06_partition_infra.sql
+\i /record_sql/07_sparse_collectors.sql
+\i /record_sql/08_ring_buffer_v2.sql
+\i /record_sql/09_phase3_snapshots_v2.sql
 
 -- Post-install: migrate deprecated config key aliases to canonical names.
 -- Idempotent; safe on fresh install (keys won't exist yet) and upgrades.
