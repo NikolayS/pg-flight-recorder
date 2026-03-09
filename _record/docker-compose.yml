@@ -3,6 +3,7 @@ x-record-volumes: &record-volumes
     - ./_record/install.sql:/install.sql:ro
     - ./_record/sql:/record_sql:ro
     - ./_record/tests:/tests/record:ro
+    - ./_record/migrate_phase3.sql:/tmp/migrate_phase3.sql:ro
 
 services:
   postgres15:

@@ -101,32 +101,26 @@ select ok(
 -- ===========================================================================
 -- W4: pg_cron job 'pgfr-truncate-old-partitions' exists
 -- ===========================================================================
-do $$
-declare v_found boolean := false;
-begin
-    if not exists (select 1 from pg_extension where extname = 'pg_cron') then
-        perform skip('W4: pg_cron not in this database — cron job check skipped');
-        return;
-    end if;
-    execute 'select exists(select 1 from cron.job where jobname = $1)'
-        into v_found using 'pgfr-truncate-old-partitions';
-    perform ok(v_found, 'W4: pg_cron job pgfr-truncate-old-partitions must be registered');
-end $$;
+SELECT CASE
+    WHEN NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron')
+    THEN skip('W4: pg_cron not in this database — cron job check skipped')
+    ELSE ok(
+        EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr-truncate-old-partitions'),
+        'W4: pg_cron job pgfr-truncate-old-partitions must be registered'
+    )
+END;
 
 -- ===========================================================================
 -- W5: pg_cron job 'pgfr-drop-ancient-partitions' exists
 -- ===========================================================================
-do $$
-declare v_found boolean := false;
-begin
-    if not exists (select 1 from pg_extension where extname = 'pg_cron') then
-        perform skip('W5: pg_cron not in this database — cron job check skipped');
-        return;
-    end if;
-    execute 'select exists(select 1 from cron.job where jobname = $1)'
-        into v_found using 'pgfr-drop-ancient-partitions';
-    perform ok(v_found, 'W5: pg_cron job pgfr-drop-ancient-partitions must be registered');
-end $$;
+SELECT CASE
+    WHEN NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron')
+    THEN skip('W5: pg_cron not in this database — cron job check skipped')
+    ELSE ok(
+        EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr-drop-ancient-partitions'),
+        'W5: pg_cron job pgfr-drop-ancient-partitions must be registered'
+    )
+END;
 
 -- ===========================================================================
 -- W6: snapshot() returns a timestamptz (completes without error)

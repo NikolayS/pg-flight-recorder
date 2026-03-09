@@ -512,7 +512,7 @@ begin
                 st.last_autovacuum,
                 st.last_analyze,
                 st.last_autoanalyze,
-                age(c.relfrozenxid)::integer                                as relfrozenxid_age,
+                nullif(age(c.relfrozenxid)::integer, 2147483647)            as relfrozenxid_age,
                 c.reltuples::bigint                                         as reltuples,
                 exists(
                     select 1 from pg_stat_progress_vacuum pv
