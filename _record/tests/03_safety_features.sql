@@ -25,11 +25,18 @@ SELECT lives_ok(
     'disable() should execute without error'
 );
 
--- Verify jobs are unscheduled
-SELECT ok(
-    NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname LIKE 'pgfr%'),
-    'All telemetry cron jobs should be unscheduled after disable()'
-);
+-- Verify jobs are unscheduled (skip if pg_cron not installed)
+do $$
+begin
+    if not exists (select 1 from pg_extension where extname = 'pg_cron') then
+        perform skip('pg_cron not installed — cron job unschedule check skipped');
+        return;
+    end if;
+    perform ok(
+        not exists (select 1 from cron.job where jobname like 'pgfr%'),
+        'All telemetry cron jobs should be unscheduled after disable()'
+    );
+end $$;
 
 -- Test enable() restarts collection
 SELECT lives_ok(
@@ -38,10 +45,18 @@ SELECT lives_ok(
 );
 
 -- Verify jobs are rescheduled (5 jobs: snapshot, sample, flush, archive, cleanup)
-SELECT ok(
-    (SELECT count(*) FROM cron.job WHERE jobname LIKE 'pgfr%') = 5,
-    'All 5 telemetry cron jobs should be rescheduled after enable()'
-);
+-- Skip if pg_cron not installed
+do $$
+begin
+    if not exists (select 1 from pg_extension where extname = 'pg_cron') then
+        perform skip('pg_cron not installed — cron job reschedule check skipped');
+        return;
+    end if;
+    perform ok(
+        (select count(*) from cron.job where jobname like 'pgfr%') = 5,
+        'All 5 telemetry cron jobs should be rescheduled after enable()'
+    );
+end $$;
 
 -- =============================================================================
 -- 9. P0 SAFETY FEATURES (10 tests)
