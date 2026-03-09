@@ -1,6 +1,7 @@
 x-record-volumes: &record-volumes
   volumes:
     - ./_record/install.sql:/install.sql:ro
+    - ./_record/sql:/sql:ro
     - ./_record/tests:/tests/record:ro
 
 services:
