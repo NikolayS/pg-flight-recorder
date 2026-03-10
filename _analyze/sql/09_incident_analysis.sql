@@ -613,7 +613,7 @@ BEGIN
                    s.connections_active,
                    CASE WHEN lag(s.xact_commit) OVER (ORDER BY s.captured_at) IS NOT NULL
                         THEN round((s.xact_commit - lag(s.xact_commit) OVER (ORDER BY s.captured_at))::NUMERIC /
-                                   EXTRACT(EPOCH FROM (s.captured_at - lag(s.captured_at) OVER (ORDER BY s.captured_at))), 1)
+                                   NULLIF(EXTRACT(EPOCH FROM (s.captured_at - lag(s.captured_at) OVER (ORDER BY s.captured_at))), 0), 1)
                         ELSE NULL
                    END) AS description,
             jsonb_build_object(
