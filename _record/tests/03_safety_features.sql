@@ -25,11 +25,15 @@ SELECT lives_ok(
     'disable() should execute without error'
 );
 
--- Verify jobs are unscheduled (skip if pg_cron not installed)
+-- Verify collection jobs are unscheduled after disable()
+-- (partition GC jobs pgfr-truncate-partitions and pgfr-drop-ancient-partitions may remain)
 SELECT CASE
     WHEN EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron')
     THEN ok(
-        NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname LIKE 'pgfr%'),
+        NOT EXISTS (
+            SELECT 1 FROM cron.job
+            WHERE jobname IN ('pgfr_snapshot','pgfr_sample','pgfr_flush','pgfr_archive','pgfr_cleanup')
+        ),
         'All telemetry cron jobs should be unscheduled after disable()'
     )
     ELSE skip('pg_cron not installed — cron job unschedule check skipped')
@@ -41,11 +45,13 @@ SELECT lives_ok(
     'enable() should execute without error'
 );
 
--- Verify jobs are rescheduled (5 jobs: snapshot, sample, flush, archive, cleanup)
+-- Verify collection jobs are rescheduled after enable()
+-- (5 collection jobs: snapshot, sample, flush, archive, cleanup)
 SELECT CASE
     WHEN EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron')
     THEN ok(
-        (SELECT count(*) FROM cron.job WHERE jobname LIKE 'pgfr%') = 5,
+        (SELECT count(*) FROM cron.job
+         WHERE jobname IN ('pgfr_snapshot','pgfr_sample','pgfr_flush','pgfr_archive','pgfr_cleanup')) = 5,
         'All 5 telemetry cron jobs should be rescheduled after enable()'
     )
     ELSE skip('pg_cron not installed — cron job reschedule check skipped')

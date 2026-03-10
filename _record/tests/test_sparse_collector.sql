@@ -596,17 +596,17 @@ select ok(
 );
 
 -- ===========================================================================
--- T26: Old statement_snapshots table untouched (dual-write constraint)
+-- T26: Old statement_snapshots table exists (may be renamed to _legacy after migrate_phase3)
 -- ===========================================================================
 select ok(
     exists (
         select 1 from pg_catalog.pg_class c
         join pg_catalog.pg_namespace n on n.oid = c.relnamespace
         where n.nspname = 'pgfr_record'
-          and c.relname = 'statement_snapshots'
+          and c.relname in ('statement_snapshots', 'statement_snapshots_legacy')
           and c.relkind = 'r'
     ),
-    'Old statement_snapshots table must still exist (dual-write approach)'
+    'Old statement_snapshots table must still exist (may be renamed to _legacy after migration)'
 );
 
 -- ===========================================================================
@@ -645,13 +645,19 @@ begin
     from pgfr_record.statement_snapshots_v2
     where snapshot_id = v_snapshot_id;
 
-    if v_count_after = 0 then
-        raise exception
-            'T27: boundary tick inserted 0 rows — baseline lost for new day partition (B2 bug)';
-    end if;
 end $$;
 
-select ok(true, 'T27: boundary tick inserts baseline rows into new day partition (B2 regression guard)');
+-- T27 result: check rows were inserted (or skip if pg_stat_statements unavailable)
+SELECT CASE
+    WHEN NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements')
+    THEN skip('T27: pg_stat_statements not available — boundary tick test skipped')
+    ELSE ok(
+        EXISTS (
+            SELECT 1 FROM pgfr_record.statement_snapshots_v2 WHERE snapshot_id = -77777
+        ),
+        'T27: boundary tick inserts baseline rows into new day partition (B2 regression guard)'
+    )
+END;
 
 -- ===========================================================================
 -- T28: _rebuild_statement_last_state() stores caller-supplied sample_ts (B7 guard)

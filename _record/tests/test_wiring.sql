@@ -9,7 +9,7 @@
 --   W1: snapshot() creates today's partition for statement_snapshots_v2
 --   W2: snapshot() creates today's partition for table_snapshots_v2 (when available)
 --   W3: snapshot() creates today's partition for index_snapshots_v2 (when available)
---   W4: pg_cron job 'pgfr-truncate-old-partitions' exists
+--   W4: pg_cron job 'pgfr-truncate-partitions' exists
 --   W5: pg_cron job 'pgfr-drop-ancient-partitions' exists
 --   W6: snapshot() returns a timestamptz (completes without error)
 --   W7: failure in one sparse collector does not abort others (isolation)
@@ -99,14 +99,14 @@ select ok(
 );
 
 -- ===========================================================================
--- W4: pg_cron job 'pgfr-truncate-old-partitions' exists
+-- W4: pg_cron job 'pgfr-truncate-partitions' exists
 -- ===========================================================================
 SELECT CASE
     WHEN NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron')
     THEN skip('W4: pg_cron not in this database — cron job check skipped')
     ELSE ok(
-        EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr-truncate-old-partitions'),
-        'W4: pg_cron job pgfr-truncate-old-partitions must be registered'
+        EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr-truncate-partitions'),
+        'W4: pg_cron job pgfr-truncate-partitions must be registered'
     )
 END;
 
@@ -161,22 +161,16 @@ select ok(
 --     truncate job: '0 3 * * *'  (nightly 03:00 UTC)
 --     drop job:     '0 4 1 * *'  (monthly 1st, 04:00 UTC)
 -- ===========================================================================
-do $$
-declare v_ok boolean := false;
-begin
-    if not exists (select 1 from pg_extension where extname = 'pg_cron') then
-        perform skip('W8: pg_cron not in this database — schedule check skipped');
-        return;
-    end if;
-    execute $q$
-        select (
-            exists(select 1 from cron.job where jobname='pgfr-truncate-old-partitions' and schedule='0 3 * * *')
-            and
-            exists(select 1 from cron.job where jobname='pgfr-drop-ancient-partitions' and schedule='0 4 1 * *')
-        )
-    $q$ into v_ok;
-    perform ok(v_ok, 'W8: GC cron jobs must have correct schedules (03:00 UTC nightly, 04:00 UTC monthly)');
-end $$;
+SELECT CASE
+    WHEN NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron')
+    THEN skip('W8: pg_cron not in this database — schedule check skipped')
+    ELSE ok(
+        EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr-truncate-partitions' AND schedule = '0 3 * * *')
+        AND
+        EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'pgfr-drop-ancient-partitions' AND schedule = '0 4 1 * *'),
+        'W8: GC cron jobs must have correct schedules (03:00 UTC nightly, 04:00 UTC monthly)'
+    )
+END;
 
 select * from finish();
 rollback;
