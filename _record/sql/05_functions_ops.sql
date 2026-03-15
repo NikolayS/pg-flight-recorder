@@ -48,10 +48,8 @@ BEGIN
         v_stats_cutoff := now() - (v_stats_retention_days || ' days')::interval;
     END IF;
     v_deleted_samples := 0;
-    WITH deleted AS (
-        DELETE FROM pgfr_record.snapshots WHERE captured_at < v_snapshots_cutoff RETURNING 1
-    )
-    SELECT count(*) INTO v_deleted_snapshots FROM deleted;
+    -- Delete statement_snapshots first: the subquery references snapshots.id,
+    -- so snapshots must still exist when this runs.
     WITH deleted AS (
         DELETE FROM pgfr_record.statement_snapshots
         WHERE snapshot_id IN (
@@ -60,6 +58,10 @@ BEGIN
         RETURNING 1
     )
     SELECT count(*) INTO v_deleted_statements FROM deleted;
+    WITH deleted AS (
+        DELETE FROM pgfr_record.snapshots WHERE captured_at < v_snapshots_cutoff RETURNING 1
+    )
+    SELECT count(*) INTO v_deleted_snapshots FROM deleted;
     WITH deleted AS (
         DELETE FROM pgfr_record.collection_stats WHERE started_at < v_stats_cutoff RETURNING 1
     )

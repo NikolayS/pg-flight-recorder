@@ -81,6 +81,8 @@ end $$;
 -- Step 1: Rename legacy tables to _legacy
 --         Keeps all historical data intact; _legacy tables are never dropped here
 -- ---------------------------------------------------------------------------
+set local lock_timeout = '2s';  -- match migrate_phase1.sql; fail fast rather than hang
+
 do $$
 declare
     v_tbl text;

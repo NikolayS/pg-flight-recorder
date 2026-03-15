@@ -302,7 +302,7 @@ comment on function pgfr_analyze.index_activity_v2(timestamptz, timestamptz, int
 create or replace function pgfr_analyze.recent_waits_current()
 returns table (
     captured_at     timestamptz,
-    backend_type    text,
+    backend_state   text,
     wait_event_type text,
     wait_event      text,
     state           text,
@@ -332,7 +332,7 @@ language sql stable as $$
     )
     select
         d.captured_at,
-        wem.state        as backend_type,
+        wem.state        as backend_state,
         wem.type         as wait_event_type,
         wem.event        as wait_event,
         wem.state        as state,
@@ -463,7 +463,7 @@ create or replace function pgfr_analyze.wait_summary(
     p_end_time   timestamptz
 )
 returns table (
-    backend_type    text,
+    backend_state   text,
     wait_event_type text,
     wait_event      text,
     sample_count    bigint,
@@ -503,7 +503,7 @@ language sql stable as $$
         group by wait_id
     )
     select
-        wem.state        as backend_type,
+        wem.state        as backend_state,
         wem.type         as wait_event_type,
         wem.event        as wait_event,
         g.sample_count,

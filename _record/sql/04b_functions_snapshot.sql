@@ -576,7 +576,7 @@ BEGIN
                     IF v_stmt_status = 'HIGH_CHURN' THEN
                         RAISE WARNING 'pgfr_record: Skipping pg_stat_statements collection - high churn detected (>95%% utilization)';
                     ELSE
-                -- pg18 renamed blk_read_time -> shared_blk_read_time in pg_stat_statements.
+                -- pg17 renamed blk_read_time -> shared_blk_read_time in pg_stat_statements.
                 -- case when cannot reference a nonexistent column even in a dead branch;
                 -- use execute with the correct column name chosen at runtime.
                 EXECUTE format(
@@ -646,8 +646,8 @@ BEGIN
                        AND prev.queryid = c.queryid
                        AND prev.dbid = c.dbid
                     $q$,
-                    CASE WHEN v_pg_version >= 18 THEN 'shared_blk_read_time'  ELSE 'blk_read_time'  END,
-                    CASE WHEN v_pg_version >= 18 THEN 'shared_blk_write_time' ELSE 'blk_write_time' END
+                    CASE WHEN v_pg_version >= 17 THEN 'shared_blk_read_time'  ELSE 'blk_read_time'  END,
+                    CASE WHEN v_pg_version >= 17 THEN 'shared_blk_write_time' ELSE 'blk_write_time' END
                 ) USING v_snapshot_id, v_prev_snapshot_id;
                     PERFORM pgfr_record._record_section_success(v_stat_id);
                     END IF;
