@@ -66,7 +66,7 @@ begin
             v_missing;
     end if;
 
-    -- Verify dual-write has produced data
+    -- Verify dual-write has produced data in snapshots_v2
     select count(*) into v_v2_count from pgfr_record.snapshots_v2;
     if v_v2_count = 0 then
         raise exception

@@ -342,10 +342,10 @@ BEGIN
             'SET statement_timeout = ''60s''; SELECT pgfr_record.cleanup_aggregates(); SELECT * FROM pgfr_record.cleanup(''30 days''::interval);');
         v_scheduled := v_scheduled + 1;
         -- Nightly retention GC (03:00 UTC): truncate expired v2 partitions
-        perform cron.schedule('pgfr-truncate-old-partitions', '0 3 * * *',
+        perform cron.schedule('pgfr-truncate-partitions', '0 3 * * *',
             'select pgfr_record.truncate_old_partitions()')
         where not exists (
-            select 1 from cron.job where jobname = 'pgfr-truncate-old-partitions'
+            select 1 from cron.job where jobname = 'pgfr-truncate-partitions'
         );
         v_scheduled := v_scheduled + 1;
         -- Monthly catalog cleanup (1st of month, 04:00 UTC): drop ancient empty partitions
@@ -453,10 +453,10 @@ BEGIN
         'SET statement_timeout = ''60s''; SELECT pgfr_record.cleanup_aggregates(); SELECT * FROM pgfr_record.cleanup(''30 days''::interval);'
     );
     -- Nightly retention GC (03:00 UTC): truncate expired partitions
-    perform cron.schedule('pgfr-truncate-old-partitions', '0 3 * * *',
+    perform cron.schedule('pgfr-truncate-partitions', '0 3 * * *',
         'select pgfr_record.truncate_old_partitions()')
     where not exists (
-        select 1 from cron.job where jobname = 'pgfr-truncate-old-partitions'
+        select 1 from cron.job where jobname = 'pgfr-truncate-partitions'
     );
     -- Monthly catalog cleanup (1st of month, 04:00 UTC): drop ancient empty partitions
     perform cron.schedule('pgfr-drop-ancient-partitions', '0 4 1 * *',

@@ -169,11 +169,91 @@ create or replace function pgfr_record._snapshot_v2(p_snapshot_id bigint)
 returns void
 language plpgsql as $$
 declare
-    v_sample_ts     int4;
-    v_pg_version    integer;
+    v_sample_ts         int4;
+    v_pg_version        integer;
+    v_ckpt_timed        bigint;
+    v_ckpt_requested    bigint;
+    v_ckpt_write_time   double precision;
+    v_ckpt_sync_time    double precision;
+    v_ckpt_buffers      bigint;
+    v_io_ckpt_reads     bigint;
+    v_io_ckpt_read_t    double precision;
+    v_io_ckpt_writes    bigint;
+    v_io_ckpt_write_t   double precision;
+    v_io_ckpt_fsyncs    bigint;
+    v_io_ckpt_fsync_t   double precision;
+    v_io_av_reads       bigint;
+    v_io_av_read_t      double precision;
+    v_io_av_writes      bigint;
+    v_io_av_write_t     double precision;
+    v_io_cli_reads      bigint;
+    v_io_cli_read_t     double precision;
+    v_io_cli_writes     bigint;
+    v_io_cli_write_t    double precision;
+    v_io_bgw_reads      bigint;
+    v_io_bgw_read_t     double precision;
+    v_io_bgw_writes     bigint;
+    v_io_bgw_write_t    double precision;
+    v_confl_logicalslot bigint := 0;
 begin
     v_sample_ts  := extract(epoch from now() - pgfr_record.epoch())::int4;
     v_pg_version := pgfr_record._pg_version();
+
+    -- pg_stat_checkpointer was added in PG17; fall back to pg_stat_bgwriter on PG15/16
+    if v_pg_version >= 17 then
+        execute $q$
+            select num_timed, num_requested, write_time, sync_time, buffers_written
+            from pg_stat_checkpointer
+        $q$ into v_ckpt_timed, v_ckpt_requested, v_ckpt_write_time, v_ckpt_sync_time, v_ckpt_buffers;
+    else
+        select checkpoints_timed, checkpoints_req, checkpoint_write_time,
+               checkpoint_sync_time, buffers_checkpoint
+        into   v_ckpt_timed, v_ckpt_requested, v_ckpt_write_time,
+               v_ckpt_sync_time, v_ckpt_buffers
+        from pg_stat_bgwriter;
+    end if;
+
+    -- pg_stat_io added in PG16; NULL on PG15
+    if v_pg_version >= 16 then
+        execute $q$
+            select
+                sum(reads)      filter (where backend_type = 'checkpointer'),
+                sum(read_time)  filter (where backend_type = 'checkpointer'),
+                sum(writes)     filter (where backend_type = 'checkpointer'),
+                sum(write_time) filter (where backend_type = 'checkpointer'),
+                sum(fsyncs)     filter (where backend_type = 'checkpointer'),
+                sum(fsync_time) filter (where backend_type = 'checkpointer'),
+                sum(reads)      filter (where backend_type = 'autovacuum worker'),
+                sum(read_time)  filter (where backend_type = 'autovacuum worker'),
+                sum(writes)     filter (where backend_type = 'autovacuum worker'),
+                sum(write_time) filter (where backend_type = 'autovacuum worker'),
+                sum(reads)      filter (where backend_type = 'client backend'),
+                sum(read_time)  filter (where backend_type = 'client backend'),
+                sum(writes)     filter (where backend_type = 'client backend'),
+                sum(write_time) filter (where backend_type = 'client backend'),
+                sum(reads)      filter (where backend_type = 'background writer'),
+                sum(read_time)  filter (where backend_type = 'background writer'),
+                sum(writes)     filter (where backend_type = 'background writer'),
+                sum(write_time) filter (where backend_type = 'background writer')
+            from pg_stat_io
+        $q$ into
+            v_io_ckpt_reads,  v_io_ckpt_read_t,  v_io_ckpt_writes,  v_io_ckpt_write_t,
+            v_io_ckpt_fsyncs, v_io_ckpt_fsync_t,
+            v_io_av_reads,    v_io_av_read_t,    v_io_av_writes,    v_io_av_write_t,
+            v_io_cli_reads,   v_io_cli_read_t,   v_io_cli_writes,   v_io_cli_write_t,
+            v_io_bgw_reads,   v_io_bgw_read_t,   v_io_bgw_writes,   v_io_bgw_write_t;
+    end if;
+    -- PG15: all io_* vars remain NULL
+
+    -- confl_active_logicalslot added in PG17
+    if v_pg_version >= 17 then
+        execute $q$
+            select confl_active_logicalslot
+            from pg_stat_database_conflicts
+            where datid = (select oid from pg_database where datname = current_database())
+        $q$ into v_confl_logicalslot;
+        v_confl_logicalslot := coalesce(v_confl_logicalslot, 0);
+    end if;
 
     -- ensure today's partition exists (O(1) on happy path)
     perform pgfr_record._ensure_partition('snapshots_v2', current_date,
@@ -216,32 +296,19 @@ begin
         -- checkpoint_lsn and checkpoint_time come from pg_control_checkpoint(),
         -- not pg_stat_checkpointer (which only has counters and timing)
         pgcc.checkpoint_lsn, pgcc.checkpoint_time,
-        cp.num_timed, cp.num_requested,
-        cp.write_time, cp.sync_time, cp.buffers_written,
+        v_ckpt_timed, v_ckpt_requested,
+        v_ckpt_write_time, v_ckpt_sync_time, v_ckpt_buffers,
         bg.buffers_clean, bg.maxwritten_clean, bg.buffers_alloc,
         (select count(*) from pg_stat_activity where state = 'active' and query not like '%autovacuum%')::integer,
         (select count(*) from pg_replication_slots)::integer,
         (select max(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn))
             from pg_replication_slots where active)::bigint,
-        -- io stats from pg_stat_io (PG16+)
-        (select sum(reads)      filter (where backend_type = 'checkpointer') from pg_stat_io),
-        (select sum(read_time)  filter (where backend_type = 'checkpointer') from pg_stat_io),
-        (select sum(writes)     filter (where backend_type = 'checkpointer') from pg_stat_io),
-        (select sum(write_time) filter (where backend_type = 'checkpointer') from pg_stat_io),
-        (select sum(fsyncs)     filter (where backend_type = 'checkpointer') from pg_stat_io),
-        (select sum(fsync_time) filter (where backend_type = 'checkpointer') from pg_stat_io),
-        (select sum(reads)      filter (where backend_type = 'autovacuum worker') from pg_stat_io),
-        (select sum(read_time)  filter (where backend_type = 'autovacuum worker') from pg_stat_io),
-        (select sum(writes)     filter (where backend_type = 'autovacuum worker') from pg_stat_io),
-        (select sum(write_time) filter (where backend_type = 'autovacuum worker') from pg_stat_io),
-        (select sum(reads)      filter (where backend_type = 'client backend') from pg_stat_io),
-        (select sum(read_time)  filter (where backend_type = 'client backend') from pg_stat_io),
-        (select sum(writes)     filter (where backend_type = 'client backend') from pg_stat_io),
-        (select sum(write_time) filter (where backend_type = 'client backend') from pg_stat_io),
-        (select sum(reads)      filter (where backend_type = 'background writer') from pg_stat_io),
-        (select sum(read_time)  filter (where backend_type = 'background writer') from pg_stat_io),
-        (select sum(writes)     filter (where backend_type = 'background writer') from pg_stat_io),
-        (select sum(write_time) filter (where backend_type = 'background writer') from pg_stat_io),
+        -- io stats from pg_stat_io (PG16+); NULL on PG15
+        v_io_ckpt_reads,  v_io_ckpt_read_t,  v_io_ckpt_writes,  v_io_ckpt_write_t,
+        v_io_ckpt_fsyncs, v_io_ckpt_fsync_t,
+        v_io_av_reads,    v_io_av_read_t,    v_io_av_writes,    v_io_av_write_t,
+        v_io_cli_reads,   v_io_cli_read_t,   v_io_cli_writes,   v_io_cli_write_t,
+        v_io_bgw_reads,   v_io_bgw_read_t,   v_io_bgw_writes,   v_io_bgw_write_t,
         db.temp_files, db.temp_bytes,
         db.xact_commit, db.xact_rollback, db.blks_read, db.blks_hit,
         (select count(*) filter (where state = 'active') from pg_stat_activity)::integer,
@@ -253,11 +320,10 @@ begin
         ar.failed_count, ar.last_failed_wal, ar.last_failed_time, ar.stats_reset,
         cs.confl_tablespace, cs.confl_lock, cs.confl_snapshot,
         cs.confl_bufferpin, cs.confl_deadlock,
-        coalesce(cs.confl_active_logicalslot, 0),
+        v_confl_logicalslot,
         (select max(oid) from pg_class),
         (select count(*) from pg_largeobject_metadata)
     from pg_stat_wal w
-    cross join pg_stat_checkpointer cp
     cross join pg_control_checkpoint() pgcc
     cross join pg_stat_bgwriter bg
     cross join (select * from pg_stat_database where datname = current_database()) db

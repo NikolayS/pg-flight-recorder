@@ -299,6 +299,7 @@ comment on function pgfr_analyze.index_activity_v2(timestamptz, timestamptz, int
 -- recent_waits_current() v2
 -- decodes wait_samples integer[] via wait_event_map.
 -- retention window: ring_config.num_slots * rotation_period.
+drop function if exists pgfr_analyze.recent_waits_current();
 create or replace function pgfr_analyze.recent_waits_current()
 returns table (
     captured_at     timestamptz,
@@ -458,6 +459,7 @@ comment on function pgfr_analyze.recent_locks_current() is
 
 -- wait_summary() v2
 -- decodes wait_samples integer[] for a given time window.
+drop function if exists pgfr_analyze.wait_summary(timestamptz, timestamptz);
 create or replace function pgfr_analyze.wait_summary(
     p_start_time timestamptz,
     p_end_time   timestamptz
