@@ -5,8 +5,9 @@
 -- Requires: install.sql applied FIRST, then migrate_phase3.sql applied SECOND.
 -- Run via: psql -f tests/test_migration_triggers.sql
 --
--- NOTE: This test applies the migration (migrate_phase3.sql) and does NOT roll
--- it back — run against a throwaway database or re-install after.
+-- NOTE: This test applies the migration (migrate_phase3.sql) and rolls it back
+-- using migrate_phase3_rollback.sql at the end so the DB is restored for
+-- subsequent tests in the same test run.
 -- =============================================================================
 
 -- Seed snapshots_v2 (needed for migration pre-flight)
@@ -116,3 +117,22 @@ select ok(
 
 select * from finish();
 rollback;
+
+-- Restore pre-migration state so subsequent tests in the same run are not affected.
+-- migrate_phase3_rollback.sql drops the views and renames _legacy tables back.
+-- After rollback, re-register partition GC cron jobs that install.sql added
+-- so test_wiring.sql still finds them (rollback removes them as part of
+-- restoring the pre-migration cron state).
+\i /tmp/migrate_phase3_rollback.sql
+
+do $$
+begin
+    if not exists (select 1 from cron.job where jobname = 'pgfr-truncate-partitions') then
+        perform cron.schedule('pgfr-truncate-partitions', '0 3 * * *',
+            'select pgfr_record.truncate_old_partitions()');
+    end if;
+    if not exists (select 1 from cron.job where jobname = 'pgfr-drop-ancient-partitions') then
+        perform cron.schedule('pgfr-drop-ancient-partitions', '0 4 1 * *',
+            'select pgfr_record.drop_ancient_partitions()');
+    end if;
+end $$;

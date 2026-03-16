@@ -452,9 +452,11 @@ create or replace function pgfr_record._collect_table_snapshot_sparse(p_snapshot
 returns void
 language plpgsql as $$
 declare
-    v_sample_ts  int4;
-    v_top_n      integer;
-    v_dbid       oid;
+    v_sample_ts      int4;
+    v_orig_last_ts   int4;
+    v_today_start_ts int4;
+    v_top_n          integer;
+    v_dbid           oid;
 begin
     -- ensure partition exists for today (O(1) on happy path)
     perform pgfr_record._ensure_partition('table_snapshots_v2', current_date,
@@ -470,6 +472,20 @@ begin
         -- exists() short-circuits on first row — avoids full scan on every tick
         if not exists (select 1 from pgfr_record.table_last_state) then
             perform pgfr_record._rebuild_table_last_state();
+        end if;
+
+        -- day-boundary: force full baseline into new partition.
+        -- Poison numeric cols to -1 so every row matches the IS DISTINCT FROM
+        -- predicate, guaranteeing a baseline row in the new day's partition.
+        -- Mirrors the statement collector's calls=-1 trick (SPEC §5.2).
+        select max(sample_ts) into v_orig_last_ts from pgfr_record.table_last_state;
+        v_today_start_ts := extract(epoch from
+            (current_date::timestamptz at time zone 'UTC') - pgfr_record.epoch())::int4;
+        if v_orig_last_ts is not null and v_orig_last_ts < v_today_start_ts then
+            update pgfr_record.table_last_state
+            set seq_scan = -1, idx_scan = -1,
+                n_tup_ins = -1, n_tup_upd = -1, n_tup_del = -1,
+                n_live_tup = -1, n_dead_tup = -1, n_mod_since_analyze = -1;
         end if;
 
         -- single statement: sparse insert + upsert last_state via writeable CTE.
@@ -699,8 +715,10 @@ create or replace function pgfr_record._collect_index_snapshot_sparse(p_snapshot
 returns void
 language plpgsql as $$
 declare
-    v_sample_ts  int4;
-    v_dbid       oid;
+    v_sample_ts      int4;
+    v_orig_last_ts   int4;
+    v_today_start_ts int4;
+    v_dbid           oid;
 begin
     -- ensure partition exists for today (O(1) on happy path)
     perform pgfr_record._ensure_partition('index_snapshots_v2', current_date,
@@ -715,6 +733,17 @@ begin
         -- exists() short-circuits on first row — avoids full scan on every tick
         if not exists (select 1 from pgfr_record.index_last_state) then
             perform pgfr_record._rebuild_index_last_state();
+        end if;
+
+        -- day-boundary: force full baseline into new partition.
+        -- Poison numeric cols to -1 so every index row matches the IS DISTINCT FROM
+        -- predicate, guaranteeing a baseline row in the new day's partition.
+        select max(sample_ts) into v_orig_last_ts from pgfr_record.index_last_state;
+        v_today_start_ts := extract(epoch from
+            (current_date::timestamptz at time zone 'UTC') - pgfr_record.epoch())::int4;
+        if v_orig_last_ts is not null and v_orig_last_ts < v_today_start_ts then
+            update pgfr_record.index_last_state
+            set idx_scan = -1, idx_tup_read = -1, idx_tup_fetch = -1;
         end if;
 
         -- sparse insert: only rows where tracked metrics changed vs last_state
