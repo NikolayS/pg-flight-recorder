@@ -25,6 +25,11 @@ drop view if exists pgfr_record.wait_samples_archive;
 drop view if exists pgfr_record.table_snapshots;
 drop view if exists pgfr_record.index_snapshots;
 
+-- Drop orphan INSTEAD OF trigger functions (triggers gone with the views)
+drop function if exists pgfr_record._activity_samples_archive_insert();
+drop function if exists pgfr_record._lock_samples_archive_insert();
+drop function if exists pgfr_record._wait_samples_archive_insert();
+
 do $$ begin raise notice 'rollback: views dropped'; end $$;
 
 -- Rename _legacy tables back

@@ -328,7 +328,8 @@ from pgfr_record.activity_samples_archive_legacy;
 
 comment on view pgfr_record.activity_samples_archive is
 'Backwards-compatible view: UNION ALL of activity_samples_archive_v2 and _legacy. '
-'id / sample_id: NULL for v2 rows (no BIGSERIAL PK). Read-only.';
+'id / sample_id: NULL for v2 rows (no BIGSERIAL PK). '
+'INSTEAD OF INSERT routes to activity_samples_archive_v2.';
 
 -- lock_samples_archive
 create or replace view pgfr_record.lock_samples_archive as
@@ -349,7 +350,8 @@ select
 from pgfr_record.lock_samples_archive_legacy;
 
 comment on view pgfr_record.lock_samples_archive is
-'Backwards-compatible view: UNION ALL of lock_samples_archive_v2 and _legacy. Read-only.';
+'Backwards-compatible view: UNION ALL of lock_samples_archive_v2 and _legacy. '
+'INSTEAD OF INSERT routes to lock_samples_archive_v2.';
 
 -- wait_samples_archive
 create or replace view pgfr_record.wait_samples_archive as
@@ -366,7 +368,94 @@ select
 from pgfr_record.wait_samples_archive_legacy;
 
 comment on view pgfr_record.wait_samples_archive is
-'Backwards-compatible view: UNION ALL of wait_samples_archive_v2 and _legacy. Read-only.';
+'Backwards-compatible view: UNION ALL of wait_samples_archive_v2 and _legacy. '
+'INSTEAD OF INSERT routes to wait_samples_archive_v2.';
+
+-- ---------------------------------------------------------------------------
+-- INSTEAD OF INSERT triggers on archive views
+-- Routes archive_ring_samples() inserts (which target old table names) into
+-- the corresponding *_archive_v2 partitioned tables.
+-- ---------------------------------------------------------------------------
+
+create or replace function pgfr_record._activity_samples_archive_insert()
+returns trigger
+language plpgsql as $$
+declare
+    v_sample_ts int4;
+begin
+    v_sample_ts := extract(epoch from new.captured_at - pgfr_record.epoch())::int4;
+    perform pgfr_record._ensure_partition('activity_samples_archive_v2',
+        date(new.captured_at), 'sample_ts desc, pid');
+    insert into pgfr_record.activity_samples_archive_v2 (
+        sample_ts, captured_at, pid, usename, application_name, client_addr,
+        backend_type, state, wait_event_type, wait_event,
+        backend_start, xact_start, query_start, state_change, query_preview
+    ) values (
+        v_sample_ts, new.captured_at, new.pid, new.usename, new.application_name,
+        new.client_addr, new.backend_type, new.state, new.wait_event_type,
+        new.wait_event, new.backend_start, new.xact_start, new.query_start,
+        new.state_change, new.query_preview
+    );
+    return new;
+end;
+$$;
+
+drop trigger if exists activity_samples_archive_insert on pgfr_record.activity_samples_archive;
+create trigger activity_samples_archive_insert
+    instead of insert on pgfr_record.activity_samples_archive
+    for each row execute function pgfr_record._activity_samples_archive_insert();
+
+create or replace function pgfr_record._lock_samples_archive_insert()
+returns trigger
+language plpgsql as $$
+declare
+    v_sample_ts int4;
+begin
+    v_sample_ts := extract(epoch from new.captured_at - pgfr_record.epoch())::int4;
+    perform pgfr_record._ensure_partition('lock_samples_archive_v2',
+        date(new.captured_at), 'sample_ts desc, blocked_pid');
+    insert into pgfr_record.lock_samples_archive_v2 (
+        sample_ts, captured_at, blocked_pid, blocked_user, blocked_app,
+        blocked_query_preview, blocked_duration, blocking_pid, blocking_user,
+        blocking_app, blocking_query_preview, lock_type, locked_relation_oid
+    ) values (
+        v_sample_ts, new.captured_at, new.blocked_pid, new.blocked_user,
+        new.blocked_app, new.blocked_query_preview, new.blocked_duration,
+        new.blocking_pid, new.blocking_user, new.blocking_app,
+        new.blocking_query_preview, new.lock_type, new.locked_relation_oid
+    );
+    return new;
+end;
+$$;
+
+drop trigger if exists lock_samples_archive_insert on pgfr_record.lock_samples_archive;
+create trigger lock_samples_archive_insert
+    instead of insert on pgfr_record.lock_samples_archive
+    for each row execute function pgfr_record._lock_samples_archive_insert();
+
+create or replace function pgfr_record._wait_samples_archive_insert()
+returns trigger
+language plpgsql as $$
+declare
+    v_sample_ts int4;
+begin
+    v_sample_ts := extract(epoch from new.captured_at - pgfr_record.epoch())::int4;
+    perform pgfr_record._ensure_partition('wait_samples_archive_v2',
+        date(new.captured_at), 'sample_ts desc, wait_event_type, wait_event');
+    insert into pgfr_record.wait_samples_archive_v2 (
+        sample_ts, captured_at, backend_type, wait_event_type, wait_event, state, count
+    ) values (
+        v_sample_ts, new.captured_at, new.backend_type, new.wait_event_type,
+        new.wait_event, new.state, new.count
+    );
+    return new;
+end;
+$$;
+
+drop trigger if exists wait_samples_archive_insert on pgfr_record.wait_samples_archive;
+create trigger wait_samples_archive_insert
+    instead of insert on pgfr_record.wait_samples_archive
+    for each row execute function pgfr_record._wait_samples_archive_insert();
 
 -- ---------------------------------------------------------------------------
 -- Step 3: Replace pgfr_cleanup cron (DELETE-based) with partition GC
