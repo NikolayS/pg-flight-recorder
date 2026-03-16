@@ -113,6 +113,7 @@ declare
     v_pg_version        INTEGER;
     v_pgss_reset        TIMESTAMPTZ;
     v_last_sample_ts    INT4;
+    v_orig_last_ts      INT4;   -- last_sample_ts before any Step-3 rebuild (used for Step-4 boundary check)
     v_last_dealloc      bigint;
     v_curr_dealloc      bigint;
     v_dealloc_warning   boolean := false;
@@ -141,6 +142,7 @@ begin
         -- -------------------------------------------------------------------
         select stats_reset into v_pgss_reset from pg_stat_statements_info;
         select MAX(sample_ts) into v_last_sample_ts from pgfr_record.statement_last_state;
+        v_orig_last_ts := v_last_sample_ts;  -- preserve for Step-4 boundary check
 
         -- -------------------------------------------------------------------
         -- Step 2: Check PGSS dealloc counter (cluster-wide, not per-db)
@@ -196,9 +198,9 @@ begin
         -- -------------------------------------------------------------------
         v_today_start_ts := extract(EPOCH from (CURRENT_DATE::TIMESTAMPTZ at TIME zone 'UTC') - pgfr_record.epoch())::INT4;
 
-        -- If the most recent last_state entry is from before today, we are at
-        -- the first tick of a new day partition.
-        if v_last_sample_ts is not null and v_last_sample_ts < v_today_start_ts then
+        -- If the most recent last_state entry was from before today (use original
+        -- pre-Step-3 value so a stats_reset rebuild does not mask a day boundary).
+        if v_orig_last_ts is not null and v_orig_last_ts < v_today_start_ts then
             v_at_boundary := true;
             -- Acquire rebuild lock (if not already held from above)
             v_locked := pg_try_advisory_xact_lock(7382961::integer, hashtext('pgfr_last_state_rebuild')::integer);
