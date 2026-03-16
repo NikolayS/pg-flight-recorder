@@ -627,8 +627,8 @@ BEGIN
     RETURN QUERY SELECT
         'lock_timeout_ms'::text,
         CASE
-            WHEN v_lock_timeout > 500 THEN 'WARNING'
             WHEN v_lock_timeout > 1000 THEN 'CRITICAL'
+            WHEN v_lock_timeout > 500  THEN 'WARNING'
             ELSE 'OK'
         END::text,
         format('Current: %s ms. Recommended: <= 100ms to fail fast on catalog lock contention',

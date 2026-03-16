@@ -691,17 +691,17 @@ BEGIN
 
     RETURN QUERY
     SELECT 'statement_snapshots'::TEXT, count(*)::BIGINT,
-           min(captured_at)::TEXT || ' to ' || max(captured_at)::TEXT
+           min(sample_ts)::TEXT || ' to ' || max(sample_ts)::TEXT
     FROM pgfr_record.statement_snapshots;
 
     RETURN QUERY
     SELECT 'table_snapshots'::TEXT, count(*)::BIGINT,
-           min(captured_at)::TEXT || ' to ' || max(captured_at)::TEXT
+           min(sample_ts)::TEXT || ' to ' || max(sample_ts)::TEXT
     FROM pgfr_record.table_snapshots;
 
     RETURN QUERY
     SELECT 'index_snapshots'::TEXT, count(*)::BIGINT,
-           min(captured_at)::TEXT || ' to ' || max(captured_at)::TEXT
+           min(sample_ts)::TEXT || ' to ' || max(sample_ts)::TEXT
     FROM pgfr_record.index_snapshots;
 
     RETURN QUERY
@@ -721,17 +721,17 @@ BEGIN
 
     RETURN QUERY
     SELECT 'wait_event_aggregates'::TEXT, count(*)::BIGINT,
-           min(window_start)::TEXT || ' to ' || max(window_end)::TEXT
+           min(start_time)::TEXT || ' to ' || max(start_time)::TEXT
     FROM pgfr_record.wait_event_aggregates;
 
     RETURN QUERY
     SELECT 'activity_aggregates'::TEXT, count(*)::BIGINT,
-           min(window_start)::TEXT || ' to ' || max(window_end)::TEXT
+           min(start_time)::TEXT || ' to ' || max(start_time)::TEXT
     FROM pgfr_record.activity_aggregates;
 
     RETURN QUERY
     SELECT 'lock_aggregates'::TEXT, count(*)::BIGINT,
-           min(window_start)::TEXT || ' to ' || max(window_end)::TEXT
+           min(start_time)::TEXT || ' to ' || max(start_time)::TEXT
     FROM pgfr_record.lock_aggregates;
 
     RETURN QUERY

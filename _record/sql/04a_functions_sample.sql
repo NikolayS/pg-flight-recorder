@@ -613,14 +613,8 @@ DECLARE
     v_deleted_lock_archive INTEGER;
     v_deleted_wait_archive INTEGER;
 BEGIN
-    v_aggregate_retention := COALESCE(
-        (SELECT value || ' days' FROM pgfr_record.config WHERE key = 'aggregate_retention_days')::interval,
-        '7 days'::interval
-    );
-    v_archive_retention := COALESCE(
-        (SELECT value || ' days' FROM pgfr_record.config WHERE key = 'archive_retention_days')::interval,
-        '7 days'::interval
-    );
+    v_aggregate_retention := (pgfr_record._get_config('aggregate_retention_days', '7') || ' days')::interval;
+    v_archive_retention   := (pgfr_record._get_config('archive_retention_days', '7') || ' days')::interval;
     DELETE FROM pgfr_record.wait_event_aggregates
     WHERE start_time < now() - v_aggregate_retention;
     GET DIAGNOSTICS v_deleted_waits = ROW_COUNT;
