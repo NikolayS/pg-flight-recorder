@@ -185,11 +185,25 @@ BEGIN
         recommendation := 'Increase work_mem for affected sessions or globally';
         RETURN NEXT;
     END IF;
+    -- query both legacy ring and v2 ring tables; dedup by taking max across both
     SELECT count(DISTINCT blocked_pid), max(blocked_duration)
     INTO v_lock_count, v_max_block_duration
-    FROM pgfr_record.lock_samples_ring l
-    JOIN pgfr_record.samples_ring s ON s.slot_id = l.slot_id
-    WHERE s.captured_at BETWEEN p_start_time AND p_end_time;
+    FROM (
+        -- legacy ring (pre-Phase 3)
+        SELECT l.blocked_pid,
+               l.blocked_duration
+        FROM pgfr_record.lock_samples_ring l
+        JOIN pgfr_record.samples_ring s ON s.slot_id = l.slot_id
+        WHERE s.captured_at BETWEEN p_start_time AND p_end_time
+          AND l.blocked_pid IS NOT NULL
+        UNION ALL
+        -- v2 ring
+        SELECT ls.blocked_pid,
+               ls.blocked_duration_s * interval '1 second' as blocked_duration
+        FROM pgfr_record.lock_samples ls
+        WHERE pgfr_record.epoch() + ls.sample_ts * interval '1 second'
+              BETWEEN p_start_time AND p_end_time
+    ) combined;
     IF v_lock_count > 0 THEN
         anomaly_type := 'LOCK_CONTENTION';
         severity := CASE
@@ -486,7 +500,14 @@ DECLARE
 BEGIN
     SELECT * INTO v_cmp FROM pgfr_analyze.compare(p_start_time, p_end_time);
     SELECT count(*) INTO v_sample_count
-    FROM pgfr_record.samples_ring WHERE captured_at BETWEEN p_start_time AND p_end_time;
+    FROM (
+        SELECT 1 FROM pgfr_record.samples_ring
+        WHERE captured_at BETWEEN p_start_time AND p_end_time
+        UNION ALL
+        SELECT 1 FROM pgfr_record.activity_samples
+        WHERE pgfr_record.epoch() + sample_ts * interval '1 second'
+              BETWEEN p_start_time AND p_end_time
+    ) combined;
     SELECT count(*) INTO v_anomaly_count
     FROM pgfr_analyze.anomaly_report(p_start_time, p_end_time);
     section := 'OVERVIEW';
@@ -569,9 +590,19 @@ BEGIN
         count(DISTINCT blocked_pid) AS blocked_count,
         max(blocked_duration) AS max_duration
     INTO v_lock_summary
-    FROM pgfr_record.lock_samples_ring l
-    JOIN pgfr_record.samples_ring s ON s.slot_id = l.slot_id
-    WHERE s.captured_at BETWEEN p_start_time AND p_end_time;
+    FROM (
+        SELECT l.blocked_pid, l.blocked_duration
+        FROM pgfr_record.lock_samples_ring l
+        JOIN pgfr_record.samples_ring s ON s.slot_id = l.slot_id
+        WHERE s.captured_at BETWEEN p_start_time AND p_end_time
+          AND l.blocked_pid IS NOT NULL
+        UNION ALL
+        SELECT ls.blocked_pid,
+               ls.blocked_duration_s * interval '1 second'
+        FROM pgfr_record.lock_samples ls
+        WHERE pgfr_record.epoch() + ls.sample_ts * interval '1 second'
+              BETWEEN p_start_time AND p_end_time
+    ) combined;
     metric := 'Blocked Sessions';
     value := COALESCE(v_lock_summary.blocked_count, 0)::text;
     interpretation := CASE
