@@ -302,6 +302,7 @@ begin
         execute format('truncate pgfr_record.wait_samples_%s', v_truncate_slot);
         execute format('truncate pgfr_record.lock_samples_%s', v_truncate_slot);
         execute format('truncate pgfr_record.query_map_%s', v_truncate_slot);
+        execute format('truncate pgfr_record.activity_samples_%s', v_truncate_slot);
         -- restart identity sequence so ids are compact after rotation
         execute format(
             'alter table pgfr_record.query_map_%s alter column id restart',
