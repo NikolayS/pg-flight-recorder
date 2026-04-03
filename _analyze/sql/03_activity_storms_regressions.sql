@@ -211,21 +211,21 @@ BEGIN
 
     RETURN QUERY
     WITH recent_stats AS (
-        -- Recent query counts from statement_snapshots
+        -- Recent query call deltas from statement_snapshots
         SELECT
             ss.queryid,
             left(ss.query_preview, 100) AS query_preview,
-            SUM(ss.calls) AS total_calls
+            SUM(COALESCE(ss.calls_delta, 0)) AS total_calls
         FROM pgfr_record.statement_snapshots ss
         JOIN pgfr_record.snapshots s ON s.id = ss.snapshot_id
         WHERE s.captured_at >= now() - v_lookback
         GROUP BY ss.queryid, left(ss.query_preview, 100)
     ),
     baseline_stats AS (
-        -- Baseline query counts (same hour of day over baseline period, excluding recent)
+        -- Baseline query call deltas (over baseline period, excluding recent)
         SELECT
             ss.queryid,
-            AVG(ss.calls) AS avg_calls,
+            AVG(COALESCE(ss.calls_delta, 0)) AS avg_calls,
             COUNT(DISTINCT date_trunc('day', s.captured_at)) AS days_sampled
         FROM pgfr_record.statement_snapshots ss
         JOIN pgfr_record.snapshots s ON s.id = ss.snapshot_id
@@ -416,8 +416,10 @@ BEGIN
             left(ss.query_preview, 100) AS query_preview,
             AVG(ss.mean_exec_time) AS avg_mean_time,
             STDDEV(ss.mean_exec_time) AS stddev_mean_time,
-            AVG(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS avg_total_buffers,
-            STDDEV(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS stddev_total_buffers,
+            AVG(COALESCE(ss.shared_blks_hit_delta, 0) + COALESCE(ss.shared_blks_read_delta, 0)
+                + COALESCE(ss.temp_blks_read_delta, 0)) AS avg_total_buffers,
+            STDDEV(COALESCE(ss.shared_blks_hit_delta, 0) + COALESCE(ss.shared_blks_read_delta, 0)
+                + COALESCE(ss.temp_blks_read_delta, 0)) AS stddev_total_buffers,
             COUNT(*) AS sample_count
         FROM pgfr_record.statement_snapshots ss
         JOIN pgfr_record.snapshots s ON s.id = ss.snapshot_id
@@ -432,8 +434,10 @@ BEGIN
             ss.queryid,
             AVG(ss.mean_exec_time) AS avg_mean_time,
             STDDEV(ss.mean_exec_time) AS stddev_mean_time,
-            AVG(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS avg_total_buffers,
-            STDDEV(ss.shared_blks_hit + ss.shared_blks_read + ss.temp_blks_read + ss.temp_blks_written) AS stddev_total_buffers,
+            AVG(COALESCE(ss.shared_blks_hit_delta, 0) + COALESCE(ss.shared_blks_read_delta, 0)
+                + COALESCE(ss.temp_blks_read_delta, 0)) AS avg_total_buffers,
+            STDDEV(COALESCE(ss.shared_blks_hit_delta, 0) + COALESCE(ss.shared_blks_read_delta, 0)
+                + COALESCE(ss.temp_blks_read_delta, 0)) AS stddev_total_buffers,
             COUNT(DISTINCT date_trunc('day', s.captured_at)) AS days_sampled
         FROM pgfr_record.statement_snapshots ss
         JOIN pgfr_record.snapshots s ON s.id = ss.snapshot_id
