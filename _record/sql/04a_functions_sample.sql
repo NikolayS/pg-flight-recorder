@@ -342,7 +342,7 @@ BEGIN
                     ORDER BY bs.pid, blocking_pid
                     LIMIT 100
                 ) bs
-                JOIN _fr_psa_snapshot blocking ON blocking.pid = bs.blocking_pid
+                JOIN pg_stat_activity blocking ON blocking.pid = bs.blocking_pid
                 ON CONFLICT (slot_id, row_num) DO UPDATE SET
                     blocked_pid = EXCLUDED.blocked_pid,
                     blocked_user = EXCLUDED.blocked_user,
