@@ -303,7 +303,7 @@ BEGIN
         v_result := v_result || '|---------|------------|-------|---------|-------------|-----|---|' || E'\n';
         FOR v_row IN SELECT * FROM pgfr_analyze.wait_summary(p_start_time, p_end_time) LOOP
             v_result := v_result || '| ' ||
-                COALESCE(v_row.backend_type, '-') || ' | ' ||
+                COALESCE(v_row.backend_state, '-') || ' | ' ||
                 COALESCE(v_row.wait_event_type, '-') || ' | ' ||
                 COALESCE(v_row.wait_event, '-') || ' | ' ||
                 COALESCE(v_row.sample_count::TEXT, '-') || ' | ' ||
