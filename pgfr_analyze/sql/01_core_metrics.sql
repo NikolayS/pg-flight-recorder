@@ -1,7 +1,7 @@
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'schema_version') THEN
-        RAISE EXCEPTION 'Flight Recorder core not installed. Run _record/install.sql first.';
+        RAISE EXCEPTION 'Flight Recorder core not installed. Run pgfr_record/install.sql first.';
     END IF;
 END $$;
 

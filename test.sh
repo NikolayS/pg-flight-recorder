@@ -11,7 +11,7 @@ set -e
 #   ./test.sh 16        # Test on PostgreSQL 16 only
 
 # Compose files: base + per-extension volumes
-COMPOSE_FILES="-f docker-compose.yml -f _record/docker-compose.yml -f _control/docker-compose.yml -f _analyze/docker-compose.yml"
+COMPOSE_FILES="-f docker-compose.yml -f pgfr_record/docker-compose.yml -f pgfr_control/docker-compose.yml -f pgfr_analyze/docker-compose.yml"
 
 # Detect docker compose command (standalone vs plugin)
 if command -v docker-compose &> /dev/null; then

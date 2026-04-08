@@ -9,7 +9,7 @@
 -- spiral from FK cascade on partition drop. See SPEC Q1.
 --
 -- Dual-write: snapshot() writes to both old and new tables.
--- Migration: rename old tables to _legacy when ready (see _record/migrate_phase3.sql).
+-- Migration: rename old tables to _legacy when ready (see pgfr_record/migrate_phase3.sql).
 --------------------------------------------------------------------------------
 
 -- ---------------------------------------------------------------------------

@@ -1,20 +1,20 @@
 -- =============================================================================
 -- pgfr_record: Autovacuum Control Functions
 -- =============================================================================
--- Optional add-on for _record/install.sql. Provides semiautonomous vacuum settings
+-- Optional add-on for pgfr_record/install.sql. Provides semiautonomous vacuum settings
 -- configuration, dead tuple trend analysis, bloat estimation, and OID
 -- consumption monitoring.
 --
--- Requires: _record/install.sql must be run first (creates tables and core functions).
+-- Requires: pgfr_record/install.sql must be run first (creates tables and core functions).
 --
--- Install: psql --single-transaction -f _control/install.sql
+-- Install: psql --single-transaction -f pgfr_control/install.sql
 -- =============================================================================
 
 -- Verify core is installed
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pgfr_record.config WHERE key = 'schema_version') THEN
-        RAISE EXCEPTION 'Flight Recorder core not installed. Run _record/install.sql first.';
+        RAISE EXCEPTION 'Flight Recorder core not installed. Run pgfr_record/install.sql first.';
     END IF;
 END $$;
 

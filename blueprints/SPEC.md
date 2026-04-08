@@ -86,7 +86,7 @@
 - [x] rewrite `flush_ring_to_aggregates()` — reads `wait_samples`/`lock_samples`/`activity_samples`; decodes integer[] via `wait_event_map`
 - [x] rewrite `archive_ring_samples()` — reads v2 ring tables; decodes lock_type via `lock_type_map`
 - [x] `sample_ring()` v2 — adds activity INSERT (top 25 sessions by query age) to existing wait+lock sampling
-- [x] update `_analyze/install.sql` reader functions — `recent_waits_current()`, `recent_activity_current()`, `recent_locks_current()`, `wait_summary()` all rewritten for v2 ring tables (commit `4885dd2`)
+- [x] update `pgfr_analyze/install.sql` reader functions — `recent_waits_current()`, `recent_activity_current()`, `recent_locks_current()`, `wait_summary()` all rewritten for v2 ring tables (commit `4885dd2`)
 - [x] benchmark: ring bloat before vs after — `BENCH_RING.md` (commit `c374c8e`): 95% size reduction, 0 dead tuples vs 543, 175 bytes/row measured
 
 ### Phase 3 — partition all remaining tables
@@ -1317,9 +1317,9 @@ filterable anomaly; an autovacuum death spiral from a cascade is catastrophic.
 Enforce integrity at the collection layer and rely on aligned `sample_ts` partition
 boundaries for clean retention.
 
-**Q2: Migration for existing installations. ✅ RESOLVED — implemented in `_record/migrate_phase1.sql` (Issue #10)**
+**Q2: Migration for existing installations. ✅ RESOLVED — implemented in `pgfr_record/migrate_phase1.sql` (Issue #10)**
 
-**Q2b: Reader functions for v2 partitioned tables. ✅ RESOLVED — implemented in `_analyze/install.sql` (Issue #11)**
+**Q2b: Reader functions for v2 partitioned tables. ✅ RESOLVED — implemented in `pgfr_analyze/install.sql` (Issue #11)**
 
 `pgfr_analyze` now ships v2-native reader functions that query `statement_snapshots_v2`,
 `table_snapshots_v2`, and `index_snapshots_v2` directly via `int4 sample_ts` range
@@ -1343,7 +1343,7 @@ suffix and create backwards-compatible views so existing SELECT queries continue
 work unmodified. Old data is preserved — nothing is deleted.
 
 **Migration function:** `pgfr_record.migrate_to_v2()` — run once after installing
-the new `_record/install.sql`. Idempotent: safe to call multiple times.
+the new `pgfr_record/install.sql`. Idempotent: safe to call multiple times.
 
 **What it does (in order):**
 1. Checks that v2 tables exist (`statement_snapshots_v2`, `table_snapshots_v2`,
@@ -1357,7 +1357,7 @@ the new `_record/install.sql`. Idempotent: safe to call multiple times.
 4. Returns a text summary of all actions taken
 
 **Cutover checklist (ordered — do not skip steps):**
-1. Install the new `_record/install.sql` (creates v2 tables)
+1. Install the new `pgfr_record/install.sql` (creates v2 tables)
 2. Run `SELECT pgfr_record.migrate_to_v2();` — verifies v2 tables, renames old tables
 3. Verify backwards-compat views work: `SELECT count(*) FROM pgfr_record.statement_snapshots;`
 4. Verify new v2 tables are receiving data from the collector

@@ -1,8 +1,8 @@
 -- =============================================================================
 -- pgTAP tests: Phase 1 / Issue #9 — snapshot() wiring + pg_cron GC jobs
 -- SPEC §9.13 — Phase 1 test items
--- Run with: pg_prove -d <dbname> _record/tests/test_wiring.sql
--- Requires: pgTAP, pg_cron, _record/install.sql installed
+-- Run with: pg_prove -d <dbname> pgfr_record/tests/test_wiring.sql
+-- Requires: pgTAP, pg_cron, pgfr_record/install.sql installed
 -- PG14+ minimum
 --
 -- Coverage:

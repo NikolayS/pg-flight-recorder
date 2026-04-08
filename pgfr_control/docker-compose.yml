@@ -1,7 +1,7 @@
 x-control-volumes: &control-volumes
   volumes:
-    - ./_control/install.sql:/control.sql:ro
-    - ./_control/tests:/tests/control:ro
+    - ./pgfr_control/install.sql:/control.sql:ro
+    - ./pgfr_control/tests:/tests/control:ro
 
 services:
   postgres15:

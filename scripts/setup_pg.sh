@@ -115,7 +115,7 @@ log "Patching install.sql for PG17 compatibility..."
 python3 << 'PYEOF'
 import re
 
-with open('/root/pgfr/_record/install.sql', 'r') as f:
+with open('/root/pgfr/pgfr_record/install.sql', 'r') as f:
     content = f.read()
 
 # Replace the FROM pg_stat_statements in the snapshot() function CTE
@@ -129,13 +129,13 @@ if old_from in content:
 else:
     print('Pattern not found - skipping patch (may already be patched)')
 
-with open('/root/pgfr/_record/install.sql', 'w') as f:
+with open('/root/pgfr/pgfr_record/install.sql', 'w') as f:
     f.write(content)
 PYEOF
 
 # ── 7. Install pg-flight-recorder ───────────────────────────────────────────
 log "Installing pg-flight-recorder..."
-sudo -u postgres psql -p $PGPORT -d $PGDB -f "$PGFR_DIR/_record/install.sql"
+sudo -u postgres psql -p $PGPORT -d $PGDB -f "$PGFR_DIR/pgfr_record/install.sql"
 
 # Create PG17 compatibility view (maps renamed columns)
 sudo -u postgres psql -p $PGPORT -d $PGDB << 'EOSQL'

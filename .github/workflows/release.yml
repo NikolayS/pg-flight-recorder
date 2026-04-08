@@ -140,11 +140,11 @@ jobs:
 
           # Create tarball
           tar -czf release-assets/pgfr_record-${{ steps.version.outputs.version }}.tar.gz \
-            _record/install.sql _analyze/install.sql _control/install.sql _record/uninstall.sql _analyze/uninstall.sql _control/uninstall.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
+            pgfr_record/install.sql pgfr_analyze/install.sql pgfr_control/install.sql pgfr_record/uninstall.sql pgfr_analyze/uninstall.sql pgfr_control/uninstall.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
 
           # Create zip
           zip -q release-assets/pgfr_record-${{ steps.version.outputs.version }}.zip \
-            _record/install.sql _analyze/install.sql _control/install.sql _record/uninstall.sql _analyze/uninstall.sql _control/uninstall.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
+            pgfr_record/install.sql pgfr_analyze/install.sql pgfr_control/install.sql pgfr_record/uninstall.sql pgfr_analyze/uninstall.sql pgfr_control/uninstall.sql README.md REFERENCE.md $([ -f CHANGELOG.md ] && echo CHANGELOG.md)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -190,4 +190,4 @@ jobs:
           echo "📦 Download: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.version }}"
           echo ""
           echo "Installation:"
-          echo "  curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.version }}/_record/install.sql | psql"
+          echo "  curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.version }}/pgfr_record/install.sql | psql"

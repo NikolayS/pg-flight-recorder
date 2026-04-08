@@ -1,0 +1,15 @@
+x-record-volumes: &record-volumes
+  volumes:
+    - ./pgfr_record/install.sql:/install.sql:ro
+    - ./pgfr_record/sql:/record_sql:ro
+    - ./pgfr_record/tests:/tests/record:ro
+    - ./pgfr_record/migrate_phase3.sql:/tmp/migrate_phase3.sql:ro
+    - ./pgfr_record/migrate_phase3_rollback.sql:/tmp/migrate_phase3_rollback.sql:ro
+
+services:
+  postgres15:
+    <<: *record-volumes
+  postgres16:
+    <<: *record-volumes
+  postgres17:
+    <<: *record-volumes

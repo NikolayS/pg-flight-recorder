@@ -25,11 +25,11 @@ pgfr_analyze reads the snapshot and ring buffer data collected by pgfr_record an
 
 ```sql
 -- Install core first if not already installed
-\i _record/install.sql
+\i pgfr_record/install.sql
 SELECT pgfr_record.enable();
 
 -- Then install analyze
-\i _analyze/install.sql
+\i pgfr_analyze/install.sql
 ```
 
 ## Quick start
