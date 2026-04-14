@@ -25,12 +25,12 @@ jobs:
         run: |
           # Check for basic SQL syntax errors using psql --single-transaction with dry-run
           # This doesn't execute but validates syntax
-          echo "Checking _record/install.sql for syntax errors..."
+          echo "Checking pgfr_record/install.sql for syntax errors..."
           psql --version
 
           # Basic syntax validation - check for common issues
-          if grep -n "SYNTAX ERROR" _record/install.sql; then
-            echo "Found syntax errors in _record/install.sql"
+          if grep -n "SYNTAX ERROR" pgfr_record/install.sql; then
+            echo "Found syntax errors in pgfr_record/install.sql"
             exit 1
           fi
 
@@ -44,22 +44,22 @@ jobs:
               if (in_string) { print "Unterminated $$ string found"; exit 1; }
               if (in_comment) { print "Unterminated /* comment found"; exit 1; }
             }
-          ' _record/install.sql; then
+          ' pgfr_record/install.sql; then
             exit 1
           fi
 
-          echo "✓ _record/install.sql syntax validation passed"
+          echo "✓ pgfr_record/install.sql syntax validation passed"
 
       - name: Validate SQL syntax (uninstall.sql)
         run: |
-          echo "Checking _record/uninstall.sql for syntax errors..."
+          echo "Checking pgfr_record/uninstall.sql for syntax errors..."
 
-          if grep -n "SYNTAX ERROR" _record/uninstall.sql; then
-            echo "Found syntax errors in _record/uninstall.sql"
+          if grep -n "SYNTAX ERROR" pgfr_record/uninstall.sql; then
+            echo "Found syntax errors in pgfr_record/uninstall.sql"
             exit 1
           fi
 
-          echo "✓ _record/uninstall.sql syntax validation passed"
+          echo "✓ pgfr_record/uninstall.sql syntax validation passed"
 
   markdown-lint:
     name: Markdown Lint

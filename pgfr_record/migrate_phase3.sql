@@ -22,7 +22,7 @@
 --     (verify: SELECT count(*) FROM pgfr_record.snapshots_v2 > 0)
 --
 -- Run as superuser:
---   psql -U postgres -d <db> -f _record/migrate_phase3.sql
+--   psql -U postgres -d <db> -f pgfr_record/migrate_phase3.sql
 
 \set ON_ERROR_STOP 1
 set client_min_messages to notice;

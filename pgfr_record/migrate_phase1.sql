@@ -1,6 +1,6 @@
 -- Phase 1 Migration: old tables → v2 partitioned tables
 -- Safe to run on live system. Idempotent.
--- Run AFTER installing the new _record/install.sql (which adds v2 tables).
+-- Run AFTER installing the new pgfr_record/install.sql (which adds v2 tables).
 --
 -- Usage:
 --   SELECT pgfr_record.migrate_to_v2();
@@ -59,8 +59,8 @@ begin
     if array_length(v_v2_missing, 1) > 0 then
         raise exception
             e'migrate_to_v2() aborted: v2 tables are missing: %\n'
-            'Run the new _record/install.sql first, then retry migration.\n'
-            'Example: \\i _record/install.sql',
+            'Run the new pgfr_record/install.sql first, then retry migration.\n'
+            'Example: \\i pgfr_record/install.sql',
             array_to_string(v_v2_missing, ', ');
     end if;
 
@@ -189,5 +189,5 @@ comment on function pgfr_record.migrate_to_v2() is
 'Phase 1 migration: renames old plain tables to _legacy suffix and creates backwards-compat views. '
 'Idempotent — safe to call multiple times. '
 'Requires v2 tables (statement_snapshots_v2, table_snapshots_v2, index_snapshots_v2) to exist first. '
-'Run AFTER installing the new _record/install.sql. '
+'Run AFTER installing the new pgfr_record/install.sql. '
 'Old data is preserved in _legacy tables — nothing is deleted.';

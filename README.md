@@ -27,9 +27,9 @@ Three extensions, each published as a separate [dbdev](https://database.dev) pac
 
 | Extension                                                  | Schema         | Purpose                                                  | README                                   |
 |------------------------------------------------------------|----------------|----------------------------------------------------------|------------------------------------------|
-| [pgfr_record](https://database.dev/dventimi/pgfr_record)   | `pgfr_record`  | Core: tables, collection, scheduling, ring buffers       | [_record/README.md](_record/README.md)   |
-| [pgfr_analyze](https://database.dev/dventimi/pgfr_analyze) | `pgfr_analyze` | Optional: reporting, anomaly detection, time travel      | [_analyze/README.md](_analyze/README.md) |
-| [pgfr_control](https://database.dev/dventimi/pgfr_control) | `pgfr_control` | Optional: vacuum diagnostics, scale factor tuning, bloat | [_control/README.md](_control/README.md) |
+| [pgfr_record](https://database.dev/dventimi/pgfr_record)   | `pgfr_record`  | Core: tables, collection, scheduling, ring buffers       | [pgfr_record/README.md](pgfr_record/README.md)   |
+| [pgfr_analyze](https://database.dev/dventimi/pgfr_analyze) | `pgfr_analyze` | Optional: reporting, anomaly detection, time travel      | [pgfr_analyze/README.md](pgfr_analyze/README.md) |
+| [pgfr_control](https://database.dev/dventimi/pgfr_control) | `pgfr_control` | Optional: vacuum diagnostics, scale factor tuning, bloat | [pgfr_control/README.md](pgfr_control/README.md) |
 
 ## Requirements
 
@@ -44,9 +44,9 @@ Download from [GitHub Releases](https://github.com/dventimisupabase/pg-flight-re
 
 ```bash
 # Install core + optional extensions
-psql --single-transaction -f _record/install.sql
-psql --single-transaction -f _control/install.sql
-psql --single-transaction -f _analyze/install.sql
+psql --single-transaction -f pgfr_record/install.sql
+psql --single-transaction -f pgfr_control/install.sql
+psql --single-transaction -f pgfr_analyze/install.sql
 ```
 
 ```sql
@@ -184,22 +184,22 @@ pg_dump -d your_database -n pgfr_record --data-only | gzip > pgfr_data.sql.gz
 Re-running install scripts is safe -- they use `CREATE OR REPLACE` and `IF NOT EXISTS`, updating functions and views while preserving all data.
 
 ```bash
-psql --single-transaction -f _record/install.sql
-psql --single-transaction -f _control/install.sql
-psql --single-transaction -f _analyze/install.sql
+psql --single-transaction -f pgfr_record/install.sql
+psql --single-transaction -f pgfr_control/install.sql
+psql --single-transaction -f pgfr_analyze/install.sql
 ```
 
 ## Uninstall
 
 ```bash
 # Remove everything (stops jobs, drops all schemas and data)
-psql --single-transaction -f _record/uninstall.sql
+psql --single-transaction -f pgfr_record/uninstall.sql
 
 # Remove only control functions (keeps core + data)
-psql --single-transaction -f _control/uninstall.sql
+psql --single-transaction -f pgfr_control/uninstall.sql
 
 # Remove only reporting functions (keeps core + data)
-psql --single-transaction -f _analyze/uninstall.sql
+psql --single-transaction -f pgfr_analyze/uninstall.sql
 ```
 
 ## Testing

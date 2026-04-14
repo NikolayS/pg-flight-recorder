@@ -1,4 +1,4 @@
--- pg-flight-recorder: _record module install script
+-- pg-flight-recorder: pgfr_record module install script
 --
 -- Orchestrates load order. Each sql/ file is independently reviewable.
 -- Run as a superuser in the target database with pg_cron installed.

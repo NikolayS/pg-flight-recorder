@@ -1,8 +1,8 @@
 x-analyze-volumes: &analyze-volumes
   volumes:
-    - ./_analyze/install.sql:/analyze.sql:ro
-    - ./_analyze/sql:/analyze_sql:ro
-    - ./_analyze/tests:/tests/analyze:ro
+    - ./pgfr_analyze/install.sql:/analyze.sql:ro
+    - ./pgfr_analyze/sql:/analyze_sql:ro
+    - ./pgfr_analyze/tests:/tests/analyze:ro
 
 services:
   postgres15:

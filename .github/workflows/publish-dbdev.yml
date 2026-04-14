@@ -43,45 +43,45 @@ jobs:
       - name: Prepare core extension files
         run: |
           VER="${{ steps.version.outputs.version }}"
-          cp _record/install.sql "_record/pgfr_record--${VER}.sql"
-          mv _record/extension.control _record/pgfr_record.control
-          sed -i "s/^default_version = .*/default_version = '${VER}'/" _record/pgfr_record.control
+          cp pgfr_record/install.sql "pgfr_record/pgfr_record--${VER}.sql"
+          mv pgfr_record/extension.control pgfr_record/pgfr_record.control
+          sed -i "s/^default_version = .*/default_version = '${VER}'/" pgfr_record/pgfr_record.control
 
           # Safety: verify dbdev size limit
-          SIZE=$(wc -c < "_record/pgfr_record--${VER}.sql")
+          SIZE=$(wc -c < "pgfr_record/pgfr_record--${VER}.sql")
           echo "Core package size: ${SIZE} chars"
           if [ "$SIZE" -gt 250000 ]; then
-            echo "ERROR: _record/install.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
+            echo "ERROR: pgfr_record/install.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
             exit 1
           fi
 
       - name: Prepare reporting extension files
         run: |
           VER="${{ steps.version.outputs.version }}"
-          cp _analyze/install.sql "_analyze/pgfr_analyze--${VER}.sql"
-          mv _analyze/extension.control _analyze/pgfr_analyze.control
-          sed -i "s/^default_version = .*/default_version = '${VER}'/" _analyze/pgfr_analyze.control
+          cp pgfr_analyze/install.sql "pgfr_analyze/pgfr_analyze--${VER}.sql"
+          mv pgfr_analyze/extension.control pgfr_analyze/pgfr_analyze.control
+          sed -i "s/^default_version = .*/default_version = '${VER}'/" pgfr_analyze/pgfr_analyze.control
 
           # Safety: verify dbdev size limit
-          SIZE=$(wc -c < "_analyze/pgfr_analyze--${VER}.sql")
+          SIZE=$(wc -c < "pgfr_analyze/pgfr_analyze--${VER}.sql")
           echo "Reporting package size: ${SIZE} chars"
           if [ "$SIZE" -gt 250000 ]; then
-            echo "ERROR: _analyze/install.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
+            echo "ERROR: pgfr_analyze/install.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
             exit 1
           fi
 
       - name: Prepare control extension files
         run: |
           VER="${{ steps.version.outputs.version }}"
-          cp _control/install.sql "_control/pgfr_control--${VER}.sql"
-          mv _control/extension.control _control/pgfr_control.control
-          sed -i "s/^default_version = .*/default_version = '${VER}'/" _control/pgfr_control.control
+          cp pgfr_control/install.sql "pgfr_control/pgfr_control--${VER}.sql"
+          mv pgfr_control/extension.control pgfr_control/pgfr_control.control
+          sed -i "s/^default_version = .*/default_version = '${VER}'/" pgfr_control/pgfr_control.control
 
           # Safety: verify dbdev size limit
-          SIZE=$(wc -c < "_control/pgfr_control--${VER}.sql")
+          SIZE=$(wc -c < "pgfr_control/pgfr_control--${VER}.sql")
           echo "Control package size: ${SIZE} chars"
           if [ "$SIZE" -gt 250000 ]; then
-            echo "ERROR: _control/install.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
+            echo "ERROR: pgfr_control/install.sql is ${SIZE} chars, exceeds 250,000 char dbdev limit"
             exit 1
           fi
 
@@ -100,10 +100,10 @@ jobs:
           printf '[registries.dbdev]\ntoken = "%s"\n' "$DBDEV_TOKEN" > ~/.dbdev/credentials.toml
 
       - name: Publish core package
-        run: cd _record && dbdev publish
+        run: cd pgfr_record && dbdev publish
 
       - name: Publish reporting package
-        run: cd _analyze && dbdev publish
+        run: cd pgfr_analyze && dbdev publish
 
       - name: Publish control package
-        run: cd _control && dbdev publish
+        run: cd pgfr_control && dbdev publish

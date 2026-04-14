@@ -1403,7 +1403,7 @@
             <li>Circuit breaker &amp; load shedding</li>
             <li>Health check &amp; diagnostics</li>
           </ul>
-          <div class="ext-install">psql -f _record/install.sql</div>
+          <div class="ext-install">psql -f pgfr_record/install.sql</div>
         </div>
         <div class="ext-card reveal">
           <span class="ext-badge optional">Optional</span>
@@ -1416,7 +1416,7 @@
             <li>Incident timeline &amp; blast radius</li>
             <li>Quarterly reviews &amp; capacity</li>
           </ul>
-          <div class="ext-install">psql -f _analyze/install.sql</div>
+          <div class="ext-install">psql -f pgfr_analyze/install.sql</div>
         </div>
         <div class="ext-card reveal">
           <span class="ext-badge optional">Optional</span>
@@ -1429,7 +1429,7 @@
             <li>Bloat estimation &amp; reporting</li>
             <li>OID consumption forecasting</li>
           </ul>
-          <div class="ext-install">psql -f _control/install.sql</div>
+          <div class="ext-install">psql -f pgfr_control/install.sql</div>
         </div>
       </div>
     </div>
@@ -1451,9 +1451,9 @@
             <button class="copy-btn" aria-label="Copy to clipboard">
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 012 9.5v-7A1.5 1.5 0 013.5 1h7A1.5 1.5 0 0112 2.5V5"/></svg>
             </button>
-            <pre>psql --single-transaction -f _record/install.sql
-psql --single-transaction -f _analyze/install.sql
-psql --single-transaction -f _control/install.sql</pre>
+            <pre>psql --single-transaction -f pgfr_record/install.sql
+psql --single-transaction -f pgfr_analyze/install.sql
+psql --single-transaction -f pgfr_control/install.sql</pre>
           </div>
         </div>
         <div class="step reveal">

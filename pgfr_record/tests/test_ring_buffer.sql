@@ -2,7 +2,7 @@
 -- Run after install.sql with pg_tap installed.
 -- Usage:
 --   PGPASSWORD=postgres psql -h localhost -p 5416 -U postgres -d postgres \
---       -f _record/tests/test_ring_buffer.sql
+--       -f pgfr_record/tests/test_ring_buffer.sql
 
 \set ON_ERROR_STOP 1
 set client_min_messages to warning;

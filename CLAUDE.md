@@ -6,9 +6,9 @@ Three extensions, each in its own subdirectory:
 
 | Directory   | Extension      | Schema         | Purpose                                                  |
 |-------------|----------------|----------------|----------------------------------------------------------|
-| `_record/`  | `pgfr_record`  | `pgfr_record`  | Core: tables, collection, scheduling, ring buffers       |
-| `_analyze/` | `pgfr_analyze` | `pgfr_analyze` | Optional: reporting, anomaly detection, time travel      |
-| `_control/` | `pgfr_control` | `pgfr_control` | Optional: vacuum diagnostics, scale factor tuning, bloat |
+| `pgfr_record/`  | `pgfr_record`  | `pgfr_record`  | Core: tables, collection, scheduling, ring buffers       |
+| `pgfr_analyze/` | `pgfr_analyze` | `pgfr_analyze` | Optional: reporting, anomaly detection, time travel      |
+| `pgfr_control/` | `pgfr_control` | `pgfr_control` | Optional: vacuum diagnostics, scale factor tuning, bloat |
 
 Each subdirectory contains:
 
@@ -24,7 +24,7 @@ Other key files:
 - `test.sh` — runs all tests on PG 15/16/17 via Docker
 - `docker-compose.yml` — base test infrastructure (services, build, env, healthcheck, data volumes)
 
-Docker Compose files are merged at invocation time: `test.sh` passes `-f docker-compose.yml -f _record/docker-compose.yml -f _control/docker-compose.yml -f _analyze/docker-compose.yml`. Volume paths in extension compose files are relative to the project root (Docker Compose resolves all `-f` file paths relative to the first file's directory).
+Docker Compose files are merged at invocation time: `test.sh` passes `-f docker-compose.yml -f pgfr_record/docker-compose.yml -f pgfr_control/docker-compose.yml -f pgfr_analyze/docker-compose.yml`. Volume paths in extension compose files are relative to the project root (Docker Compose resolves all `-f` file paths relative to the first file's directory).
 
 ## Markdown Formatting
 
@@ -78,9 +78,9 @@ Run tests with:
 
 Tests are distributed across extension subdirectories:
 
-- `_record/tests/` — 14 test files (core)
-- `_control/tests/` — 1 test file (vacuum control)
-- `_analyze/tests/` — 4 test files (reporting/analysis)
+- `pgfr_record/tests/` — 14 test files (core)
+- `pgfr_control/tests/` — 1 test file (vacuum control)
+- `pgfr_analyze/tests/` — 4 test files (reporting/analysis)
 
 ## Code Style
 
@@ -95,7 +95,7 @@ pgfr_record uses **additive-only schema changes**:
 
 - Add new nullable columns (never remove or rename existing ones)
 - Historical data with NULL in new columns is correct ("not collected then")
-- Re-running `_record/install.sql` is the upgrade path (uses `CREATE OR REPLACE` / `IF NOT EXISTS`)
+- Re-running `pgfr_record/install.sql` is the upgrade path (uses `CREATE OR REPLACE` / `IF NOT EXISTS`)
 
 **Why not JSONB + versioning?**
 

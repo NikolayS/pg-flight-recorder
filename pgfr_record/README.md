@@ -27,14 +27,14 @@ pgfr_record installs a set of tables, views, and pg_cron jobs that continuously 
 ## Install
 
 ```sql
-\i _record/install.sql
+\i pgfr_record/install.sql
 SELECT pgfr_record.enable();
 ```
 
 Or from the command line:
 
 ```bash
-psql --single-transaction -f _record/install.sql
+psql --single-transaction -f pgfr_record/install.sql
 psql -c "SELECT pgfr_record.enable();"
 ```
 

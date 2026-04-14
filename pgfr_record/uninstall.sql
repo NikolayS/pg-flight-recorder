@@ -1,5 +1,5 @@
 -- Uninstall pgfr_record (DESTRUCTIVE — removes all data)
--- Run with: psql --single-transaction -f _record/uninstall.sql
+-- Run with: psql --single-transaction -f pgfr_record/uninstall.sql
 
 -- Unschedule cron jobs (they live in the cron schema, not ours)
 DO $$

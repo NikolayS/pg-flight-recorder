@@ -1,7 +1,7 @@
 -- =============================================================================
 -- pgTAP tests: Phase 1 sparse statement_snapshots collector
 -- SPEC §9.13 — Phase 1 test items
--- Run with: pg_prove -d <dbname> _record/tests/test_sparse_collector.sql
+-- Run with: pg_prove -d <dbname> pgfr_record/tests/test_sparse_collector.sql
 -- Requires: pgTAP, pg_stat_statements
 -- PG14+ minimum
 --
@@ -13,7 +13,7 @@
 -- (PR #5 / phase1-issue1-infra) is already installed, specifically:
 --   - pgfr_record.epoch()
 --   - pgfr_record._ensure_partition(text, date)
--- Install _record/install.sql from the phase1-issue1-infra branch first,
+-- Install pgfr_record/install.sql from the phase1-issue1-infra branch first,
 -- or merge PR #5 before running these tests.
 -- =============================================================================
 

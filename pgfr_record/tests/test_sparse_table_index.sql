@@ -1,7 +1,7 @@
 -- =============================================================================
 -- pgTAP tests: Phase 1 sparse table_snapshots and index_snapshots collectors
 -- Issue #8 — storage-overhaul-spec branch
--- Run with: psql -f _record/tests/test_sparse_table_index.sql
+-- Run with: psql -f pgfr_record/tests/test_sparse_table_index.sql
 -- Requires: pgTAP, install.sql already applied
 -- =============================================================================
 
