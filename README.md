@@ -32,7 +32,7 @@ Two extensions, each published as a separate [dbdev](https://database.dev) packa
 
 ## Requirements
 
-- PostgreSQL 15, 16, or 17
+- PostgreSQL 15, 16, 17, or 18
 - `pg_cron` extension
 - Superuser privileges for installation
 - Optional: `pg_stat_statements` for query-level analysis
