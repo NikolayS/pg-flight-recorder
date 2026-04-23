@@ -52,7 +52,22 @@ services:
     volumes:
       - postgres17_data:/var/lib/postgresql/data
 
+  postgres18:
+    <<: *postgres-base
+    profiles: ["pg18", "all"]
+    build:
+      context: .
+      args:
+        PG_VERSION: 18
+    image: pgfr_record_test:18
+    container_name: pgfr_record_test-18
+    ports:
+      - "5418:5432"
+    volumes:
+      - postgres18_data:/var/lib/postgresql/data
+
 volumes:
   postgres15_data:
   postgres16_data:
   postgres17_data:
+  postgres18_data:

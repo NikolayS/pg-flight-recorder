@@ -13,3 +13,5 @@ services:
     <<: *record-volumes
   postgres17:
     <<: *record-volumes
+  postgres18:
+    <<: *record-volumes
