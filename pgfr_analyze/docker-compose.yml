@@ -10,3 +10,5 @@ services:
     <<: *analyze-volumes
   postgres17:
     <<: *analyze-volumes
+  postgres18:
+    <<: *analyze-volumes

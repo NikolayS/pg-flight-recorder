@@ -208,6 +208,7 @@ log "pg_stat_statements entries: $PGSS_COUNT"
 
 # Run pgbench for 90 minutes (>= 1 hour as required by §9.2)
 log "Running pgbench workload for 90 minutes (5400s)..."
+# shellcheck disable=SC2024 # /tmp/pgbench.log is world-writable; redirect owner need not be postgres
 sudo -u postgres pgbench -p $PGPORT -d $PGDB \
   -c 10 -j 2 -T 5400 > /tmp/pgbench.log 2>&1 &
 PGBENCH_PID=$!

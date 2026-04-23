@@ -9,6 +9,7 @@
 ## Measured results
 
 ### Run 1 — 2,000 ticks, 100 wait event rows/tick (full slot utilization)
+
 *Equivalent: ~2.7 hours at 5 s sample cadence*
 
 | Scenario | Table | Live rows | Dead rows | Dead % | Heap | pgstattuple dead |
@@ -21,6 +22,7 @@
 One `BEGIN; SELECT pg_sleep(400)` session pinned the xmin horizon for the entire run.
 
 ### Run 2 — 10,000 ticks, 1,000 wait event rows/tick (high-traffic server)
+
 *Equivalent: ~13.9 hours at 5 s sample cadence*
 
 Scenario A only (scenario B aborted — would take 30+ min to simulate; extrapolated below):
