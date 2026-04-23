@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pg_version: [15, 16, 17]
+        pg_version: [15, 16, 17, 18]
 
     steps:
       - name: Checkout code
@@ -41,4 +41,4 @@ jobs:
             echo "Tests failed on one or more PostgreSQL versions"
             exit 1
           fi
-          echo "All tests passed on PostgreSQL 15, 16, and 17"
+          echo "All tests passed on PostgreSQL 15, 16, 17, and 18"

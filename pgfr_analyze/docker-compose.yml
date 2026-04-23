@@ -1,7 +1,6 @@
 x-analyze-volumes: &analyze-volumes
   volumes:
-    - ./pgfr_analyze/install.sql:/analyze.sql:ro
-    - ./pgfr_analyze/sql:/analyze_sql:ro
+    - ./pgfr_analyze:/pgfr_analyze:ro
     - ./pgfr_analyze/tests:/tests/analyze:ro
 
 services:
@@ -10,4 +9,6 @@ services:
   postgres16:
     <<: *analyze-volumes
   postgres17:
+    <<: *analyze-volumes
+  postgres18:
     <<: *analyze-volumes

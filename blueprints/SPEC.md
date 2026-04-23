@@ -12,8 +12,8 @@
 |---------|---------|
 | 2.7 | §9.2 baseline measurement complete (Hetzner cx22, PG 17.4, pgbench scale=50, 6.7h of pg_cron collection): Section 3 table updated with observed bytes/row and 30-day projections; confirmed statement_snapshots dominates at 466 bytes/row (960 MiB/30d at top_n=50, ~94 GiB at pgss.max=5000); confirmed config_snapshots change-log model effective (~1 MiB/30d); baseline_measure.sql corrected for actual collection_stats schema |
 | 2.6 | Sixth-pass reviews: clean-restart desync trap fixed (check stats_reset not just emptiness); TRUNCATE lock_timeout 2s→50ms (FIFO queue stall); dealloc is cluster-wide not per-db; logical replication TRUNCATE poison pill + publication workaround; _partition_inventory() runtime assertions; JIT call-discipline for EXECUTE |
-| 2.5 | Fifth-pass reviews: Q5 BigInt column type + sequence both required; BRIN/B-tree non-overlapping paths + pages_per_range workload note; advisory xact_lock held for full snapshot run; JIT inheritance via EXECUTE clarified; _partition_inventory() bound parsing fragility + single-column RANGE assumption; GC cadence configurable; best-effort retention under lock contention; ring EXECUTE plan-cache trade-off documented; skip-tick observability counter |
-| 2.4 | Fourth-pass reviews: two-tier GC (nightly TRUNCATE + monthly drop_ancient_partitions); fix TRUNCATE lock framing; fix advisory lock race — skip tick if rebuild in flight; lock_timeout on TRUNCATE; _partition_inventory() defined; _ensure_partition() O(1) happy path; BRIN pages_per_range=8 + correlation check; WAL section updated for TRUNCATE vs DROP vs DELETE; benchmark headers fixed; pg_stat_reset_single_table_counters() note; ring buffer reader uses EXECUTE by partition name; Q8 guardrails updated for accumulation math |
+| 2.5 | Fifth-pass reviews: Q5 BigInt column type + sequence both required; BRIN/B-tree non-overlapping paths + pages_per_range workload note; advisory xact_lock held for full snapshot run; JIT inheritance via EXECUTE clarified; `_partition_inventory()` bound parsing fragility + single-column RANGE assumption; GC cadence configurable; best-effort retention under lock contention; ring EXECUTE plan-cache trade-off documented; skip-tick observability counter |
+| 2.4 | Fourth-pass reviews: two-tier GC (nightly TRUNCATE + monthly drop_ancient_partitions); fix TRUNCATE lock framing; fix advisory lock race — skip tick if rebuild in flight; lock_timeout on TRUNCATE; `_partition_inventory()` defined; `_ensure_partition()` O(1) happy path; BRIN pages_per_range=8 + correlation check; WAL section updated for TRUNCATE vs DROP vs DELETE; benchmark headers fixed; pg_stat_reset_single_table_counters() note; ring buffer reader uses EXECUTE by partition name; Q8 guardrails updated for accumulation math |
 | 2.3 | Replace DROP/DETACH with TRUNCATE for retention — eliminates dblink dependency, transaction-context trap, orphan tracking, and two-phase state machine; partition definitions accumulate but empty partitions are pruned automatically; `drop_old_partitions()` → `truncate_old_partitions()` throughout |
 | 2.2 | Third-pass reviews: DETACH CONCURRENTLY transaction trap + dblink/externalize options; advisory lock on _rebuild_statement_last_state; ANALYZE after rebuild; INSERT...ON CONFLICT DO UPDATE mandated (HOT); HOT DDL comment + pgTAP guard; remove thundering-herd spread suggestion; ring buffer reader views exclude "next" partition; two-phase GC orphan detection; partition_gc_health view; partition_gc_state self-cleanup (7-day TTL); BRIN index on sample_ts for time-range queries; generic plan pruning test; Phase 2 BIGSERIAL sequence monotonicity; PGSS collection failure isolation |
 | 2.1 | Second-pass reviews: add `toplevel` to composite key (PG14+ correctness); HOT-friendly `statement_last_state` with fillfactor+autovacuum; explicit crash recovery protocol (_rebuild_statement_last_state); daily TRUNCATE+rebuild semantics; PG14 minimum version declared in §2; `drop_old_partitions()` runs hourly + loops all eligible + partition_gc_state table + statement_timeout; dual-write cutover checklist; BIGSERIAL+dual-write synergy; soften Q3 partition pruning; relcache safety envelope in Q8; §9.8 references last-state join not DISTINCT ON; §9.12 pass/fail criteria |
@@ -30,6 +30,7 @@
 ## Table of Contents
 
 - [Implementation Progress](#implementation-progress)
+
 1. [Background and Motivation](#1-background-and-motivation)
 2. [Scope and Constraints](#2-scope-and-constraints)
 3. [Storage Analysis: Where the Problem Actually Is](#3-storage-analysis-where-the-problem-actually-is)
@@ -105,6 +106,7 @@
   - rollback script verified end-to-end
 
 **GC invariants (locked):**
+
 - Ring buffer (`wait_samples_N`, `lock_samples_N`, `activity_samples_N`): TRUNCATE only via `rotate_ring()` — no DELETE, no DROP
 - Daily RANGE partitions: TRUNCATE (nightly) → DROP empty shell (monthly) — no DELETE ever
 - `cleanup()` DELETE paths remain only for legacy heap tables during transition period
@@ -143,6 +145,7 @@ frequency, or what telemetry is available.
 ### Minimum supported PostgreSQL version
 
 **PG14** is the minimum version for the full feature set. PG14 provides:
+
 - `pg_stat_statements_info` (dealloc counter, stats_reset)
 - `stats_since` column in `pg_stat_statements`
 - `toplevel` column in `pg_stat_statements` (affects composite key — see §5.2)
@@ -330,6 +333,7 @@ The side table is strictly a sparse-comparison cache. It carries only
 must never query it directly; all reads go through the partitioned history table.
 
 **Collector flow each tick:**
+
 1. Hash-join `pg_stat_statements` against `statement_last_state` (O(n), ~5,000-row table)
 2. Insert changed rows into the daily partition
 3. `TRUNCATE` + rebuild `statement_last_state` at daily partition boundary (see below);
@@ -341,6 +345,7 @@ Cost is O(1) per queryid regardless of partition age.
 HOT updates only occur when a tuple stays on the same heap page. A DELETE + INSERT
 always writes a new tuple, defeating the fillfactor optimization and generating
 dead tuples. Non-boundary upserts must use:
+
 ```sql
 insert into pgfr_record.statement_last_state
     (queryid, dbid, userid, toplevel, calls, sample_ts)
@@ -349,19 +354,23 @@ on conflict (queryid, dbid, userid, toplevel) do update
     set calls     = excluded.calls,
         sample_ts = excluded.sample_ts;
 ```
+
 Only `calls` and `sample_ts` change — never the key columns — so HOT is always
 eligible as long as no index covers `calls` or `sample_ts`.
 
 **HOT contract — enforce via DDL comment:**
+
 ```sql
 comment on table pgfr_record.statement_last_state is
     'HOT-sensitive: do NOT index mutable columns (calls, sample_ts). '
     'HOT updates require changed columns to be unindexed. '
     'See: https://github.com/NikolayS/pg-flight-recorder/blueprints/SPEC.md §5.2';
 ```
+
 Add a pgTAP guard that asserts no index on this table covers `calls` or `sample_ts`.
 
 **Insert condition:**
+
 ```sql
 insert into pgfr_record.statement_snapshots (...)
 select ...
@@ -431,6 +440,7 @@ If `snapshot()` latency grows (future regressions, slow systems), skip frequency
 will increase proportionally — this is observable via the skip counter.
 
 `_rebuild_statement_last_state()` must:
+
 1. `TRUNCATE pgfr_record.statement_last_state`
 2. `INSERT INTO statement_last_state SELECT ... FROM pg_stat_statements`
 3. `ANALYZE pgfr_record.statement_last_state` — immediately lock in accurate
@@ -625,6 +635,7 @@ saving 4 bytes/row. At 216M naive rows that is ~824 MiB saved on `statement_snap
 alone, before any sparse optimization.
 
 **Epoch function (borrowed from pg_ash):**
+
 ```sql
 -- WARNING: must never change after installation — all sample_ts values are
 -- seconds offset from this point. Changing it corrupts all timestamps.
@@ -634,12 +645,14 @@ $$select '2026-01-01 00:00:00+00'::timestamptz$$;
 ```
 
 **Reconstruct timestamptz from sample_ts:**
+
 ```sql
 pgfr_record.epoch() + sample_ts * interval '1 second'
 ```
 
 **Partition key:** PostgreSQL range partitioning works on `int4` — no need for
 `timestamptz` as the partition key. Partition bounds are computed as:
+
 ```sql
 -- for date 2026-02-26, always explicit UTC to avoid session timezone drift:
 extract(epoch from '2026-02-26 00:00:00+00'::timestamptz - pgfr_record.epoch())::int4
@@ -679,6 +692,7 @@ create index on statement_snapshots_YYYY_MM_DD
 
 Validate correlation before relying on BRIN — long transactions crossing midnight
 can disturb insertion order:
+
 ```sql
 select correlation from pg_stats
 where tablename = 'statement_snapshots_YYYY_MM_DD' and attname = 'sample_ts';
@@ -697,6 +711,7 @@ for dense workloads the default 128 wastes selectivity. Benchmark both in Phase 
 
 **int4 horizon:** with a 2026-01-01 epoch, `int4` seconds overflow in approximately
 2094. This is not an imminent risk, but future engineers must know:
+
 - the epoch must never change after installation (corrupts all stored timestamps)
 - replicas installed later use the same epoch from the primary
 - a migration path (new epoch column, dual-read period) must be planned before 2090
@@ -727,6 +742,7 @@ contains no rows. Storage is reclaimed immediately. The planner prunes empty
 partitions on any time-bounded query — no performance cost.
 
 Benefits over DROP:
+
 - Runs entirely inside a plain PL/pgSQL function — no dblink, no external orchestrator
 - No DETACH CONCURRENTLY transaction-context trap
 - No orphaned detached tables to track
@@ -745,10 +761,12 @@ child partitions including the one being truncated. Always wrap TRUNCATE calls i
 FIFO: while the TRUNCATE waits for `ACCESS EXCLUSIVE`, all subsequent reader
 queries queue behind it — creating a system-wide stall for the duration of the
 timeout. Use an aggressive timeout for background GC:
+
 ```sql
 set local lock_timeout = '50ms';  -- not 2s: FIFO queue stalls all readers
 truncate pgfr_record.statement_snapshots_2026_01_01;
 ```
+
 If the timeout fires, skip and retry next hour. The system catches up automatically
 once the blocking query completes — lag does not accumulate permanently. Under persistent lock contention
 (a pathological long-running query holding `ACCESS SHARE` for hours), expired
@@ -787,6 +805,7 @@ partitions via `_partition_inventory()` (see below), not by parsing `_YYYY_MM_DD
 suffixes from table names.
 
 **`_partition_inventory()` — shared catalog query:**
+
 ```sql
 create or replace function pgfr_record._partition_inventory()
 returns table (
@@ -814,6 +833,7 @@ returns table (
     where n.nspname = 'pgfr_record';
 $$;
 ```
+
 Used by `truncate_old_partitions()`, `drop_ancient_partitions()`, and
 `partition_gc_health`. Exact bound-parsing SQL to be finalized in implementation.
 
@@ -821,6 +841,7 @@ Used by `truncate_old_partitions()`, `drop_ancient_partitions()`, and
 `pg_get_expr(relpartbound, oid)` returns a text representation whose format is not
 guaranteed stable across major PostgreSQL versions. Whitespace variations, syntax
 nuances for LIST/RANGE, and future changes can silently break parsing. Mitigations:
+
 - Use defensive regex with strict assertions (fail loudly on unexpected format)
 - Add runtime assertions at function entry:
   - verify parent is RANGE partitioned (`pg_partitioned_table.partstrat = 'r'`)
@@ -835,13 +856,16 @@ nuances for LIST/RANGE, and future changes can silently break parsing. Mitigatio
 On every tick, `snapshot()` calls `_ensure_partition()` as a runtime safety net.
 The function must open with a catalog existence check that returns immediately if
 the partition already exists — no DDL, no lock acquisition:
+
 ```sql
 if exists (select 1 from pg_catalog.pg_class ...) then return; end if;
 -- only reaches DDL if partition is missing
 ```
+
 This makes the common case a single catalog lookup with no side effects.
 
 **`partition_gc_health` view for operator visibility:**
+
 ```sql
 create or replace view pgfr_record.partition_gc_health as
 select
@@ -855,6 +879,7 @@ select
 from pgfr_record._partition_inventory()
 group by parent_table;
 ```
+
 Exposes pending truncations, recently truncated, and ancient partitions awaiting
 the monthly slow-path drop.
 
@@ -1019,6 +1044,7 @@ order by 1;
 ```
 
 Record for each table:
+
 - Actual rows after 24h
 - Actual bytes/row (heap_size / n_live_tup)
 - Actual rows inserted per tick (from collection stats or direct count)
@@ -1221,6 +1247,7 @@ columns drop to zero. The parent table is not sparse (1 row/min regardless), but
 reader functions computing deltas must detect and handle the reset boundary.
 
 For each: trigger 10 resets over 1 hour while collecting. Verify:
+
 - Reader functions return non-negative delta values across a reset boundary
 - Reset events are correctly identified and surfaced (not silently dropped)
 - No negative `calls_delta` or counter-delta values reach callers
@@ -1242,6 +1269,7 @@ select pg_current_wal_lsn() as after_lsn;
 On PG14+ use `pg_stat_wal` for cumulative WAL stats.
 
 Expected WAL profile:
+
 - **DELETE** of 7.2M rows: hundreds of MiB (one WAL record per row)
 - **TRUNCATE** of a partition: few KiB (single WAL record for relfilenode change + fork metadata) — not near-zero like DROP, but orders of magnitude less than DELETE. The TRUNCATE trade-off is intentional: slightly more WAL than DROP in exchange for drastically simpler operations (no DETACH, no dblink, no orphan tracking).
 - **DROP** of an empty partition (monthly slow-path): kilobytes (catalog change only)
@@ -1257,11 +1285,13 @@ queryids constantly, saturating PGSS and causing high eviction rates).
 
 **Setup:** continuously generate new distinct queryids at a rate that keeps PGSS
 near capacity and eviction rate high. Measure:
+
 - Sparse insert effectiveness (does last-state table stay consistent through evictions?)
 - `statement_last_state` correctness across eviction/reappearance cycles
 - Partition growth rate vs baseline expectation
 
 **Pass/fail criteria:**
+
 - `statement_last_state` row count never exceeds `pg_stat_statements.max` + 10%
   (accounting for in-flight evictions between TRUNCATE cycles)
 - No assertion failures or constraint violations during the run
@@ -1346,6 +1376,7 @@ work unmodified. Old data is preserved — nothing is deleted.
 the new `pgfr_record/install.sql`. Idempotent: safe to call multiple times.
 
 **What it does (in order):**
+
 1. Checks that v2 tables exist (`statement_snapshots_v2`, `table_snapshots_v2`,
    `index_snapshots_v2`) — raises ERROR with clear instructions if not found
 2. Renames old plain tables to `_legacy` suffix (skips if already renamed):
@@ -1357,6 +1388,7 @@ the new `pgfr_record/install.sql`. Idempotent: safe to call multiple times.
 4. Returns a text summary of all actions taken
 
 **Cutover checklist (ordered — do not skip steps):**
+
 1. Install the new `pgfr_record/install.sql` (creates v2 tables)
 2. Run `SELECT pgfr_record.migrate_to_v2();` — verifies v2 tables, renames old tables
 3. Verify backwards-compat views work: `SELECT count(*) FROM pgfr_record.statement_snapshots;`
@@ -1396,6 +1428,7 @@ schema is already changing.
 New partitioned child tables created in Phase 1 must define `snapshot_id` as
 `BIGINT` from day one (the collector safely inserts current `INT` sequence values
 into `BIGINT` columns). When `snapshots.id` is migrated to `BIGSERIAL` in Phase 2, two steps are required:
+
 ```sql
 -- 1. change the column type (requires full table rewrite + ACCESS EXCLUSIVE lock)
 alter table pgfr_record.snapshots alter column id type bigint;
@@ -1404,6 +1437,7 @@ alter table pgfr_record.snapshots alter column id type bigint;
 -- 2. change the sequence type and preserve monotonicity
 alter sequence snapshots_id_seq as bigint restart with <max_id + 1>;
 ```
+
 The column type change must precede or accompany the sequence change. Both should
 happen in the same maintenance window. Child tables are already `BIGINT` from Phase 1
 and require no change.
