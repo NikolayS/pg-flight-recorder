@@ -13,7 +13,6 @@ IMAGE="ubuntu-24.04"
 FIREWALL_NAME="pgfr-bench-fw"
 SSH_KEY_NAME="pgfr-bench-key"
 SSH_KEY_FILE="/tmp/bench_key"
-PGFR_BRANCH="storage-overhaul-spec"
 
 log() { echo "[$(date -u +%H:%M:%S)] $*"; }
 
@@ -78,7 +77,7 @@ log "Server IP: $SERVER_IP"
 
 # ── 5. Wait for SSH ──────────────────────────────────────────────────────────
 log "Waiting for SSH to become available..."
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   if ssh -i "$SSH_KEY_FILE" \
          -o StrictHostKeyChecking=no \
          -o ConnectTimeout=5 \
